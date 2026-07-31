@@ -1,0 +1,2200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="A friction-free lifting logbook. Your split, carried forward, with progression and deload calls made for you.">
+<meta name="theme-color" content="#EEEFF1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111417" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Iron Log">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Iron Log</title>
+</head>
+<body>
+<!--ARTIFACT-START-->
+<style>
+/* ============================================================
+   Iron Log — tokens
+   ============================================================ */
+:root{
+  --bg:#EEEFF1;
+  --panel:#FFFFFF;
+  --panel-2:#E4E6EA;
+  --ink:#14171B;
+  --ink-2:#5A6169;
+  --ink-3:#878F98;
+  --line:#D3D7DD;
+  --accent:#C98A0E;
+  --on-accent:#14171B;
+  --accent-soft:rgba(201,138,14,.14);
+  --good:#2E7D57;
+  --good-soft:rgba(46,125,87,.13);
+  --bad:#B03A32;
+  --bad-soft:rgba(176,58,50,.12);
+  --shadow:0 1px 2px rgba(20,23,27,.06), 0 6px 18px rgba(20,23,27,.05);
+
+  --mono:ui-monospace,SFMono-Regular,"SF Mono","Roboto Mono","DejaVu Sans Mono",Menlo,Consolas,monospace;
+  --ui:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+
+  --r:12px;
+  --pad:14px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#111417;
+    --panel:#191D21;
+    --panel-2:#242A30;
+    --ink:#EDEFF2;
+    --ink-2:#98A1AA;
+    --ink-3:#6E777F;
+    --line:#2C3238;
+    --accent:#E8AC2B;
+    --on-accent:#14171B;
+    --accent-soft:rgba(232,172,43,.16);
+    --good:#4FBE85;
+    --good-soft:rgba(79,190,133,.15);
+    --bad:#E0645A;
+    --bad-soft:rgba(224,100,90,.15);
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.28);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111417; --panel:#191D21; --panel-2:#242A30;
+  --ink:#EDEFF2; --ink-2:#98A1AA; --ink-3:#6E777F; --line:#2C3238;
+  --accent:#E8AC2B; --on-accent:#14171B; --accent-soft:rgba(232,172,43,.16);
+  --good:#4FBE85; --good-soft:rgba(79,190,133,.15);
+  --bad:#E0645A; --bad-soft:rgba(224,100,90,.15);
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.28);
+}
+:root[data-theme="light"]{
+  --bg:#EEEFF1; --panel:#FFFFFF; --panel-2:#E4E6EA;
+  --ink:#14171B; --ink-2:#5A6169; --ink-3:#878F98; --line:#D3D7DD;
+  --accent:#C98A0E; --on-accent:#14171B; --accent-soft:rgba(201,138,14,.14);
+  --good:#2E7D57; --good-soft:rgba(46,125,87,.13);
+  --bad:#B03A32; --bad-soft:rgba(176,58,50,.12);
+  --shadow:0 1px 2px rgba(20,23,27,.06), 0 6px 18px rgba(20,23,27,.05);
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--ui); font-size:15px; line-height:1.45;
+  overscroll-behavior-y:contain;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+}
+button,input,select,textarea{font:inherit;color:inherit;touch-action:manipulation}
+button{cursor:pointer;background:none;border:none;padding:0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+
+/* ---------- shell ---------- */
+.wrap{max-width:560px;margin:0 auto;padding:0 12px 96px}
+
+header.top{
+  position:sticky;top:0;z-index:40;
+  max-width:560px;margin:0 auto;
+  background:var(--bg);
+  display:flex;align-items:center;gap:8px;
+  padding:10px 12px 8px;
+  border-bottom:1px solid transparent;
+}
+header.top.stuck{border-bottom-color:var(--line)}
+.brand{
+  font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-3);
+}
+.brand b{color:var(--ink)}
+.top .spacer{flex:1}
+
+.chip{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:4px 9px;border-radius:999px;
+  font-size:12px;font-weight:600;
+  background:var(--panel-2);color:var(--ink-2);
+  border:1px solid transparent;white-space:nowrap;
+}
+.chip.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.chip.good{background:var(--good-soft);color:var(--good)}
+.chip.bad{background:var(--bad-soft);color:var(--bad)}
+.chip.accent{background:var(--accent-soft);color:var(--accent)}
+.chip.tag{padding:1px 7px;font-size:10px}
+
+button.rest{
+  font-family:var(--mono);font-variant-numeric:tabular-nums;
+  background:var(--accent);color:var(--on-accent);
+  padding:5px 11px;border-radius:999px;font-size:13px;font-weight:700;
+  display:inline-flex;align-items:center;gap:7px;
+}
+button.rest.over{background:var(--good);color:#fff}
+
+/* ---------- typography ---------- */
+h1,h2,h3{margin:0;text-wrap:balance}
+.eyebrow{
+  font-size:11px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-3);
+}
+.view-title{font-size:22px;font-weight:700;letter-spacing:-.015em;margin:2px 0 12px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--ink-2)}
+.tiny{font-size:12px}
+
+/* ---------- cards ---------- */
+.card{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--shadow);
+  padding:var(--pad);
+}
+.stack{display:flex;flex-direction:column;gap:12px}
+.row{display:flex;align-items:center;gap:10px}
+
+/* ---------- buttons ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  padding:10px 14px;border-radius:10px;
+  background:var(--panel-2);color:var(--ink);
+  font-weight:600;font-size:14px;
+  border:1px solid transparent;
+  min-height:42px;
+}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--accent);color:var(--on-accent)}
+.btn.ghost{background:transparent;border-color:var(--line);color:var(--ink-2)}
+.btn.danger{background:var(--bad-soft);color:var(--bad)}
+.btn.block{width:100%}
+.btn.big{min-height:54px;font-size:16px;border-radius:12px}
+.btn.sm{min-height:34px;padding:6px 10px;font-size:13px;border-radius:8px}
+.btn[disabled]{opacity:.45;pointer-events:none}
+
+/* ---------- next-up hero ---------- */
+.hero{display:flex;gap:14px;align-items:stretch}
+.daymark{
+  flex:0 0 auto;width:64px;border-radius:10px;
+  background:var(--accent-soft);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  border:1px solid var(--accent-soft);
+}
+.daymark .letter{
+  font-family:var(--mono);font-size:30px;font-weight:700;line-height:1;
+  color:var(--accent);letter-spacing:-.02em;
+}
+.daymark .sub{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);opacity:.8;margin-top:3px}
+.hero .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;justify-content:center}
+.hero h2{font-size:19px;font-weight:700;letter-spacing:-.01em}
+.exlist{font-size:13px;color:var(--ink-2);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+
+.daypicks{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.daypick{
+  padding:7px 12px;border-radius:9px;border:1px solid var(--line);
+  background:transparent;font-size:13px;font-weight:600;color:var(--ink-2);
+  display:inline-flex;gap:7px;align-items:center;
+}
+.daypick .k{font-family:var(--mono);color:var(--ink);font-weight:700}
+
+/* ---------- exercise card ---------- */
+.ex{padding:0;overflow:hidden}
+.ex-head{
+  display:flex;align-items:flex-start;gap:8px;
+  padding:12px var(--pad) 10px;
+}
+.ex-head .t{flex:1;min-width:0}
+.ex-name{font-size:16px;font-weight:700;letter-spacing:-.01em;word-break:break-word}
+.ex-meta{font-size:12px;color:var(--ink-3);margin-top:1px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.kebab{
+  width:34px;height:34px;border-radius:8px;color:var(--ink-3);
+  display:flex;align-items:center;justify-content:center;font-size:18px;line-height:1;
+  flex:0 0 auto;
+}
+
+/* the "what to do today, and why" block */
+.callout{
+  margin:0 var(--pad) 10px;border-radius:9px;overflow:hidden;
+  background:var(--panel-2);
+}
+.callout .lastrow{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:7px 10px;font-size:12px;color:var(--ink-2);
+}
+.callout .lastrow .num{color:var(--ink)}
+.callout .revert{
+  margin-left:auto;font-size:12px;font-weight:700;
+  padding:3px 8px;border-radius:7px;background:var(--panel);color:var(--ink-2);
+  border:1px solid var(--line);white-space:nowrap;
+}
+.callout .why{
+  display:flex;align-items:center;gap:7px;
+  padding:7px 10px;font-size:12.5px;font-weight:600;
+  border-top:1px solid var(--line);
+}
+.callout .why .mark{font-family:var(--mono);font-weight:700;flex:0 0 auto}
+.why.up{background:var(--accent-soft);color:var(--accent)}
+.why.reps{background:var(--good-soft);color:var(--good)}
+.why.deload{background:var(--bad-soft);color:var(--bad)}
+.why.hold{color:var(--ink-2)}
+
+.sets{display:flex;flex-direction:column}
+.set{
+  display:grid;
+  grid-template-columns:20px 1fr 10px 1fr 44px;
+  align-items:center;gap:5px;
+  padding:7px var(--pad);
+  border-top:1px solid var(--line);
+  position:relative;
+}
+.set::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent;
+}
+.set.done::before{background:var(--accent)}
+.set.done{background:var(--panel-2)}
+.set.pr::before{background:var(--good)}
+.set.warm::before{background:transparent}
+.set.warm.done::before{background:var(--line)}
+.set.warm .grp input{color:var(--ink-2)}
+.idx{
+  font-family:var(--mono);font-size:12px;color:var(--ink-3);
+  height:38px;width:100%;display:flex;align-items:center;justify-content:center;
+  border-radius:6px;
+}
+.idx:active{background:var(--panel-2)}
+.set.done .idx{color:var(--ink-2)}
+.set.warm .idx{color:var(--ink-3);font-weight:700;font-size:11px}
+.grp{display:flex;align-items:center;gap:2px;min-width:0}
+.grp button{
+  flex:0 0 auto;width:28px;height:38px;border-radius:8px;
+  color:var(--ink-2);font-size:17px;font-weight:600;line-height:1;
+  display:flex;align-items:center;justify-content:center;
+}
+.grp button:active{background:var(--panel-2)}
+.grp input{
+  flex:1;min-width:0;width:100%;
+  height:38px;border:1px solid var(--line);border-radius:8px;
+  background:var(--bg);
+  font-family:var(--mono);font-variant-numeric:tabular-nums;
+  font-size:16px;font-weight:600;text-align:center;
+  padding:0 1px;
+  -moz-appearance:textfield;
+}
+.set.done .grp input{background:transparent;border-color:transparent}
+.grp input::-webkit-outer-spin-button,.grp input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.times{text-align:center;color:var(--ink-3);font-size:13px}
+.tick{
+  width:44px;height:40px;border-radius:9px;
+  border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;
+  color:var(--ink-3);
+}
+.tick svg{width:20px;height:20px;display:block}
+.set.done .tick{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.set.done.warm .tick{background:var(--ink-3);border-color:var(--ink-3);color:var(--bg)}
+.set.done.pr .tick{background:var(--good);border-color:var(--good);color:#fff}
+.prtag{
+  position:absolute;right:58px;top:50%;transform:translateY(-50%);
+  font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--good);
+  pointer-events:none;
+}
+.ex-foot{
+  display:flex;gap:8px;align-items:center;padding:9px var(--pad);border-top:1px solid var(--line);
+}
+@media (max-width:360px){
+  :root{--pad:10px}
+  .set{grid-template-columns:18px 1fr 8px 1fr 40px;gap:4px}
+  .grp button{width:24px}
+  .tick{width:40px}
+}
+
+/* ---------- progress ---------- */
+.statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.stat{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+  padding:11px 12px;box-shadow:var(--shadow);
+}
+.stat .v{font-family:var(--mono);font-size:20px;font-weight:700;letter-spacing:-.02em;line-height:1.15}
+.stat .l{font-size:11px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;margin-top:3px}
+
+.banner{
+  border-radius:var(--r);padding:12px 14px;
+  border:1px solid transparent;text-align:left;
+}
+.banner.warn{background:var(--bad-soft);border-color:var(--bad-soft);color:var(--bad)}
+.banner.info{background:var(--accent-soft);border-color:var(--accent-soft);color:var(--accent)}
+.banner.calm{background:var(--panel);border-color:var(--line);color:var(--ink)}
+.banner .bt{font-weight:700;font-size:14px}
+.banner .bd{font-size:13px;color:var(--ink-2)}
+.banner.warn .bd{color:var(--bad);opacity:.85}
+.banner .acts{display:flex;gap:8px;margin-top:10px}
+
+.plift{
+  display:flex;align-items:center;gap:12px;
+  padding:11px var(--pad);border-top:1px solid var(--line);
+  width:100%;text-align:left;
+}
+.plift:first-child{border-top:none}
+.plift .pt{flex:1;min-width:0}
+.plift .pn{font-weight:650;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plift .ps{font-size:12px;color:var(--ink-3);font-family:var(--mono)}
+.plift canvas{flex:0 0 auto;width:78px;height:32px;display:block}
+
+.sess{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  padding:10px var(--pad);border-top:1px solid var(--line);
+}
+.sess:first-child{border-top:none}
+.sess .sd{font-family:var(--mono);font-size:12px;color:var(--ink-3);width:52px;flex:0 0 auto}
+.sess .sn{flex:1;min-width:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sess .sv{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+
+table.hist{width:100%;border-collapse:collapse;font-size:13px}
+table.hist th{
+  text-align:left;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:700;padding:0 8px 6px 0;
+}
+table.hist td{padding:6px 8px 6px 0;border-top:1px solid var(--line);font-family:var(--mono)}
+table.hist td:first-child{color:var(--ink-2)}
+table.hist tr.dl td{opacity:.6}
+.scrollx{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+/* ---------- plan ---------- */
+.pex{
+  display:flex;align-items:center;gap:10px;
+  padding:9px var(--pad);border-top:1px solid var(--line);
+}
+.pex .pxn{flex:1;min-width:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pex .pxs{font-family:var(--mono);font-size:12px;color:var(--ink-3)}
+.iconbtn{
+  width:32px;height:32px;border-radius:8px;color:var(--ink-3);
+  display:flex;align-items:center;justify-content:center;font-size:15px;flex:0 0 auto;
+}
+.iconbtn:active{background:var(--panel-2)}
+
+.field-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+.field-row:first-child{border-top:none}
+.field-row .fl{flex:1;font-size:14px}
+.field-row .fh{font-size:12px;color:var(--ink-3);margin-top:1px}
+input.txt,select.txt{
+  background:var(--bg);border:1px solid var(--line);border-radius:9px;
+  padding:9px 10px;font-size:16px;width:100%;
+}
+input.small{width:78px;text-align:center;font-family:var(--mono);font-weight:600}
+input.tiny-n{width:58px;text-align:center;font-family:var(--mono);font-weight:600}
+textarea.txt{
+  background:var(--bg);border:1px solid var(--line);border-radius:9px;
+  padding:10px;font-size:16px;width:100%;resize:vertical;min-height:64px;font-family:var(--ui);
+}
+.switch{
+  width:46px;height:28px;border-radius:999px;background:var(--panel-2);
+  position:relative;flex:0 0 auto;transition:background .15s;
+  border:1px solid var(--line);
+}
+.switch::after{
+  content:"";position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;
+  background:var(--panel);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s;
+}
+.switch.on{background:var(--accent);border-color:var(--accent)}
+.switch.on::after{transform:translateX(18px);background:#fff}
+
+/* ---------- edit-session rows ---------- */
+.erow{
+  display:grid;grid-template-columns:26px 1fr 10px 1fr 34px;
+  align-items:center;gap:6px;padding:6px 0;border-top:1px solid var(--line);
+}
+.erow .ei{font-family:var(--mono);font-size:11px;color:var(--ink-3);text-align:center}
+.erow input{
+  height:38px;width:100%;border:1px solid var(--line);border-radius:8px;background:var(--bg);
+  font-family:var(--mono);font-size:16px;font-weight:600;text-align:center;padding:0 2px;
+  -moz-appearance:textfield;
+}
+.erow input::-webkit-outer-spin-button,.erow input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.erow .rm{width:32px;height:34px;border-radius:8px;color:var(--ink-3);display:flex;align-items:center;justify-content:center}
+.erow .rm:active{background:var(--panel-2)}
+.erow.warm input{color:var(--ink-2)}
+
+/* ---------- bottom nav ---------- */
+nav.tabs{
+  position:fixed;left:0;right:0;bottom:0;z-index:50;
+  background:var(--panel);border-top:1px solid var(--line);
+  padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));
+  display:flex;justify-content:center;gap:4px;
+}
+nav.tabs .t{
+  flex:1;max-width:170px;
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:6px 4px;border-radius:10px;
+  font-size:11px;font-weight:650;letter-spacing:.03em;color:var(--ink-3);
+}
+nav.tabs .t svg{width:21px;height:21px;display:block}
+nav.tabs .t.on{color:var(--accent);background:var(--accent-soft)}
+
+/* ---------- sheet ---------- */
+.backdrop{
+  position:fixed;inset:0;z-index:60;background:rgba(10,12,14,.5);
+  display:flex;align-items:flex-end;justify-content:center;
+  animation:fade .16s ease-out;
+}
+.sheet{
+  width:100%;max-width:560px;max-height:88vh;overflow-y:auto;
+  background:var(--bg);border-radius:16px 16px 0 0;
+  border:1px solid var(--line);border-bottom:none;
+  padding:8px 14px calc(20px + env(safe-area-inset-bottom,0px));
+  animation:up .2s cubic-bezier(.2,.8,.3,1);
+}
+.grab{width:38px;height:4px;border-radius:2px;background:var(--line);margin:6px auto 12px}
+.sheet h3{font-size:17px;font-weight:700;margin-bottom:2px}
+.sheet .sub{font-size:13px;color:var(--ink-2);margin-bottom:14px}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes up{from{transform:translateY(14px)}to{transform:translateY(0)}}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+
+.picklist{display:flex;flex-direction:column;margin:8px 0}
+.picklist button{
+  text-align:left;padding:11px 12px;border-radius:9px;font-size:15px;
+  display:flex;align-items:center;gap:10px;
+}
+.picklist button:active{background:var(--panel-2)}
+.picklist .h{font-size:12px;color:var(--ink-3);font-family:var(--mono);margin-left:auto}
+
+.menu button{
+  width:100%;text-align:left;padding:12px;border-radius:9px;font-size:15px;
+  display:flex;align-items:center;gap:10px;
+}
+.menu button:active{background:var(--panel-2)}
+.menu button.dang{color:var(--bad)}
+
+.seg{display:flex;gap:4px;background:var(--panel-2);padding:3px;border-radius:9px}
+.seg button{
+  flex:1;padding:7px 4px;border-radius:7px;font-size:13px;font-weight:600;color:var(--ink-2);
+  white-space:nowrap;
+}
+.seg button.on{background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
+
+.toast{
+  position:fixed;left:50%;bottom:84px;transform:translateX(-50%);
+  z-index:80;background:var(--ink);color:var(--bg);
+  padding:9px 15px;border-radius:999px;font-size:13px;font-weight:600;
+  box-shadow:var(--shadow);pointer-events:none;
+  animation:fade .15s ease-out;max-width:90vw;text-align:center;
+}
+.empty{text-align:center;color:var(--ink-3);font-size:14px;padding:26px 10px}
+hr.sep{border:none;border-top:1px solid var(--line);margin:18px 0 14px}
+</style>
+
+<header class="top">
+  <div class="brand"><b>IRON</b> LOG</div>
+  <div class="spacer"></div>
+  <div id="hdr-right" class="row"></div>
+</header>
+
+<div class="wrap"><main id="view"></main></div>
+
+<nav class="tabs" id="tabs"></nav>
+
+<script>
+/* ============================================================
+   Iron Log — a friction-free lifting logbook.
+   All data lives in this browser's localStorage. No server, no account.
+   ============================================================ */
+(function(){
+"use strict";
+
+/* Host may not supply a viewport tag (e.g. embedded); make sure one exists. */
+if(!document.querySelector('meta[name="viewport"]')){
+  var mv=document.createElement("meta");
+  mv.name="viewport"; mv.content="width=device-width, initial-scale=1, viewport-fit=cover";
+  document.head.appendChild(mv);
+}
+
+/* ============================ storage ============================ */
+var KEY="ironlog.v1", storageOK=true;
+try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
+var mem=null;
+
+function defaultState(){
+  return {
+    version:3,
+    settings:{unit:"lb",rest:120,autoRest:true,buzz:true,inc:5,
+              doubleDefault:true,repLow:8,repHigh:12,
+              bodyweight:0, deloadUntil:0, deloadSnooze:0,
+              lastBackup:0},
+    routines:[
+      {id:uid(),key:"A",name:"Day A",exercises:[]},
+      {id:uid(),key:"B",name:"Day B",exercises:[]},
+      {id:uid(),key:"C",name:"Day C",exercises:[]}
+    ],
+    sessions:[],
+    active:null
+  };
+}
+function load(){
+  if(!storageOK) return mem||(mem=defaultState());
+  try{
+    var raw=localStorage.getItem(KEY);
+    if(!raw) return defaultState();
+    var s=JSON.parse(raw);
+    if(!s||!s.routines) return defaultState();
+    s.settings=Object.assign(defaultState().settings,s.settings||{});
+    s.version=3;
+    return s;
+  }catch(e){ return defaultState(); }
+}
+var saveTimer=null;
+function writeNow(){
+  clearTimeout(saveTimer); saveTimer=null;
+  try{ localStorage.setItem(KEY,JSON.stringify(S)); }
+  catch(e){ toast("Couldn't save — storage is full"); }
+}
+function save(){
+  if(!storageOK){ mem=S; return; }
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(writeNow,120);
+}
+/* Never let a pending write die with the tab. */
+function flush(){ if(storageOK&&saveTimer) writeNow(); }
+window.addEventListener("pagehide",flush);
+window.addEventListener("blur",flush);
+document.addEventListener("visibilitychange",function(){ if(document.hidden) flush(); });
+
+function uid(){ return Math.random().toString(36).slice(2,10); }
+var S=load();
+
+/* ============================ helpers ============================ */
+function $(sel,root){ return (root||document).querySelector(sel); }
+function $$(sel,root){ return [].slice.call((root||document).querySelectorAll(sel)); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+function num(v){ var n=parseFloat(v); return isFinite(n)?n:0; }
+function round(n,d){ var p=Math.pow(10,d||0); return Math.round(n*p)/p; }
+function fmt(n){ n=round(n,1); return (n%1===0)?String(n):n.toFixed(1); }
+function commas(n){ return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,","); }
+function today(){ return localDay(Date.now()); }
+function localDay(ts){
+  var d=new Date(ts);
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+function shortDate(ts){
+  var d=new Date(ts), n=new Date();
+  var same=d.getFullYear()===n.getFullYear();
+  return d.toLocaleDateString(undefined,same?{month:"short",day:"numeric"}:{month:"short",day:"numeric",year:"2-digit"});
+}
+function relDate(ts){
+  var days=Math.floor((Date.now()-ts)/864e5);
+  if(days<=0) return "today";
+  if(days===1) return "yesterday";
+  if(days<14) return days+"d ago";
+  return shortDate(ts);
+}
+function dur(ms){
+  var s=Math.max(0,Math.round(ms/1000)), m=Math.floor(s/60);
+  if(m<60) return m+"m";
+  return Math.floor(m/60)+"h "+(m%60)+"m";
+}
+function mmss(s){ s=Math.max(0,Math.round(s)); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
+function e1rm(w,r){ if(!w||!r) return 0; return r===1?w:w*(1+r/30); }
+function unit(){ return S.settings.unit; }
+function buzz(ms){ if(S.settings.buzz&&navigator.vibrate){ try{navigator.vibrate(ms);}catch(e){} } }
+function plural(n,word){ return n+" "+word+(n===1?"":"s"); }
+
+var toastTimer=null;
+function toast(msg){
+  var old=$(".toast"); if(old) old.remove();
+  var t=document.createElement("div");
+  t.className="toast"; t.textContent=msg;
+  document.body.appendChild(t);
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){ t.remove(); },2200);
+}
+
+var ICON={
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  today:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/></svg>',
+  prog:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5.5-6 4 3.5L21 6"/><path d="M21 11V6h-5"/></svg>',
+  plan:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 12h16M4 18h7"/><circle cx="18.5" cy="6" r="1.6"/><circle cx="14.5" cy="18" r="1.6"/></svg>'
+};
+
+/* ============================ load model ============================
+   BW modes: 0 = weighted (the number is the weight on the bar)
+             1 = bodyweight (the number is weight ADDED to you)
+             2 = assisted   (the number is assistance SUBTRACTED)
+   Every logged set stores the resolved `load` so history stays true even
+   after your bodyweight setting changes.
+   =================================================================== */
+function bwMode(ex){ return num(ex&&ex.bw)||0; }
+function effLoad(w,mode,bodyweight){
+  var bw=bodyweight===undefined?num(S.settings.bodyweight):num(bodyweight);
+  if(mode===1) return bw+num(w);
+  if(mode===2) return Math.max(0,bw-num(w));
+  return num(w);
+}
+function loadOf(s){ return (s&&s.load!==undefined&&s.load!==null)?num(s.load):num(s&&s.w); }
+function working(sets){ return (sets||[]).filter(function(s){ return !s.warm; }); }
+/* How a set reads on screen: 185, BW, BW+25, −40 */
+function entryText(s,mode){
+  var w=num(s.w);
+  if(mode===1) return w?("BW+"+fmt(w)):"BW";
+  if(mode===2) return w?("−"+fmt(w)):"BW";
+  return fmt(w);
+}
+function loadLabel(mode){
+  if(mode===1) return "added "+unit();
+  if(mode===2) return "assist "+unit();
+  return unit();
+}
+
+/* ============================ history queries ============================ */
+function normName(n){ return String(n||"").trim().toLowerCase(); }
+
+/* Completed working sets for an exercise, grouped by session, newest first. */
+function exSessions(name){
+  var k=normName(name), out=[];
+  for(var i=0;i<S.sessions.length;i++){
+    var s=S.sessions[i];
+    for(var j=0;j<s.exercises.length;j++){
+      var e=s.exercises[j];
+      if(normName(e.name)!==k) continue;
+      var sets=working(e.sets).filter(function(x){ return x.done!==false&&num(x.r)>0; });
+      if(sets.length) out.push({ts:s.ts,sets:sets,sessionId:s.id,deload:!!s.deload,bw:bwMode(e)});
+    }
+  }
+  return out;
+}
+/* Same, minus anything logged during a deliberate deload — those must never
+   read as a decline, or the app would chase its own tail. */
+function exWorking(name){ return exSessions(name).filter(function(x){ return !x.deload; }); }
+function lastPerf(name){ var h=exWorking(name); return h.length?h[0]:null; }
+/* Most recent session's raw sets, warm-ups included, for prefill. */
+function lastRawSets(name){
+  var k=normName(name);
+  for(var i=0;i<S.sessions.length;i++){
+    var s=S.sessions[i];
+    for(var j=0;j<s.exercises.length;j++){
+      if(normName(s.exercises[j].name)===k&&s.exercises[j].sets.length) return s.exercises[j].sets;
+    }
+  }
+  return null;
+}
+function bestE1RM(name){
+  var best=0;
+  exSessions(name).forEach(function(s){ s.sets.forEach(function(x){ best=Math.max(best,e1rm(loadOf(x),num(x.r))); }); });
+  return best;
+}
+function sessionTopE1RM(s){
+  var b=0; s.sets.forEach(function(x){ b=Math.max(b,e1rm(loadOf(x),num(x.r))); }); return b;
+}
+function sessionVolume(sets){
+  var v=0;
+  (sets||[]).forEach(function(x){ if(x.done!==false&&!x.warm) v+=loadOf(x)*num(x.r); });
+  return v;
+}
+function allExerciseNames(){
+  var seen={},out=[];
+  S.sessions.forEach(function(s){ s.exercises.forEach(function(e){
+    var k=normName(e.name); if(!seen[k]){ seen[k]=1; out.push({name:e.name,ts:s.ts}); }
+  });});
+  S.routines.forEach(function(r){ r.exercises.forEach(function(e){
+    var k=normName(e.name); if(!seen[k]){ seen[k]=1; out.push({name:e.name,ts:0}); }
+  });});
+  return out.sort(function(a,b){ return b.ts-a.ts; });
+}
+
+/* Walk the whole history in order and re-flag PRs. Run after any edit,
+   otherwise a corrected typo leaves a phantom record behind. */
+function recomputePRs(){
+  var best={};
+  S.sessions.slice().sort(function(a,b){ return a.ts-b.ts; }).forEach(function(s){
+    s.exercises.forEach(function(e){
+      var k=normName(e.name);
+      e.sets.forEach(function(x){
+        if(x.warm||x.done===false){ x.pr=false; return; }
+        var v=e1rm(loadOf(x),num(x.r)), prev=best[k]||0;
+        x.pr=prev>0&&v>prev+0.01;
+        if(v>prev) best[k]=v;
+      });
+    });
+  });
+}
+
+/* ---- trend / stall detection ---- */
+function trend(name){
+  var h=exWorking(name);
+  if(h.length<4) return {state:"new",n:h.length,pct:0};
+  var vals=h.map(sessionTopE1RM);
+  var mean=function(a){ return a.reduce(function(x,y){return x+y;},0)/a.length; };
+  var a=mean(vals.slice(0,3)), b=mean(vals.slice(3,6));
+  if(!b) return {state:"new",n:h.length,pct:0};
+  var pct=(a-b)/b*100;
+  return {state: pct>=1.5?"up":(pct<=-2?"down":"flat"), n:h.length, pct:pct};
+}
+function trackedLifts(){
+  var seen={},out=[];
+  S.routines.forEach(function(r){ r.exercises.forEach(function(e){
+    var k=normName(e.name); if(!seen[k]){ seen[k]=1; out.push(e.name); }
+  });});
+  return out;
+}
+function deloadCheck(){
+  if(inDeloadWeek()) return null;
+  if(Date.now()<(S.settings.deloadSnooze||0)) return null;
+  var judged=[], stalled=[];
+  trackedLifts().forEach(function(n){
+    var t=trend(n);
+    if(t.state==="new") return;
+    judged.push(n);
+    if(t.state!=="up") stalled.push({name:n,t:t});
+  });
+  if(judged.length<3) return null;
+  var ratio=stalled.length/judged.length;
+  if(ratio>=0.6) return {level:"high",stalled:stalled,judged:judged.length};
+  if(ratio>=0.4) return {level:"watch",stalled:stalled,judged:judged.length};
+  return null;
+}
+
+/* ---- deliberate deload ---- */
+function inDeloadWeek(){ return Date.now()<(S.settings.deloadUntil||0); }
+function startDeloadWeek(days){
+  S.settings.deloadUntil=Date.now()+(days||7)*864e5;
+  S.settings.deloadSnooze=0;
+  writeNow();
+}
+function endDeloadWeek(){ S.settings.deloadUntil=0; writeNow(); }
+
+function weekBounds(offset){
+  var d=new Date(); d.setHours(0,0,0,0);
+  var dow=(d.getDay()+6)%7;                 // Monday = 0
+  d.setDate(d.getDate()-dow-7*(offset||0));
+  var start=d.getTime();
+  return {start:start,end:start+7*864e5};
+}
+function volumeInRange(a,b){
+  var v=0,n=0;
+  S.sessions.forEach(function(s){
+    if(s.ts>=a&&s.ts<b){ n++; s.exercises.forEach(function(e){ v+=sessionVolume(e.sets); }); }
+  });
+  return {v:v,n:n};
+}
+
+/* ============================ the progression engine ============================
+   Read what you actually did last time, then decide today. All derived from
+   history, so nothing can drift out of sync.
+
+     double progression : hold the weight until every working set reaches the top
+                          of the range, then add load and drop back to the bottom
+     straight sets      : hit the target on every set, then add load
+     autoregulation     : a lift sliding for 3 sessions gets one 10% back-off —
+                          once, not compounding
+     deload week        : while one is running, everything goes light and short
+   ============================================================================== */
+function stepFor(ex){ return num(ex.inc)||num(S.settings.inc)||5; }
+
+/* On assisted work the number is help, so progress means the number goes DOWN.
+   Everywhere else harder means the number goes up. */
+function harder(w,step,mode){ return mode===2?Math.max(0,w-step):w+step; }
+function easier(w,step,mode){
+  if(mode===2) return w+step;                 // more assistance
+  var back=Math.round(w*0.9/step)*step;       // roughly 10% off, on the step grid
+  if(back>=w) back=w-step;
+  return Math.max(0,back);
+}
+function harderPhrase(step,mode){
+  return mode===2 ? "take "+fmt(step)+" "+unit()+" off the assist"
+                  : "add "+fmt(step)+" "+unit();
+}
+
+function prescribe(name,ex){
+  var step=stepFor(ex);
+  var low=Math.max(1,num(ex.reps)||num(S.settings.repLow)||8);
+  var top=num(ex.repTop)||0;
+  var mode=bwMode(ex);
+  var nsets=Math.max(1,num(ex.sets)||3);
+  var hist=exWorking(name);
+  var last=hist[0];
+  if(!last) return {w:"",r:low,sets:nsets,why:"",kind:"new"};
+
+  var w=num(last.sets[0].w);
+  if(!w&&mode===0) w=Math.max.apply(null,last.sets.map(function(s){ return num(s.w); }));
+  var minR=Math.min.apply(null,last.sets.map(function(s){ return num(s.r); }));
+
+  if(inDeloadWeek()){
+    return {w:easier(w,step,mode),r:low,sets:Math.max(1,Math.round(nsets*0.6)),
+            why:"Deload week — light and short on purpose",kind:"deload"};
+  }
+
+  if(trend(name).state==="down"){
+    /* One cut, then hold and rebuild. If today's load is already below the
+       peak of the last few sessions, the back-off has happened — cutting
+       again is how an app chases its own tail down. */
+    var recent=hist.slice(1,4).map(function(h){ return num(h.sets[0].w); });
+    var peak=recent.length?Math.max.apply(null,recent):w;
+    var alreadyDown=mode===2?(w>peak):(w<peak);
+    if(alreadyDown)
+      return {w:w,r:low,sets:nsets,why:"Already backed off — beat this before adding",kind:"hold"};
+    if(mode===1&&w<=0)
+      return {w:0,r:low,sets:Math.max(1,nsets-1),
+              why:"Sliding 3 sessions — drop a set rather than adding load",kind:"deload"};
+    var back=easier(w,step,mode);
+    if(back===w)
+      return {w:w,r:low,sets:Math.max(1,nsets-1),why:"Sliding 3 sessions — drop a set this week",kind:"deload"};
+    return {w:back,r:low,sets:nsets,why:"Sliding 3 sessions — back off to "+fmt(back),kind:"deload"};
+  }
+
+  if(top>low){                                        // double progression
+    if(minR>=top)
+      return {w:harder(w,step,mode),r:low,sets:nsets,
+              why:"Hit "+top+"s on every set — "+harderPhrase(step,mode),kind:"up"};
+    if(minR>=low)
+      return {w:w,r:Math.min(top,minR+1),sets:nsets,
+              why:"Same weight — go for "+Math.min(top,minR+1)+" this time",kind:"reps"};
+    return {w:w,r:low,sets:nsets,why:"Fell short of "+low+" — run it back",kind:"hold"};
+  }
+
+  if(minR>=low)                                       // straight sets
+    return {w:harder(w,step,mode),r:low,sets:nsets,
+            why:"Hit all "+low+"s — "+harderPhrase(step,mode),kind:"up"};
+  return {w:w,r:low,sets:nsets,why:"Missed "+low+" last time — run it back",kind:"hold"};
+}
+
+/* ============================ sparkline ============================ */
+function spark(canvas,values,opts){
+  opts=opts||{};
+  var cs=getComputedStyle(document.documentElement);
+  var accent=cs.getPropertyValue("--accent").trim()||"#C98A0E";
+  var line=cs.getPropertyValue("--line").trim()||"#ccc";
+  var dpr=window.devicePixelRatio||1;
+  var w=canvas.clientWidth||78, h=canvas.clientHeight||32;
+  canvas.width=Math.round(w*dpr); canvas.height=Math.round(h*dpr);
+  var c=canvas.getContext("2d");
+  c.setTransform(dpr,0,0,dpr,0,0);
+  c.clearRect(0,0,w,h);
+  if(!values||values.length<2){ c.fillStyle=line; c.fillRect(0,h-1.5,w,1.5); return; }
+  var pad=opts.pad||3;
+  var mn=Math.min.apply(null,values), mx=Math.max.apply(null,values);
+  if(mx-mn<1e-6){ mn-=1; mx+=1; }
+  var X=function(i){ return pad+(w-pad*2)*(i/(values.length-1)); };
+  var Y=function(v){ return h-pad-(h-pad*2)*((v-mn)/(mx-mn)); };
+  if(opts.grid){
+    c.strokeStyle=line; c.lineWidth=1; c.globalAlpha=.7;
+    for(var g=0;g<=2;g++){
+      var y=pad+(h-pad*2)*(g/2)+.5;
+      c.beginPath(); c.moveTo(0,y); c.lineTo(w,y); c.stroke();
+    }
+    c.globalAlpha=1;
+  }
+  c.beginPath(); c.moveTo(X(0),Y(values[0]));
+  for(var i=1;i<values.length;i++) c.lineTo(X(i),Y(values[i]));
+  var grad=c.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0,hexA(accent,.24)); grad.addColorStop(1,hexA(accent,0));
+  c.lineTo(X(values.length-1),h); c.lineTo(X(0),h); c.closePath();
+  c.fillStyle=grad; c.fill();
+  c.beginPath(); c.moveTo(X(0),Y(values[0]));
+  for(var j=1;j<values.length;j++) c.lineTo(X(j),Y(values[j]));
+  c.strokeStyle=accent; c.lineWidth=opts.lw||1.8; c.lineJoin="round"; c.lineCap="round"; c.stroke();
+  c.beginPath(); c.arc(X(values.length-1),Y(values[values.length-1]),opts.dot||2.6,0,Math.PI*2);
+  c.fillStyle=accent; c.fill();
+}
+function hexA(hex,a){
+  hex=hex.replace("#","");
+  if(hex.length===3) hex=hex.split("").map(function(x){return x+x;}).join("");
+  var n=parseInt(hex,16);
+  return "rgba("+((n>>16)&255)+","+((n>>8)&255)+","+(n&255)+","+a+")";
+}
+
+/* ============================ rest timer ============================ */
+var rest={endsAt:0,total:0}, buzzed=false;
+function startRest(sec){ rest.total=sec; rest.endsAt=Date.now()+sec*1000; renderHeader(); }
+function stopRest(){ rest.endsAt=0; renderHeader(); }
+setInterval(function(){
+  if(rest.endsAt){
+    var left=(rest.endsAt-Date.now())/1000;
+    if(left<=0&&!buzzed){ buzzed=true; buzz([80,60,80]); }
+    if(left>-1) buzzed=false;
+    renderHeader();
+  } else if(S.active){ renderHeader(); }
+},1000);
+
+/* ============================ sheets ============================ */
+function sheet(html,onMount){
+  closeSheet();
+  var b=document.createElement("div");
+  b.className="backdrop";
+  b.innerHTML='<div class="sheet"><div class="grab"></div>'+html+'</div>';
+  b.addEventListener("click",function(ev){ if(ev.target===b) closeSheet(); });
+  document.body.appendChild(b);
+  if(onMount) onMount($(".sheet",b));
+  return b;
+}
+function closeSheet(){ var b=$(".backdrop"); if(b) b.remove(); }
+document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeSheet(); });
+
+function confirmSheet(title,body,label,fn,danger){
+  sheet('<h3>'+esc(title)+'</h3><div class="sub">'+esc(body)+'</div>'+
+    '<div class="row" style="gap:8px">'+
+      '<button class="btn ghost" style="flex:1" data-x="cancel">Cancel</button>'+
+      '<button class="btn '+(danger?"danger":"primary")+'" style="flex:1" data-x="ok">'+esc(label)+'</button>'+
+    '</div>',
+    function(el){
+      $('[data-x="cancel"]',el).onclick=closeSheet;
+      $('[data-x="ok"]',el).onclick=function(){ closeSheet(); fn(); };
+    });
+}
+
+/* ============================ navigation ============================ */
+var TAB="today";
+function go(t){ TAB=t; closeSheet(); render(); window.scrollTo(0,0); }
+function renderTabs(){
+  var tabs=[["today","Today",ICON.today],["progress","Progress",ICON.prog],["plan","Plan",ICON.plan]];
+  $("#tabs").innerHTML=tabs.map(function(t){
+    return '<button class="t'+(TAB===t[0]?" on":"")+'" data-tab="'+t[0]+'">'+t[2]+'<span>'+t[1]+'</span></button>';
+  }).join("");
+}
+$("#tabs").addEventListener("click",function(e){
+  var b=e.target.closest("[data-tab]"); if(b) go(b.dataset.tab);
+});
+
+/* ============================ header ============================ */
+function renderHeader(){
+  var h=$("#hdr-right"), out="";
+  if(rest.endsAt){
+    var left=(rest.endsAt-Date.now())/1000;
+    out+='<button class="rest'+(left<=0?" over":"")+'" data-act="rest-tap">'+
+         (left<=0?"REST DONE":mmss(left))+'</button>';
+  }
+  if(S.active) out+='<span class="chip mono">'+dur(Date.now()-S.active.ts)+'</span>';
+  h.innerHTML=out;
+}
+$("#hdr-right").addEventListener("click",function(e){
+  if(e.target.closest('[data-act="rest-tap"]')) restMenu();
+});
+function restMenu(){
+  sheet('<h3>Rest timer</h3><div class="sub">Auto-starts after each set.</div>'+
+    '<div class="menu">'+
+      '<button data-r="+30">+30 seconds</button>'+
+      '<button data-r="-30">&minus;30 seconds</button>'+
+      '<button data-r="restart">Restart ('+mmss(rest.total)+')</button>'+
+      '<button data-r="skip" class="dang">Skip rest</button>'+
+    '</div>',
+    function(el){
+      el.addEventListener("click",function(e){
+        var b=e.target.closest("[data-r]"); if(!b) return;
+        var r=b.dataset.r;
+        if(r==="+30") rest.endsAt+=30000;
+        else if(r==="-30") rest.endsAt-=30000;
+        else if(r==="restart") rest.endsAt=Date.now()+rest.total*1000;
+        else stopRest();
+        closeSheet(); renderHeader();
+      });
+    });
+}
+window.addEventListener("scroll",function(){
+  $("header.top").classList.toggle("stuck",window.scrollY>4);
+},{passive:true});
+
+/* ============================ TODAY ============================ */
+function nextRoutine(){
+  if(!S.routines.length) return null;
+  var last=S.sessions.find(function(s){ return s.routineId; });
+  if(!last) return S.routines[0];
+  var i=S.routines.findIndex(function(r){ return r.id===last.routineId; });
+  if(i<0) return S.routines[0];
+  return S.routines[(i+1)%S.routines.length];
+}
+
+function startSession(routine){
+  var ex=[];
+  if(routine) routine.exercises.forEach(function(re){ ex.push(makeSessionEx(re,re.id)); });
+  S.active={
+    id:uid(), ts:Date.now(), date:today(),
+    routineId:routine?routine.id:null,
+    key:routine?routine.key:"—",
+    name:routine?routine.name:"Freestyle",
+    deload:inDeloadWeek(),
+    note:"", exercises:ex
+  };
+  save(); render();
+}
+
+/* Build an in-session exercise, prefilled with today's prescription.
+   Warm-ups carry over from last time so you don't retype them. */
+function makeSessionEx(planEx,planId){
+  var p=prescribe(planEx.name,planEx);
+  var last=lastPerf(planEx.name);
+  var raw=lastRawSets(planEx.name);
+  var sets=[];
+  if(raw) raw.forEach(function(s){ if(s.warm) sets.push({w:String(s.w),r:String(s.r),warm:true,done:false}); });
+  var n=Math.max(1,num(p.sets)||3);
+  for(var i=0;i<n;i++) sets.push({w:p.w===""?"":String(p.w),r:String(p.r),done:false});
+  return {
+    id:uid(), planId:planId||null, name:planEx.name,
+    targetReps:p.r, reps:num(planEx.reps)||p.r, repTop:num(planEx.repTop)||0,
+    inc:planEx.inc||null, bw:bwMode(planEx), supplemental:!planId, note:"",
+    why:p.why, kind:p.kind,
+    lastW:last?num(last.sets[0].w):null, lastR:last?num(last.sets[0].r):null,
+    sets:sets
+  };
+}
+
+function viewToday(){
+  $("#view").innerHTML=S.active?todayActive():todayIdle();
+}
+
+function todayIdle(){
+  var nr=nextRoutine();
+  var html='<div class="eyebrow">'+esc(new Date().toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"}))+'</div>'+
+           '<h1 class="view-title">Ready to lift</h1><div class="stack">';
+
+  if(!storageOK){
+    html+='<div class="banner warn"><div class="bt">This browser is blocking storage</div>'+
+      '<div class="bd">Your log won\'t survive a refresh. Open this page in your normal browser, not a private window.</div></div>';
+  }
+  if(inDeloadWeek()){
+    html+='<div class="banner info"><div class="bt">Deload week</div>'+
+      '<div class="bd">Everything is prescribed light and short through '+esc(shortDate(S.settings.deloadUntil))+
+      '. These sessions won\'t count against your trends.</div>'+
+      '<div class="acts"><button class="btn sm ghost" data-act="end-deload">End it now</button></div></div>';
+  }
+
+  if(nr){
+    var names=nr.exercises.map(function(e){ return e.name; }).join(" · ")||"No exercises yet — add some in Plan";
+    html+='<div class="card">'+
+      '<div class="hero">'+
+        '<div class="daymark"><div class="letter">'+esc(nr.key)+'</div><div class="sub">next</div></div>'+
+        '<div class="body"><h2>'+esc(nr.name)+'</h2><div class="exlist">'+esc(names)+'</div></div>'+
+      '</div>'+
+      '<div style="margin-top:12px">'+
+        (nr.exercises.length
+          ? '<button class="btn primary big block" data-act="start" data-id="'+nr.id+'">Start '+esc(nr.name)+'</button>'
+          : '<button class="btn primary big block" data-act="tab" data-tab="plan">Set up '+esc(nr.name)+'</button>')+
+      '</div>'+
+      '<div class="daypicks">'+
+        S.routines.filter(function(r){ return r.id!==nr.id; }).map(function(r){
+          return '<button class="daypick" data-act="start" data-id="'+r.id+'"><span class="k">'+esc(r.key)+'</span>'+esc(r.name)+'</button>';
+        }).join("")+
+        '<button class="daypick" data-act="start" data-id=""><span class="k">+</span>Freestyle</button>'+
+      '</div>'+
+    '</div>';
+  } else {
+    html+='<div class="card"><div class="empty">No training days yet.<br>Set up your split in <b>Plan</b>.</div>'+
+      '<button class="btn primary block" data-act="tab" data-tab="plan">Build my split</button></div>';
+  }
+
+  var last=S.sessions[0];
+  if(last){
+    var vol=0,sets=0;
+    last.exercises.forEach(function(e){ vol+=sessionVolume(e.sets); sets+=working(e.sets).length; });
+    html+='<div class="card">'+
+      '<div class="row"><div class="eyebrow">Last session</div><div style="flex:1"></div>'+
+      '<span class="tiny muted">'+esc(relDate(last.ts))+'</span></div>'+
+      '<div class="row" style="margin-top:8px">'+
+        '<div><div class="num" style="font-size:19px;font-weight:700">'+esc(last.key)+'</div><div class="tiny muted">'+esc(last.name)+'</div></div>'+
+        '<div style="margin-left:auto;text-align:right">'+
+          '<div class="num" style="font-size:19px;font-weight:700">'+commas(vol)+'</div>'+
+          '<div class="tiny muted">'+unit()+' volume · '+plural(sets,"set")+'</div>'+
+        '</div>'+
+      '</div></div>';
+  }
+
+  var d=deloadCheck();
+  if(d&&d.level==="high"){
+    html+='<div class="banner warn"><div class="bt">Deload worth considering</div>'+
+      '<div class="bd">'+d.stalled.length+' of '+d.judged+' tracked lifts have stopped climbing.</div>'+
+      '<div class="acts"><button class="btn sm primary" data-act="start-deload">Start deload week</button>'+
+      '<button class="btn sm ghost" data-act="snooze-deload">Not now</button></div></div>';
+  }
+  if(backupDue()){
+    html+='<button class="banner info" style="width:100%" data-act="backup"><div class="bt">Back up your log</div>'+
+      '<div class="bd">'+(S.settings.lastBackup?"Last copy "+relDate(S.settings.lastBackup)+". ":"")+
+      'One tap sends a file to Drive, Files, or anywhere else.</div></button>';
+  }
+  return html+'</div>';
+}
+
+function backupDue(){
+  if(S.sessions.length<6) return false;
+  var since=S.sessions.filter(function(s){ return s.ts>(S.settings.lastBackup||0); }).length;
+  return since>=8||(Date.now()-(S.settings.lastBackup||0))>28*864e5;
+}
+
+function todayActive(){
+  var a=S.active;
+  var html='<div class="row"><div><div class="eyebrow">'+(a.deload?"Deload session":"In progress")+'</div>'+
+    '<h1 class="view-title" style="margin-bottom:0">'+esc(a.name)+'</h1></div>'+
+    '<div style="flex:1"></div>'+
+    '<button class="btn sm ghost" data-act="finish">Finish</button></div>'+
+    '<div class="row tiny muted" id="sess-summary" style="margin:6px 0 12px;gap:10px"></div>'+
+    '<div class="stack">';
+  a.exercises.forEach(function(ex,ei){ html+=exerciseCard(ex,ei); });
+  html+='<button class="btn block ghost" data-act="add-ex">+ Add exercise</button>'+
+    '<div class="card"><div class="eyebrow" style="margin-bottom:7px">Session note</div>'+
+    '<textarea class="txt" data-act="snote" placeholder="Sleep, energy, aches, anything worth remembering">'+esc(a.note)+'</textarea></div>'+
+    '<button class="btn primary big block" data-act="finish">Finish workout</button>'+
+    '<button class="btn ghost block" data-act="discard">Discard session</button>'+
+    '</div>';
+  return html;
+}
+
+function exerciseCard(ex,ei){
+  var best=bestE1RM(ex.name);
+  var last=lastPerf(ex.name);
+  var t=trend(ex.name);
+  var mode=bwMode(ex);
+  var range=ex.repTop>ex.reps?(ex.reps+"–"+ex.repTop):String(ex.targetReps);
+  var nWork=working(ex.sets).length;
+
+  var html='<section class="card ex" data-ei="'+ei+'">'+
+    '<div class="ex-head"><div class="t">'+
+      '<div class="ex-name">'+esc(ex.name)+'</div>'+
+      '<div class="ex-meta">'+
+        '<span>'+nWork+' × '+esc(range)+(ex.repTop>ex.reps?" range":" target")+'</span>'+
+        (mode===1?'<span class="chip tag">BODYWEIGHT</span>':mode===2?'<span class="chip tag">ASSISTED</span>':"")+
+        (ex.supplemental?'<span class="chip tag">EXTRA</span>':"")+
+        (t.state==="down"?'<span class="chip bad tag">SLIPPING</span>':
+         t.state==="flat"?'<span class="chip tag">FLAT</span>':
+         t.state==="up"?'<span class="chip good tag">CLIMBING</span>':"")+
+      '</div>'+
+    '</div><button class="kebab" data-act="ex-menu" data-ei="'+ei+'" aria-label="Exercise options">⋯</button></div>';
+
+  html+='<div class="callout">';
+  if(last){
+    var summary=last.sets.map(function(s){ return entryText(s,last.bw||mode)+"×"+num(s.r); }).join("  ");
+    var first=working(ex.sets)[0];
+    var differs=ex.lastW!==null&&first&&(num(first.w)!==ex.lastW||num(first.r)!==ex.lastR);
+    html+='<div class="lastrow"><span>'+esc(relDate(last.ts))+'</span>'+
+      '<span class="num">'+esc(summary)+'</span>'+
+      (differs?'<button class="revert" data-act="revert" data-ei="'+ei+'">Keep '+esc(entryText({w:ex.lastW},mode))+'×'+ex.lastR+'</button>':"")+
+    '</div>';
+  } else {
+    html+='<div class="lastrow"><span>First time logging this one.</span></div>';
+  }
+  if(ex.why){
+    var glyph=ex.kind==="up"?"↑":ex.kind==="reps"?"+1":ex.kind==="deload"?"↓":"=";
+    html+='<div class="why '+esc(ex.kind)+'"><span class="mark">'+glyph+'</span><span>'+esc(ex.why)+'</span></div>';
+  }
+  html+='</div>';
+
+  html+='<div class="sets">';
+  var wi=0;
+  ex.sets.forEach(function(s,si){
+    if(!s.warm) wi++;
+    html+='<div class="set'+(s.warm?" warm":"")+(s.done?" done":"")+(s.done&&s.pr?" pr":"")+'" data-ei="'+ei+'" data-si="'+si+'">'+
+      '<button class="idx" data-act="warm" aria-label="'+(s.warm?"Make this a working set":"Make this a warm-up")+'">'+(s.warm?"W":wi)+'</button>'+
+      '<div class="grp">'+
+        '<button data-act="step" data-f="w" data-d="-1" aria-label="Less weight">−</button>'+
+        '<input inputmode="decimal" enterkeyhint="done" type="number" step="any" data-f="w" value="'+esc(s.w)+'" placeholder="'+esc(mode===1?"+":mode===2?"−":unit())+'" aria-label="Weight">'+
+        '<button data-act="step" data-f="w" data-d="1" aria-label="More weight">+</button>'+
+      '</div>'+
+      '<span class="times">×</span>'+
+      '<div class="grp">'+
+        '<button data-act="step" data-f="r" data-d="-1" aria-label="Fewer reps">−</button>'+
+        '<input inputmode="numeric" enterkeyhint="done" type="number" step="1" data-f="r" value="'+esc(s.r)+'" placeholder="reps" aria-label="Reps">'+
+        '<button data-act="step" data-f="r" data-d="1" aria-label="More reps">+</button>'+
+      '</div>'+
+      (s.pr?'<span class="prtag">PR</span>':"")+
+      '<button class="tick" data-act="toggle" aria-label="Log set">'+ICON.check+'</button>'+
+    '</div>';
+  });
+  html+='</div>';
+
+  html+='<div class="ex-foot">'+
+    '<button class="btn sm ghost" data-act="add-set" data-ei="'+ei+'">+ Set</button>'+
+    (nWork>1?'<button class="btn sm ghost" data-act="del-set" data-ei="'+ei+'">− Set</button>':"")+
+    (best?'<span class="chip mono" style="margin-left:auto">best '+Math.round(best)+' e1RM</span>':"")+
+  '</div></section>';
+  return html;
+}
+
+/* ---- surgical updates: the logging path never rebuilds the page, so the
+        soft keyboard and the browser's touch targets stay put ---- */
+function refreshSetRow(ei,si){
+  var row=$('.set[data-ei="'+ei+'"][data-si="'+si+'"]');
+  if(!row) return;
+  var st=S.active.exercises[ei].sets[si];
+  row.classList.toggle("done",!!st.done);
+  row.classList.toggle("pr",!!(st.done&&st.pr));
+  var tag=$(".prtag",row);
+  if(st.done&&st.pr&&!tag){
+    var el=document.createElement("span");
+    el.className="prtag"; el.textContent="PR";
+    row.insertBefore(el,row.lastElementChild);
+  } else if((!st.done||!st.pr)&&tag){ tag.remove(); }
+}
+function refreshSummary(){
+  var el=$("#sess-summary");
+  if(!el||!S.active) return;
+  var ds=0,vol=0;
+  S.active.exercises.forEach(function(e){
+    var mode=bwMode(e);
+    e.sets.forEach(function(s){
+      if(!s.done||s.warm) return;
+      ds++; vol+=effLoad(s.w,mode)*num(s.r);
+    });
+  });
+  el.innerHTML='<span class="num">'+plural(ds,"set")+'</span><span>·</span>'+
+               '<span class="num">'+commas(vol)+' '+unit()+' volume</span>';
+}
+
+/* ---- interactions ---- */
+$("#view").addEventListener("click",function(e){
+  var t=e.target;
+
+  var tabBtn=t.closest('[data-act="tab"]');
+  if(tabBtn){ go(tabBtn.dataset.tab); return; }
+  if(t.closest('[data-act="backup"]')){ backupSheet(); return; }
+  if(t.closest('[data-act="start-deload"]')){
+    startDeloadWeek(7); render(); toast("Deload week started"); return;
+  }
+  if(t.closest('[data-act="snooze-deload"]')){
+    S.settings.deloadSnooze=Date.now()+14*864e5; writeNow(); render(); toast("Muted for two weeks"); return;
+  }
+  if(t.closest('[data-act="end-deload"]')){ endDeloadWeek(); render(); toast("Back to normal"); return; }
+
+  var startBtn=t.closest('[data-act="start"]');
+  if(startBtn){
+    startSession(S.routines.find(function(x){ return x.id===startBtn.dataset.id; })||null);
+    return;
+  }
+  if(!S.active) return;
+
+  var step=t.closest('[data-act="step"]');
+  if(step){
+    var row=step.closest(".set");
+    var f=step.dataset.f, d=num(step.dataset.d);
+    var ex=S.active.exercises[+row.dataset.ei], st=ex.sets[+row.dataset.si];
+    var by=f==="w"?stepFor(ex):1;
+    st[f]=String(Math.max(0,round(num(st[f])+d*by,2)));
+    $('input[data-f="'+f+'"]',row).value=st[f];
+    if(st.done){ st.load=effLoad(st.w,bwMode(ex)); refreshSummary(); }
+    buzz(8); save(); return;
+  }
+
+  var tick=t.closest('[data-act="toggle"]');
+  if(tick){
+    var r2=tick.closest(".set");
+    toggleSet(+r2.dataset.ei,+r2.dataset.si);
+    return;
+  }
+
+  var wm=t.closest('[data-act="warm"]');
+  if(wm){
+    var r3=wm.closest(".set");
+    var ex5=S.active.exercises[+r3.dataset.ei], st5=ex5.sets[+r3.dataset.si];
+    st5.warm=!st5.warm;
+    if(st5.warm) st5.pr=false;
+    save(); viewToday(); refreshSummary();
+    toast(st5.warm?"Marked as a warm-up":"Back to a working set");
+    return;
+  }
+
+  var rev=t.closest('[data-act="revert"]');
+  if(rev){
+    var ex2=S.active.exercises[+rev.dataset.ei];
+    ex2.sets.forEach(function(s){ if(!s.done&&!s.warm){ s.w=String(ex2.lastW); s.r=String(ex2.lastR); } });
+    save(); viewToday(); refreshSummary();
+    toast("Back to "+entryText({w:ex2.lastW},bwMode(ex2))+" × "+ex2.lastR);
+    return;
+  }
+
+  var addSet=t.closest('[data-act="add-set"]');
+  if(addSet){
+    var ex3=S.active.exercises[+addSet.dataset.ei];
+    var w3=working(ex3.sets);
+    var lastS=w3[w3.length-1]||{w:"",r:ex3.targetReps};
+    ex3.sets.push({w:lastS.w,r:lastS.r,done:false});
+    save(); viewToday(); refreshSummary(); return;
+  }
+  var delSet=t.closest('[data-act="del-set"]');
+  if(delSet){
+    var ex4=S.active.exercises[+delSet.dataset.ei];
+    for(var i=ex4.sets.length-1;i>=0;i--){
+      if(!ex4.sets[i].warm){ ex4.sets.splice(i,1); break; }
+    }
+    save(); viewToday(); refreshSummary(); return;
+  }
+  var exMenu=t.closest('[data-act="ex-menu"]');
+  if(exMenu){ exerciseMenu(+exMenu.dataset.ei); return; }
+
+  if(t.closest('[data-act="add-ex"]')){ pickExercise(); return; }
+  if(t.closest('[data-act="finish"]')){ finishSheet(); return; }
+  if(t.closest('[data-act="discard"]')){
+    confirmSheet("Discard this session?","Nothing gets saved to your history.","Discard",function(){
+      S.active=null; stopRest(); save(); render();
+    },true);
+  }
+});
+
+$("#view").addEventListener("input",function(e){
+  var inp=e.target;
+  if(inp.matches('.set input[data-f]')){
+    var row=inp.closest(".set");
+    var ex=S.active.exercises[+row.dataset.ei], st=ex.sets[+row.dataset.si];
+    st[inp.dataset.f]=inp.value;
+    if(st.done){ st.load=effLoad(st.w,bwMode(ex)); refreshSummary(); }
+    save();
+  } else if(inp.matches('[data-act="snote"]')){
+    S.active.note=inp.value; save();
+  }
+});
+$("#view").addEventListener("keydown",function(e){
+  if(e.key==="Enter"&&e.target.matches(".set input")){ e.preventDefault(); e.target.blur(); }
+});
+
+function toggleSet(ei,si){
+  var ex=S.active.exercises[ei], st=ex.sets[si];
+  if(st.done){
+    st.done=false; st.pr=false; delete st.load;
+    save(); refreshSetRow(ei,si); refreshSummary(); return;
+  }
+  if(!num(st.r)){ toast("Add reps first"); return; }
+  st.done=true; st.ts=Date.now();
+  st.load=effLoad(st.w,bwMode(ex));
+  if(st.warm){ st.pr=false; }
+  else {
+    /* A PR has to beat the history and everything already done today. */
+    var histBest=bestE1RM(ex.name), bar=histBest;
+    ex.sets.forEach(function(o,i){ if(o.done&&!o.warm&&i!==si) bar=Math.max(bar,e1rm(loadOf(o),num(o.r))); });
+    st.pr=loadOf(st)>0&&histBest>0&&e1rm(loadOf(st),num(st.r))>bar+0.01;
+  }
+  buzz(14);
+  if(S.settings.autoRest) startRest(S.settings.rest);
+  save();
+  refreshSetRow(ei,si); refreshSummary();
+  if(st.pr) toast("New PR on "+ex.name);
+}
+
+function loadTypeRow(mode,attr){
+  return '<div class="field-row"><div class="fl">Load type<div class="fh">'+
+      (mode===1?"The number is weight added to you":mode===2?"The number is assistance taken off":"The number is the weight you lift")+
+    '</div></div>'+
+    '<div class="seg" style="margin:0 0 4px">'+
+      '<button data-'+attr+'="0"'+(mode===0?' class="on"':"")+'>Weighted</button>'+
+      '<button data-'+attr+'="1"'+(mode===1?' class="on"':"")+'>Bodyweight</button>'+
+      '<button data-'+attr+'="2"'+(mode===2?' class="on"':"")+'>Assisted</button>'+
+    '</div>'+
+    (mode!==0&&!num(S.settings.bodyweight)
+      ? '<div class="tiny" style="color:var(--bad);margin-bottom:8px">Set your bodyweight under Plan → Session so this can compute real loads.</div>':"");
+}
+
+function exerciseMenu(ei){
+  var ex=S.active.exercises[ei];
+  sheet('<h3>'+esc(ex.name)+'</h3><div class="sub">'+plural(working(ex.sets).length,"working set")+
+      ' today · tap a set number to flag it a warm-up</div>'+
+    '<div class="field-row"><div class="fl">Name</div>'+
+      '<input class="txt" style="max-width:210px" data-x="name" value="'+esc(ex.name)+'"></div>'+
+    '<div class="field-row"><div class="fl">Rep range<div class="fh">Leave the second box empty for straight sets</div></div>'+
+      '<div class="row" style="gap:6px">'+
+        '<input class="txt tiny-n" inputmode="numeric" type="number" data-x="low" value="'+esc(ex.reps)+'">'+
+        '<span class="muted tiny">to</span>'+
+        '<input class="txt tiny-n" inputmode="numeric" type="number" data-x="top" value="'+(ex.repTop||"")+'">'+
+      '</div></div>'+
+    '<div class="field-row"><div class="fl">Weight step</div>'+
+      '<input class="txt small" inputmode="decimal" type="number" step="any" data-x="inc" value="'+esc(ex.inc||S.settings.inc)+'"></div>'+
+    loadTypeRow(bwMode(ex),"bw")+
+    '<div class="menu" style="margin-top:10px">'+
+      '<button data-x="warmup">+ Add a warm-up set</button>'+
+      (!ex.planId&&S.active.routineId?'<button data-x="keep">Add permanently to '+esc(S.active.name)+'</button>':"")+
+      '<button data-x="hist">See history &amp; chart</button>'+
+      '<button data-x="rm" class="dang">Remove from this session</button>'+
+    '</div>'+
+    '<button class="btn primary block" style="margin-top:6px" data-x="done">Done</button>',
+    function(el){
+      var nameEl=$('[data-x="name"]',el);
+      $('[data-x="low"]',el).oninput=function(){ ex.reps=Math.max(1,num(this.value)); save(); };
+      $('[data-x="top"]',el).oninput=function(){ ex.repTop=num(this.value)||0; save(); };
+      $('[data-x="inc"]',el).oninput=function(){ ex.inc=num(this.value)||null; save(); };
+      $$('[data-bw]',el).forEach(function(b){
+        b.onclick=function(){
+          ex.bw=num(b.dataset.bw);
+          ex.sets.forEach(function(s){ if(s.done) s.load=effLoad(s.w,ex.bw); });
+          save(); closeSheet(); viewToday(); refreshSummary(); exerciseMenu(ei);
+        };
+      });
+      $('[data-x="warmup"]',el).onclick=function(){
+        ex.sets.unshift({w:ex.sets[0]?ex.sets[0].w:"",r:"5",warm:true,done:false});
+        save(); closeSheet(); viewToday(); refreshSummary();
+      };
+      var keep=$('[data-x="keep"]',el);
+      if(keep) keep.onclick=function(){
+        var r=S.routines.find(function(x){ return x.id===S.active.routineId; });
+        if(!r) return;
+        var ne={id:uid(),name:ex.name,sets:working(ex.sets).length,reps:num(ex.reps)||8,
+                repTop:ex.repTop||0,inc:ex.inc||null,bw:bwMode(ex)};
+        r.exercises.push(ne); ex.planId=ne.id; ex.supplemental=false;
+        save(); closeSheet(); viewToday(); refreshSummary(); toast("Added to "+r.name);
+      };
+      $('[data-x="hist"]',el).onclick=function(){ closeSheet(); liftSheet(ex.name); };
+      $('[data-x="rm"]',el).onclick=function(){
+        S.active.exercises.splice(ei,1); save(); closeSheet(); viewToday(); refreshSummary();
+      };
+      $('[data-x="done"]',el).onclick=function(){
+        var newName=nameEl.value.trim();
+        if(newName&&newName!==ex.name) renameExercise(ex.name,newName);
+        closeSheet(); viewToday(); refreshSummary();
+      };
+    });
+}
+
+/* Renaming follows the exercise everywhere, so its history stays one line. */
+function renameExercise(oldName,newName){
+  var k=normName(oldName);
+  S.routines.forEach(function(r){ r.exercises.forEach(function(e){ if(normName(e.name)===k) e.name=newName; }); });
+  S.sessions.forEach(function(s){ s.exercises.forEach(function(e){ if(normName(e.name)===k) e.name=newName; }); });
+  if(S.active) S.active.exercises.forEach(function(e){ if(normName(e.name)===k) e.name=newName; });
+  save();
+  toast("Renamed to "+newName);
+}
+
+/* ---- exercise picker ---- */
+function pickExercise(target,onPick){
+  var known=allExerciseNames();
+  sheet('<h3>Add exercise</h3><div class="sub">Pick one you\'ve done, or type a new name.</div>'+
+    '<input class="txt" id="exq" placeholder="Search or create…" autocomplete="off" enterkeyhint="done">'+
+    '<div class="picklist" id="exlist"></div>',
+    function(el){
+      var q=$("#exq",el), list=$("#exlist",el);
+      function draw(){
+        var v=q.value.trim(), lv=v.toLowerCase();
+        var items=known.filter(function(x){ return !lv||x.name.toLowerCase().indexOf(lv)>=0; }).slice(0,40);
+        var out="";
+        if(v&&!items.some(function(x){ return x.name.toLowerCase()===lv; }))
+          out+='<button data-new="'+esc(v)+'"><b>Create “'+esc(v)+'”</b></button>';
+        out+=items.map(function(x){
+          var lp=lastPerf(x.name);
+          return '<button data-name="'+esc(x.name)+'">'+esc(x.name)+
+            '<span class="h">'+(lp?entryText(lp.sets[0],lp.bw)+"×"+num(lp.sets[0].r):"—")+'</span></button>';
+        }).join("");
+        list.innerHTML=out||'<div class="empty">Type a name to create it.</div>';
+      }
+      draw();
+      q.addEventListener("input",draw);
+      list.addEventListener("click",function(e){
+        var b=e.target.closest("[data-name],[data-new]"); if(!b) return;
+        var name=b.dataset.name||b.dataset.new;
+        closeSheet();
+        if(onPick){ onPick(name); return; }
+        if(target==="plan"){ addToPlan(name); return; }
+        var last=lastPerf(name);
+        S.active.exercises.push(makeSessionEx({
+          name:name,
+          sets:last?last.sets.length:3,
+          reps:S.settings.doubleDefault?S.settings.repLow:(last?num(last.sets[0].r):8),
+          repTop:S.settings.doubleDefault?S.settings.repHigh:0,
+          inc:null, bw:last?last.bw:0
+        },null));
+        save(); viewToday(); refreshSummary();
+        window.scrollTo(0,document.body.scrollHeight);
+      });
+      setTimeout(function(){ q.focus(); },80);
+    });
+}
+
+/* ---- finish ---- */
+function finishSheet(){
+  var a=S.active;
+  var vol=0,sets=0,warm=0,prs=[];
+  a.exercises.forEach(function(e){
+    var top=null, mode=bwMode(e);
+    e.sets.forEach(function(s){
+      if(!s.done) return;
+      if(s.warm){ warm++; return; }
+      sets++; vol+=effLoad(s.w,mode)*num(s.r);
+      if(s.pr&&(!top||e1rm(loadOf(s),num(s.r))>e1rm(loadOf(top),num(top.r)))) top=s;
+    });
+    if(top) prs.push(e.name+" "+entryText(top,mode)+"×"+num(top.r));
+  });
+  var extras=a.exercises.filter(function(e){ return !e.planId; });
+  var html='<h3>Finish '+esc(a.name)+'</h3>'+
+    '<div class="sub">'+dur(Date.now()-a.ts)+' · '+plural(sets,"working set")+
+      (warm?' + '+warm+' warm-up':"")+' · '+commas(vol)+' '+unit()+' of volume</div>';
+  if(a.deload){
+    html+='<div class="banner calm" style="margin-bottom:12px"><div class="bt">Deload session</div>'+
+      '<div class="bd">This one is saved but kept out of your trend maths.</div></div>';
+  }
+  if(prs.length){
+    html+='<div class="banner info" style="margin-bottom:12px"><div class="bt">'+plural(prs.length,"personal record")+'</div>'+
+      '<div class="bd">'+esc(prs.join(" · "))+'</div></div>';
+  }
+  if(!sets){
+    html+='<div class="banner warn" style="margin-bottom:12px"><div class="bt">No working sets logged</div>'+
+      '<div class="bd">Saving now records an empty session.</div></div>';
+  }
+  if(extras.length&&a.routineId){
+    html+='<div class="eyebrow" style="margin-bottom:6px">Keep the extras in '+esc(a.name)+'?</div>';
+    extras.forEach(function(e,i){
+      html+='<div class="field-row"><div class="fl">'+esc(e.name)+'</div>'+
+        '<button class="switch" data-keep="'+i+'"></button></div>';
+    });
+    html+='<div style="height:12px"></div>';
+  }
+  html+='<div class="row" style="gap:8px">'+
+    '<button class="btn ghost" style="flex:1" data-x="back">Keep going</button>'+
+    '<button class="btn primary" style="flex:1.4" data-x="save">Save workout</button></div>';
+
+  sheet(html,function(el){
+    var keeps={};
+    el.addEventListener("click",function(e){
+      var sw=e.target.closest("[data-keep]");
+      if(sw){ var i=sw.dataset.keep; keeps[i]=!keeps[i]; sw.classList.toggle("on",keeps[i]); return; }
+      if(e.target.closest('[data-x="back"]')){ closeSheet(); return; }
+      if(e.target.closest('[data-x="save"]')){
+        var r=S.routines.find(function(x){ return x.id===a.routineId; });
+        if(r) extras.forEach(function(ex,i){ if(keeps[i]){
+          r.exercises.push({id:uid(),name:ex.name,sets:working(ex.sets).length,reps:num(ex.reps)||8,
+                            repTop:ex.repTop||0,inc:ex.inc||null,bw:bwMode(ex)});
+        }});
+        commitSession();
+      }
+    });
+  });
+}
+function commitSession(){
+  var a=S.active;
+  a.endTs=Date.now();
+  a.bw=num(S.settings.bodyweight);
+  a.deload=!!a.deload||inDeloadWeek();
+  a.exercises.forEach(function(e){ e.sets=e.sets.filter(function(s){ return s.done; }); });
+  a.exercises=a.exercises.filter(function(e){ return e.sets.length; });
+  S.sessions.unshift(a);
+  S.active=null; stopRest();
+  writeNow(); closeSheet(); go("progress");
+  toast("Workout saved");
+}
+
+/* ============================ PROGRESS ============================ */
+function viewProgress(){
+  var v=$("#view");
+  var tw=weekBounds(0), lw=weekBounds(1);
+  var a=volumeInRange(tw.start,tw.end), b=volumeInRange(lw.start,lw.end);
+  var delta=b.v?((a.v-b.v)/b.v*100):0;
+  var html='<div class="eyebrow">Trends</div><h1 class="view-title">Progress</h1>';
+
+  if(!S.sessions.length){
+    v.innerHTML=html+'<div class="card"><div class="empty">Nothing logged yet.<br>Finish a session and the numbers show up here.</div></div>';
+    return;
+  }
+
+  if(inDeloadWeek()){
+    html+='<div class="banner info" style="margin-bottom:12px"><div class="bt">Deload week running</div>'+
+      '<div class="bd">Through '+esc(shortDate(S.settings.deloadUntil))+'. Sessions logged now are excluded from every trend below.</div>'+
+      '<div class="acts"><button class="btn sm ghost" data-act="end-deload">End it now</button></div></div>';
+  }
+  var d=deloadCheck();
+  if(d){
+    html+='<div class="banner '+(d.level==="high"?"warn":"info")+'" style="margin-bottom:12px">'+
+      '<div class="bt">'+(d.level==="high"?"Time to deload":"Keep an eye on this")+'</div>'+
+      '<div class="bd">'+d.stalled.length+' of '+d.judged+' tracked lifts aren\'t climbing: '+
+      esc(d.stalled.slice(0,4).map(function(x){return x.name;}).join(", "))+
+      (d.level==="high"?'. A week at ~60% volume usually clears it.':'. Not urgent yet.')+'</div>'+
+      (d.level==="high"?'<div class="acts"><button class="btn sm primary" data-act="start-deload">Start deload week</button>'+
+        '<button class="btn sm ghost" data-act="snooze-deload">Not now</button></div>':"")+
+    '</div>';
+  }
+
+  html+='<div class="statgrid" style="margin-bottom:12px">'+
+    '<div class="stat"><div class="v">'+a.n+'</div><div class="l">Sessions wk</div></div>'+
+    '<div class="stat"><div class="v">'+kfmt(a.v)+'</div><div class="l">Volume '+unit()+'</div></div>'+
+    '<div class="stat"><div class="v" style="color:'+(delta>=0?"var(--good)":"var(--bad)")+'">'+
+      (b.v?(delta>=0?"+":"")+Math.round(delta)+"%":"—")+'</div><div class="l">vs last wk</div></div>'+
+  '</div>';
+
+  var names=trackedLifts();
+  allExerciseNames().forEach(function(x){ if(names.indexOf(x.name)<0) names.push(x.name); });
+  var withData=names.filter(function(n){ return exSessions(n).length>0; });
+
+  html+='<div class="card" style="padding:0;margin-bottom:12px">';
+  if(!withData.length) html+='<div class="empty">No lift history yet.</div>';
+  else withData.forEach(function(n,i){
+    var h=exSessions(n), t=trend(n);
+    var top=h[0].sets.reduce(function(x,y){ return e1rm(loadOf(y),num(y.r))>e1rm(loadOf(x),num(x.r))?y:x; });
+    html+='<button class="plift" data-lift="'+esc(n)+'">'+
+      '<div class="pt"><div class="pn">'+esc(n)+'</div>'+
+      '<div class="ps">'+entryText(top,h[0].bw)+' × '+num(top.r)+' · '+relDate(h[0].ts)+'</div></div>'+
+      '<canvas data-spark="'+i+'"></canvas>'+
+      '<span class="chip '+(t.state==="up"?"good":t.state==="down"?"bad":"")+' mono" style="font-size:11px">'+
+        (t.state==="new"?(t.n+"/4"):(t.pct>=0?"+":"")+t.pct.toFixed(1)+"%")+'</span>'+
+    '</button>';
+  });
+  html+='</div>';
+
+  html+='<div class="eyebrow" style="margin-bottom:7px">History</div>'+
+    '<div class="tiny muted" style="margin-bottom:7px">Tap any session to fix or add sets.</div>'+
+    '<div class="card" style="padding:0">';
+  S.sessions.slice(0,25).forEach(function(s){
+    var vol=0,sets=0;
+    s.exercises.forEach(function(e){ vol+=sessionVolume(e.sets); sets+=working(e.sets).length; });
+    html+='<button class="sess" data-sess="'+s.id+'">'+
+      '<span class="sd">'+esc(shortDate(s.ts))+'</span>'+
+      '<span class="sn">'+esc(s.name)+(s.deload?' <span class="chip tag">DELOAD</span>':"")+'</span>'+
+      '<span class="sv">'+plural(sets,"set")+' · '+kfmt(vol)+'</span></button>';
+  });
+  html+='</div>';
+
+  v.innerHTML=html;
+  withData.forEach(function(n,i){
+    var c=v.querySelector('canvas[data-spark="'+i+'"]');
+    if(c) spark(c,exSessions(n).map(sessionTopE1RM).reverse().slice(-12));
+  });
+}
+function kfmt(v){
+  if(v>=1e6) return (v/1e6).toFixed(1)+"M";
+  if(v>=1e4) return Math.round(v/1e3)+"k";
+  if(v>=1e3) return (v/1e3).toFixed(1)+"k";
+  return String(Math.round(v));
+}
+
+function liftSheet(name){
+  var h=exSessions(name), t=trend(name), best=bestE1RM(name);
+  var html='<h3>'+esc(name)+'</h3>'+
+    '<div class="sub">'+plural(h.length,"session")+(best?' · best est. 1RM '+Math.round(best)+' '+unit():"")+'</div>';
+  if(h.length>=2){
+    html+='<div class="card" style="margin-bottom:12px">'+
+      '<div class="row"><div class="eyebrow">Estimated 1RM</div>'+
+      '<span class="chip '+(t.state==="up"?"good":t.state==="down"?"bad":"")+' mono" style="margin-left:auto;font-size:11px">'+
+        (t.state==="new"?"needs "+(4-t.n)+" more":(t.pct>=0?"+":"")+t.pct.toFixed(1)+"% recent")+'</span></div>'+
+      '<canvas id="bigchart" style="width:100%;height:130px;display:block;margin-top:8px"></canvas></div>';
+  }
+  if(t.state==="down"){
+    html+='<div class="banner warn" style="margin-bottom:12px"><div class="bt">Trending down</div>'+
+      '<div class="bd">Three sessions below the three before. The app has already dropped your next prescription 10% — take it, then build back.</div></div>';
+  } else if(t.state==="flat"){
+    html+='<div class="banner info" style="margin-bottom:12px"><div class="bt">Holding flat</div>'+
+      '<div class="bd">Set a rep range on this lift so it climbs by reps before it climbs by weight.</div></div>';
+  }
+  html+='<div class="scrollx"><table class="hist"><thead><tr>'+
+    '<th>Date</th><th>Sets</th><th>Top</th><th>Est 1RM</th><th>Vol</th></tr></thead><tbody>';
+  h.slice(0,20).forEach(function(s){
+    var top=s.sets.reduce(function(a,b){ return e1rm(loadOf(b),num(b.r))>e1rm(loadOf(a),num(a.r))?b:a; });
+    html+='<tr'+(s.deload?' class="dl"':"")+'><td>'+esc(shortDate(s.ts))+(s.deload?" ·":"")+'</td><td>'+s.sets.length+'</td>'+
+      '<td>'+entryText(top,s.bw)+'×'+num(top.r)+'</td>'+
+      '<td>'+Math.round(sessionTopE1RM(s))+'</td>'+
+      '<td>'+kfmt(sessionVolume(s.sets))+'</td></tr>';
+  });
+  html+='</tbody></table>'+
+    (h.some(function(x){return x.deload;})?'<div class="tiny muted" style="margin-top:6px">· deload session, excluded from trends</div>':"")+
+    '</div>';
+  sheet(html,function(el){
+    var c=$("#bigchart",el);
+    if(c) spark(c,h.map(sessionTopE1RM).reverse().slice(-20),{grid:true,pad:8,lw:2.2,dot:3.4});
+  });
+}
+
+/* ============================ EDIT A PAST SESSION ============================
+   Edits run on a clone; nothing lands until Save. PRs are recomputed across
+   the whole history afterwards so a corrected typo can't leave a ghost record.
+   ========================================================================== */
+var draft=null;
+
+function sessionSheet(id){
+  var s=S.sessions.find(function(x){ return x.id===id; });
+  if(!s) return;
+  var vol=0; s.exercises.forEach(function(e){ vol+=sessionVolume(e.sets); });
+  var html='<h3>'+esc(s.name)+'</h3><div class="sub">'+
+    esc(new Date(s.ts).toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))+
+    (s.endTs?' · '+dur(s.endTs-s.ts):"")+' · '+commas(vol)+' '+unit()+
+    (s.deload?' · deload':"")+'</div>';
+  s.exercises.forEach(function(e){
+    var mode=bwMode(e);
+    html+='<div class="card" style="margin-bottom:8px"><div class="ex-name" style="font-size:14px">'+esc(e.name)+
+      (e.supplemental?' <span class="chip tag">EXTRA</span>':"")+'</div>'+
+      '<div class="num tiny" style="margin-top:4px;color:var(--ink-2)">'+
+      e.sets.map(function(x){
+        return (x.warm?"w ":"")+entryText(x,mode)+"×"+num(x.r)+(x.pr?" ★":"");
+      }).join("   ")+'</div></div>';
+  });
+  if(s.note) html+='<div class="card" style="margin-bottom:12px"><div class="eyebrow">Note</div><div style="margin-top:4px">'+esc(s.note)+'</div></div>';
+  html+='<div class="row" style="gap:8px;margin-top:8px">'+
+    '<button class="btn ghost" style="flex:1" data-x="close">Close</button>'+
+    '<button class="btn primary" style="flex:1" data-x="edit">Edit</button></div>'+
+    '<button class="btn danger block" style="margin-top:8px" data-x="del">Delete session</button>';
+  sheet(html,function(el){
+    $('[data-x="close"]',el).onclick=closeSheet;
+    $('[data-x="edit"]',el).onclick=function(){ editSession(id); };
+    $('[data-x="del"]',el).onclick=function(){
+      confirmSheet("Delete this session?","It's removed from your history and stats.","Delete",function(){
+        S.sessions=S.sessions.filter(function(x){ return x.id!==id; });
+        recomputePRs(); writeNow(); render(); toast("Session deleted");
+      },true);
+    };
+  });
+}
+
+function editSession(id){
+  var orig=S.sessions.find(function(x){ return x.id===id; });
+  if(!orig) return;
+  draft=JSON.parse(JSON.stringify(orig));
+  drawEditor();
+}
+
+function drawEditor(){
+  var d=draft;
+  var html='<h3>Edit session</h3><div class="sub">Fix a typo, add the set you forgot, drop one you didn\'t do.</div>'+
+    '<div class="field-row"><div class="fl">Date</div>'+
+      '<input class="txt" style="max-width:190px" type="date" data-x="date" value="'+esc(localDay(d.ts))+'"></div>'+
+    '<div class="field-row"><div class="fl">Name</div>'+
+      '<input class="txt" style="max-width:190px" data-x="name" value="'+esc(d.name)+'"></div>'+
+    '<div class="field-row"><div class="fl">Deload session<div class="fh">Kept out of trend maths</div></div>'+
+      '<button class="switch'+(d.deload?" on":"")+'" data-x="deload"></button></div>';
+
+  d.exercises.forEach(function(e,ei){
+    var mode=bwMode(e);
+    html+='<div class="card" style="margin:10px 0 0;padding:10px 12px">'+
+      '<div class="row"><div class="ex-name" style="font-size:14px;flex:1">'+esc(e.name)+'</div>'+
+        '<span class="tiny muted">'+esc(loadLabel(mode))+'</span>'+
+        '<button class="iconbtn" data-rmex="'+ei+'" aria-label="Remove exercise">✕</button></div>';
+    var wi=0;
+    e.sets.forEach(function(s,si){
+      if(!s.warm) wi++;
+      html+='<div class="erow'+(s.warm?" warm":"")+'">'+
+        '<button class="ei" data-warm="'+ei+'.'+si+'" title="Toggle warm-up">'+(s.warm?"W":wi)+'</button>'+
+        '<input inputmode="decimal" type="number" step="any" data-f="w" data-k="'+ei+'.'+si+'" value="'+esc(s.w)+'">'+
+        '<span class="times">×</span>'+
+        '<input inputmode="numeric" type="number" data-f="r" data-k="'+ei+'.'+si+'" value="'+esc(s.r)+'">'+
+        '<button class="rm" data-rmset="'+ei+'.'+si+'" aria-label="Delete set">✕</button>'+
+      '</div>';
+    });
+    html+='<div class="row" style="gap:8px;margin-top:8px">'+
+      '<button class="btn sm ghost" data-addset="'+ei+'">+ Set</button>'+
+      '<button class="btn sm ghost" data-addwarm="'+ei+'">+ Warm-up</button>'+
+    '</div></div>';
+  });
+
+  html+='<button class="btn ghost block" style="margin-top:10px" data-x="addex">+ Add exercise</button>'+
+    '<div style="margin-top:10px"><div class="eyebrow" style="margin-bottom:6px">Note</div>'+
+    '<textarea class="txt" data-x="note">'+esc(d.note||"")+'</textarea></div>'+
+    '<div class="row" style="gap:8px;margin-top:12px">'+
+      '<button class="btn ghost" style="flex:1" data-x="cancel">Cancel</button>'+
+      '<button class="btn primary" style="flex:1.4" data-x="save">Save changes</button></div>';
+
+  sheet(html,function(el){
+    var d=draft;
+    $('[data-x="date"]',el).onchange=function(){
+      var parts=this.value.split("-");
+      if(parts.length===3){
+        var old=new Date(d.ts);
+        d.ts=new Date(+parts[0],+parts[1]-1,+parts[2],old.getHours(),old.getMinutes()).getTime();
+      }
+    };
+    $('[data-x="name"]',el).oninput=function(){ d.name=this.value; };
+    $('[data-x="note"]',el).oninput=function(){ d.note=this.value; };
+    $('[data-x="deload"]',el).onclick=function(){ d.deload=!d.deload; this.classList.toggle("on",d.deload); };
+
+    el.addEventListener("input",function(e){
+      var i=e.target;
+      if(!i.matches('input[data-k]')) return;
+      var p=i.dataset.k.split("."), s=d.exercises[+p[0]].sets[+p[1]];
+      s[i.dataset.f]=i.value;
+    });
+    el.addEventListener("click",function(e){
+      var b=e.target.closest("[data-warm],[data-rmset],[data-addset],[data-addwarm],[data-rmex]");
+      if(!b) return;
+      if(b.dataset.warm!==undefined){
+        var p=b.dataset.warm.split("."), s=d.exercises[+p[0]].sets[+p[1]];
+        s.warm=!s.warm; drawEditor(); return;
+      }
+      if(b.dataset.rmset!==undefined){
+        var q=b.dataset.rmset.split(".");
+        d.exercises[+q[0]].sets.splice(+q[1],1);
+        if(!d.exercises[+q[0]].sets.length) d.exercises.splice(+q[0],1);
+        drawEditor(); return;
+      }
+      if(b.dataset.addset!==undefined){
+        var e1=d.exercises[+b.dataset.addset];
+        var w1=working(e1.sets), t1=w1[w1.length-1]||e1.sets[e1.sets.length-1]||{w:"",r:"8"};
+        e1.sets.push({w:t1.w,r:t1.r,done:true});
+        drawEditor(); return;
+      }
+      if(b.dataset.addwarm!==undefined){
+        var e2=d.exercises[+b.dataset.addwarm];
+        e2.sets.unshift({w:e2.sets[0]?e2.sets[0].w:"",r:"5",warm:true,done:true});
+        drawEditor(); return;
+      }
+      if(b.dataset.rmex!==undefined){ d.exercises.splice(+b.dataset.rmex,1); drawEditor(); }
+    });
+    $('[data-x="addex"]',el).onclick=function(){
+      pickExercise(null,function(name){
+        draft.exercises.push({id:uid(),planId:null,name:name,targetReps:8,reps:8,repTop:0,
+                              inc:null,bw:0,supplemental:true,note:"",
+                              sets:[{w:"",r:"8",done:true}]});
+        drawEditor();
+      });
+    };
+    $('[data-x="cancel"]',el).onclick=function(){ draft=null; closeSheet(); };
+    $('[data-x="save"]',el).onclick=commitEdit;
+  });
+}
+
+function commitEdit(){
+  var d=draft;
+  if(!d) return;
+  /* Drop empty sets and empty exercises, resolve loads, then re-sort. */
+  d.exercises.forEach(function(e){
+    var mode=bwMode(e);
+    e.sets=e.sets.filter(function(s){ return num(s.r)>0; });
+    e.sets.forEach(function(s){
+      s.done=true;
+      s.load=effLoad(s.w,mode,d.bw!==undefined?d.bw:S.settings.bodyweight);
+    });
+  });
+  d.exercises=d.exercises.filter(function(e){ return e.sets.length; });
+
+  var i=S.sessions.findIndex(function(x){ return x.id===d.id; });
+  if(i<0){ draft=null; closeSheet(); return; }
+  S.sessions[i]=d;
+  S.sessions.sort(function(a,b){ return b.ts-a.ts; });
+  recomputePRs();
+  writeNow();
+  draft=null;
+  closeSheet(); render();
+  toast("Session updated");
+}
+
+/* ============================ PLAN ============================ */
+var editingRoutine=null;
+
+function viewPlan(){
+  var v=$("#view");
+  var html='<div class="eyebrow">Your split</div><h1 class="view-title">Plan</h1><div class="stack">';
+
+  S.routines.forEach(function(r,ri){
+    html+='<section class="card" style="padding:0">'+
+      '<div class="ex-head" style="align-items:center">'+
+        '<div class="daymark" style="width:40px;height:40px;flex:0 0 auto"><div class="letter" style="font-size:18px">'+esc(r.key)+'</div></div>'+
+        '<div class="t" style="margin-left:2px"><div class="ex-name" style="font-size:15px">'+esc(r.name)+'</div>'+
+        '<div class="ex-meta">'+plural(r.exercises.length,"exercise")+'</div></div>'+
+        '<button class="kebab" data-act="day-menu" data-ri="'+ri+'" aria-label="Day options">⋯</button>'+
+      '</div>';
+    r.exercises.forEach(function(e,ei){
+      var range=e.repTop>e.reps?(e.reps+"–"+e.repTop):String(e.reps);
+      var mode=bwMode(e);
+      html+='<div class="pex">'+
+        '<span class="pxn">'+esc(e.name)+(mode?' <span class="chip tag">'+(mode===1?"BW":"ASST")+'</span>':"")+'</span>'+
+        '<span class="pxs">'+e.sets+'×'+esc(range)+'</span>'+
+        '<button class="iconbtn" data-act="pex-up" data-ri="'+ri+'" data-ei="'+ei+'" aria-label="Move up">↑</button>'+
+        '<button class="iconbtn" data-act="pex-edit" data-ri="'+ri+'" data-ei="'+ei+'" aria-label="Edit">⋯</button>'+
+      '</div>';
+    });
+    if(!r.exercises.length) html+='<div class="empty" style="padding:14px">No exercises yet.</div>';
+    html+='<div class="ex-foot"><button class="btn sm ghost" data-act="pex-add" data-ri="'+ri+'">+ Add exercise</button></div>'+
+      '</section>';
+  });
+
+  html+='<button class="btn ghost block" data-act="day-add">+ Add a training day</button>';
+
+  html+='<hr class="sep"><div class="eyebrow" style="margin-bottom:8px">Progression</div><div class="card">'+
+    '<div class="field-row"><div class="fl">Double progression by default<div class="fh">New exercises climb by reps first, then weight</div></div>'+
+      '<button class="switch'+(S.settings.doubleDefault?" on":"")+'" data-set="doubleDefault"></button></div>'+
+    '<div class="field-row"><div class="fl">Default rep range</div>'+
+      '<div class="row" style="gap:6px">'+
+        '<input class="txt tiny-n" inputmode="numeric" type="number" data-set="repLow" value="'+esc(S.settings.repLow)+'">'+
+        '<span class="muted tiny">to</span>'+
+        '<input class="txt tiny-n" inputmode="numeric" type="number" data-set="repHigh" value="'+esc(S.settings.repHigh)+'">'+
+      '</div></div>'+
+    '<div class="field-row"><div class="fl">Default weight step<div class="fh">Used by ± and by the weight jumps</div></div>'+
+      '<input class="txt small" inputmode="decimal" type="number" step="any" data-set="inc" value="'+esc(S.settings.inc)+'"></div>'+
+    '<div class="field-row"><div class="fl">Deload week'+
+      '<div class="fh">'+(inDeloadWeek()
+        ? "Running through "+esc(shortDate(S.settings.deloadUntil))+" — light prescriptions, excluded from trends"
+        : "Light and short on purpose, and invisible to the trend maths")+'</div></div>'+
+      (inDeloadWeek()
+        ? '<button class="btn sm ghost" data-act="end-deload">End</button>'
+        : '<button class="btn sm" data-act="start-deload">Start</button>')+'</div>'+
+  '</div>';
+
+  html+='<div class="eyebrow" style="margin:6px 0 0">Session</div><div class="card">'+
+    '<div class="field-row"><div class="fl">Units</div>'+
+      '<select class="txt" style="width:96px" data-set="unit">'+
+        '<option value="lb"'+(unit()==="lb"?" selected":"")+'>lb</option>'+
+        '<option value="kg"'+(unit()==="kg"?" selected":"")+'>kg</option></select></div>'+
+    '<div class="field-row"><div class="fl">Your bodyweight<div class="fh">Used to score pull-ups, dips and assisted work</div></div>'+
+      '<input class="txt small" inputmode="decimal" type="number" step="any" data-set="bodyweight" value="'+(S.settings.bodyweight||"")+'"></div>'+
+    '<div class="field-row"><div class="fl">Rest timer<div class="fh">Seconds after each logged set</div></div>'+
+      '<input class="txt small" inputmode="numeric" type="number" data-set="rest" value="'+esc(S.settings.rest)+'"></div>'+
+    '<div class="field-row"><div class="fl">Start rest automatically</div>'+
+      '<button class="switch'+(S.settings.autoRest?" on":"")+'" data-set="autoRest"></button></div>'+
+    '<div class="field-row"><div class="fl">Vibrate<div class="fh">On logging a set and when rest ends</div></div>'+
+      '<button class="switch'+(S.settings.buzz?" on":"")+'" data-set="buzz"></button></div>'+
+  '</div>';
+
+  html+='<div class="eyebrow" style="margin:6px 0 0">Data</div><div class="card"><div class="stack">'+
+    '<div class="tiny muted">Your log lives in this browser on this device. Nothing is uploaded anywhere, which also means nothing is backed up until you send a copy out.'+
+    (S.settings.lastBackup?' Last copy '+relDate(S.settings.lastBackup)+'.':' No copy yet.')+'</div>'+
+    '<button class="btn primary block" data-act="backup">Back up now</button>'+
+    '<div class="row" style="gap:8px">'+
+      '<button class="btn" style="flex:1" data-act="export">Export file</button>'+
+      '<button class="btn" style="flex:1" data-act="import">Import</button>'+
+    '</div>'+
+    '<button class="btn danger block" data-act="wipe">Erase everything</button>'+
+  '</div></div>';
+
+  html+='<div class="tiny muted" style="text-align:center;padding:6px 0">'+
+    plural(S.sessions.length,"session")+' logged · Iron Log</div>';
+
+  v.innerHTML=html+'</div>';
+}
+
+$("#view").addEventListener("click",function(e){
+  if(TAB==="progress"){
+    var lb=e.target.closest("[data-lift]");
+    if(lb){ liftSheet(lb.dataset.lift); return; }
+    var sb=e.target.closest("[data-sess]");
+    if(sb){ sessionSheet(sb.dataset.sess); return; }
+  }
+  if(TAB!=="plan") return;
+
+  var t=e.target;
+  var dm=t.closest('[data-act="day-menu"]');
+  if(dm){ dayMenu(+dm.dataset.ri); return; }
+  if(t.closest('[data-act="day-add"]')){
+    var k=String.fromCharCode(65+S.routines.length);
+    S.routines.push({id:uid(),key:k,name:"Day "+k,exercises:[]});
+    save(); viewPlan(); return;
+  }
+  var pa=t.closest('[data-act="pex-add"]');
+  if(pa){ editingRoutine=+pa.dataset.ri; pickExercise("plan"); return; }
+  var pu=t.closest('[data-act="pex-up"]');
+  if(pu){
+    var r=S.routines[+pu.dataset.ri], i=+pu.dataset.ei;
+    if(i>0){ var tmp=r.exercises[i-1]; r.exercises[i-1]=r.exercises[i]; r.exercises[i]=tmp; save(); viewPlan(); }
+    return;
+  }
+  var pe=t.closest('[data-act="pex-edit"]');
+  if(pe){ planExMenu(+pe.dataset.ri,+pe.dataset.ei); return; }
+
+  var sw=t.closest('[data-set]');
+  if(sw&&sw.classList.contains("switch")){
+    var k2=sw.dataset.set; S.settings[k2]=!S.settings[k2];
+    sw.classList.toggle("on",S.settings[k2]); save(); return;
+  }
+  if(t.closest('[data-act="export"]')){ doExport(); return; }
+  if(t.closest('[data-act="import"]')){ doImport(); return; }
+  if(t.closest('[data-act="wipe"]')){
+    confirmSheet("Erase everything?","Every session, day and setting is deleted. Back up first if you want a copy.","Erase",function(){
+      S=defaultState(); writeNow(); go("today"); toast("Wiped clean");
+    },true);
+  }
+});
+$("#view").addEventListener("change",function(e){
+  var el=e.target.closest("[data-set]");
+  if(!el||el.classList.contains("switch")) return;
+  var k=el.dataset.set;
+  S.settings[k]=(k==="unit")?el.value:num(el.value);
+  if(k==="rest"&&S.settings.rest<5) S.settings.rest=5;
+  if(k==="repLow") S.settings.repLow=Math.max(1,S.settings.repLow);
+  if(k==="repHigh") S.settings.repHigh=Math.max(S.settings.repLow,S.settings.repHigh);
+  save();
+});
+
+function addToPlan(name){
+  var r=S.routines[editingRoutine];
+  if(!r) return;
+  var last=lastPerf(name);
+  r.exercises.push({
+    id:uid(), name:name,
+    sets:last?last.sets.length:3,
+    reps:S.settings.doubleDefault?S.settings.repLow:(last?num(last.sets[0].r):8),
+    repTop:S.settings.doubleDefault?S.settings.repHigh:0,
+    inc:null, bw:last?last.bw:0
+  });
+  save(); viewPlan();
+}
+
+function dayMenu(ri){
+  var r=S.routines[ri];
+  sheet('<h3>'+esc(r.name)+'</h3><div class="sub">Shown as “'+esc(r.key)+'” in the rotation.</div>'+
+    '<div class="field-row"><div class="fl">Label</div><input class="txt small" data-x="key" maxlength="3" value="'+esc(r.key)+'"></div>'+
+    '<div class="field-row"><div class="fl">Name</div><input class="txt" style="max-width:200px" data-x="name" value="'+esc(r.name)+'"></div>'+
+    '<div class="menu" style="margin-top:10px">'+
+      (S.routines.length>1?'<button data-x="del" class="dang">Delete this day</button>':"")+
+    '</div>'+
+    '<button class="btn primary block" style="margin-top:6px" data-x="done">Done</button>',
+    function(el){
+      $('[data-x="key"]',el).oninput=function(){ r.key=this.value.toUpperCase(); save(); };
+      $('[data-x="name"]',el).oninput=function(){ r.name=this.value; save(); };
+      var d=$('[data-x="del"]',el);
+      if(d) d.onclick=function(){
+        confirmSheet("Delete "+r.name+"?","Past sessions stay in your history.","Delete",function(){
+          S.routines.splice(ri,1); save(); viewPlan();
+        },true);
+      };
+      $('[data-x="done"]',el).onclick=function(){ closeSheet(); viewPlan(); };
+    });
+}
+
+function planExMenu(ri,ei){
+  var r=S.routines[ri], ex=r.exercises[ei];
+  var p=prescribe(ex.name,ex);
+  sheet('<h3>'+esc(ex.name)+'</h3><div class="sub">In '+esc(r.name)+
+      (p.why?' · next time: '+esc(p.why.toLowerCase()):"")+'</div>'+
+    '<div class="field-row"><div class="fl">Name</div>'+
+      '<input class="txt" style="max-width:210px" data-x="name" value="'+esc(ex.name)+'"></div>'+
+    '<div class="field-row"><div class="fl">Sets</div>'+
+      '<input class="txt small" inputmode="numeric" type="number" data-x="sets" value="'+ex.sets+'"></div>'+
+    '<div class="field-row"><div class="fl">Rep range<div class="fh">Empty second box = straight sets, add weight when you hit the target</div></div>'+
+      '<div class="row" style="gap:6px">'+
+        '<input class="txt tiny-n" inputmode="numeric" type="number" data-x="low" value="'+esc(ex.reps)+'">'+
+        '<span class="muted tiny">to</span>'+
+        '<input class="txt tiny-n" inputmode="numeric" type="number" data-x="top" value="'+(ex.repTop||"")+'">'+
+      '</div></div>'+
+    '<div class="field-row"><div class="fl">Weight step<div class="fh">Blank uses the default ('+esc(S.settings.inc)+')</div></div>'+
+      '<input class="txt small" inputmode="decimal" type="number" step="any" data-x="inc" value="'+(ex.inc||"")+'"></div>'+
+    loadTypeRow(bwMode(ex),"pbw")+
+    '<div class="menu" style="margin-top:10px">'+
+      (ei>0?'<button data-x="up">Move up</button>':"")+
+      (ei<r.exercises.length-1?'<button data-x="down">Move down</button>':"")+
+      '<button data-x="hist">See history &amp; chart</button>'+
+      '<button data-x="del" class="dang">Remove from '+esc(r.name)+'</button>'+
+    '</div>'+
+    '<button class="btn primary block" style="margin-top:6px" data-x="done">Done</button>',
+    function(el){
+      var nameEl=$('[data-x="name"]',el);
+      $('[data-x="sets"]',el).oninput=function(){ ex.sets=Math.max(1,num(this.value)); save(); };
+      $('[data-x="low"]',el).oninput=function(){ ex.reps=Math.max(1,num(this.value)); save(); };
+      $('[data-x="top"]',el).oninput=function(){ ex.repTop=num(this.value)||0; save(); };
+      $('[data-x="inc"]',el).oninput=function(){ ex.inc=num(this.value)||null; save(); };
+      $$('[data-pbw]',el).forEach(function(b){
+        b.onclick=function(){ ex.bw=num(b.dataset.pbw); save(); closeSheet(); viewPlan(); planExMenu(ri,ei); };
+      });
+      var up=$('[data-x="up"]',el), dn=$('[data-x="down"]',el);
+      if(up) up.onclick=function(){ var t=r.exercises[ei-1]; r.exercises[ei-1]=ex; r.exercises[ei]=t; save(); closeSheet(); viewPlan(); };
+      if(dn) dn.onclick=function(){ var t=r.exercises[ei+1]; r.exercises[ei+1]=ex; r.exercises[ei]=t; save(); closeSheet(); viewPlan(); };
+      $('[data-x="hist"]',el).onclick=function(){ closeSheet(); liftSheet(ex.name); };
+      $('[data-x="del"]',el).onclick=function(){ r.exercises.splice(ei,1); save(); closeSheet(); viewPlan(); };
+      $('[data-x="done"]',el).onclick=function(){
+        var newName=nameEl.value.trim();
+        if(newName&&newName!==ex.name) renameExercise(ex.name,newName);
+        closeSheet(); viewPlan();
+      };
+    });
+}
+
+/* ---- data in / out ---- */
+function payload(){ return JSON.stringify(S,null,2); }
+function backupName(){ return "ironlog-"+today()+".json"; }
+function markBackedUp(){ S.settings.lastBackup=Date.now(); writeNow(); }
+
+/* One tap into whatever the phone can share to — Drive, Files, email, iCloud. */
+function backupSheet(){
+  var data=payload();
+  var canShare=false;
+  try{
+    var probe=new File([data],backupName(),{type:"application/json"});
+    canShare=!!(navigator.canShare&&navigator.canShare({files:[probe]}));
+  }catch(e){}
+
+  sheet('<h3>Back up your log</h3>'+
+    '<div class="sub">'+plural(S.sessions.length,"session")+' · '+Math.round(data.length/1024)+' KB. '+
+      'Send yourself a copy anywhere that syncs — Drive, Files, email. Importing it later restores everything exactly.</div>'+
+    (canShare?'<button class="btn primary big block" data-x="share" style="margin-bottom:8px">Send a copy…</button>':"")+
+    '<button class="btn '+(canShare?"":"primary big ")+'block" data-x="dl">Save file to this device</button>'+
+    '<button class="btn ghost block" style="margin-top:8px" data-x="copy">Copy as text</button>'+
+    (S.settings.lastBackup?'<div class="tiny muted" style="text-align:center;margin-top:12px">Last copy '+relDate(S.settings.lastBackup)+'</div>':""),
+    function(el){
+      var sh=$('[data-x="share"]',el);
+      if(sh) sh.onclick=function(){
+        var f=new File([data],backupName(),{type:"application/json"});
+        navigator.share({files:[f],title:"Iron Log backup"}).then(function(){
+          markBackedUp(); closeSheet(); render(); toast("Copy sent");
+        }).catch(function(){ /* user backed out of the share sheet */ });
+      };
+      $('[data-x="dl"]',el).onclick=function(){ downloadBackup(data); closeSheet(); render(); };
+      $('[data-x="copy"]',el).onclick=function(){
+        if(navigator.clipboard){
+          navigator.clipboard.writeText(data).then(function(){ markBackedUp(); toast("Copied"); closeSheet(); render(); })
+            .catch(function(){ doExport(); });
+        } else doExport();
+      };
+    });
+}
+function downloadBackup(data){
+  try{
+    var blob=new Blob([data],{type:"application/json"});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement("a");
+    a.href=url; a.download=backupName();
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); },2000);
+    markBackedUp();
+    toast("Saved to your downloads");
+  }catch(e){ toast("Couldn't save the file — try Copy as text"); }
+}
+function doExport(){
+  var data=payload();
+  downloadBackup(data);
+  sheet('<h3>Export</h3><div class="sub">Saved as '+esc(backupName())+'. You can also copy the raw log and paste it somewhere safe.</div>'+
+      '<textarea class="txt" style="min-height:120px;font-family:var(--mono);font-size:12px" readonly>'+esc(data)+'</textarea>'+
+      '<div class="row" style="gap:8px;margin-top:10px">'+
+      '<button class="btn ghost" style="flex:1" data-x="close">Close</button>'+
+      '<button class="btn primary" style="flex:1" data-x="copy">Copy</button></div>',
+    function(el){
+      $('[data-x="close"]',el).onclick=function(){ closeSheet(); render(); };
+      $('[data-x="copy"]',el).onclick=function(){
+        var ta=$("textarea",el);
+        ta.select(); ta.setSelectionRange(0,999999);
+        if(navigator.clipboard) navigator.clipboard.writeText(data).then(function(){ toast("Copied"); });
+        else { try{ document.execCommand("copy"); toast("Copied"); }catch(e){ toast("Select the text and copy"); } }
+      };
+    });
+}
+function doImport(){
+  sheet('<h3>Import</h3><div class="sub">Replaces everything currently in the app. Pick a file you backed up, or paste the JSON.</div>'+
+    '<input type="file" accept="application/json,.json" data-x="file" style="margin-bottom:12px">'+
+    '<textarea class="txt" style="min-height:110px;font-family:var(--mono);font-size:12px" placeholder="…or paste here" data-x="paste"></textarea>'+
+    '<div class="row" style="gap:8px;margin-top:10px">'+
+    '<button class="btn ghost" style="flex:1" data-x="close">Cancel</button>'+
+    '<button class="btn primary" style="flex:1" data-x="go">Import</button></div>',
+    function(el){
+      var pending=null;
+      $('[data-x="file"]',el).onchange=function(){
+        var f=this.files&&this.files[0]; if(!f) return;
+        var fr=new FileReader();
+        fr.onload=function(){ pending=String(fr.result); toast("File ready — tap Import"); };
+        fr.readAsText(f);
+      };
+      $('[data-x="close"]',el).onclick=closeSheet;
+      $('[data-x="go"]',el).onclick=function(){
+        var raw=pending||$('[data-x="paste"]',el).value;
+        if(!raw){ toast("Nothing to import"); return; }
+        var parsed;
+        try{ parsed=JSON.parse(raw); }catch(e){ toast("That isn't valid Iron Log JSON"); return; }
+        if(!parsed||!parsed.routines||!parsed.sessions){ toast("That file is missing routines or sessions"); return; }
+        S=parsed;
+        S.settings=Object.assign(defaultState().settings,S.settings||{});
+        recomputePRs();
+        writeNow(); closeSheet(); go("today"); toast("Log imported");
+      };
+    });
+}
+
+/* ============================ render ============================ */
+function render(){
+  renderTabs(); renderHeader();
+  if(TAB==="today"){ viewToday(); refreshSummary(); }
+  else if(TAB==="progress") viewProgress();
+  else viewPlan();
+}
+
+if(window.matchMedia){
+  var mq=window.matchMedia("(prefers-color-scheme: dark)");
+  if(mq.addEventListener) mq.addEventListener("change",render);
+}
+new MutationObserver(function(muts){
+  for(var i=0;i<muts.length;i++) if(muts[i].attributeName==="data-theme"){ render(); return; }
+}).observe(document.documentElement,{attributes:true});
+
+if(S.active) TAB="today";
+render();
+
+/* Offline support, only when self-hosted (the manifest is the tell). */
+if("serviceWorker" in navigator && $('link[rel="manifest"]') &&
+   (location.protocol==="https:"||location.hostname==="localhost")){
+  window.addEventListener("load",function(){
+    navigator.serviceWorker.register("sw.js").catch(function(){});
+  });
+}
+
+})();
+</script>
+<!--ARTIFACT-END-->
+</body>
+</html>
