@@ -1,7 +1,7 @@
 /* Iron Log service worker.
    The app is one HTML file with no external requests, so caching the shell is
    enough to make it work with no signal at all. Bump CACHE on every deploy. */
-const CACHE = "ironlog-v3";
+const CACHE = "ironlog-v4";
 const SHELL = [
   "./",
   "./index.html",
@@ -26,6 +26,20 @@ self.addEventListener("activate", (e) => {
     caches.keys()
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
+  );
+});
+
+/* The rest-timer notification. Tapping it should land you back in the set you
+   were mid-way through, not open a second copy of the app. */
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if (c.url.indexOf(self.registration.scope) === 0 && "focus" in c) return c.focus();
+      }
+      return self.clients.openWindow ? self.clients.openWindow("./") : undefined;
+    })
   );
 });
 

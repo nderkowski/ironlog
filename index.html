@@ -297,6 +297,21 @@ h1,h2,h3{margin:0;text-wrap:balance}
   font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--good);
   pointer-events:none;
 }
+/* Plate hint. Spans the whole row so it drops onto an implicit second grid
+   row, and it is pointer-events:none so it can never eat a tap. */
+.plates{
+  grid-column:1/-1;
+  font-family:var(--mono);font-variant-numeric:tabular-nums;
+  font-size:11px;color:var(--ink-3);
+  padding-left:25px;margin-top:-3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  pointer-events:none;
+}
+.plates:empty{display:none}
+.plates .lb{letter-spacing:.06em;margin-right:5px;opacity:.7}
+.plates i{font-style:normal;opacity:.65}
+.plates .off{color:var(--bad)}
+.set.done .plates{opacity:.55}
 .ex-foot{
   display:flex;gap:8px;align-items:center;padding:9px var(--pad);border-top:1px solid var(--line);
 }
@@ -305,6 +320,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
   .set{grid-template-columns:18px 1fr 8px 1fr 40px;gap:4px}
   .grp button{width:24px}
   .tick{width:40px}
+  .plates{padding-left:22px}
 }
 
 /* ---------- progress ---------- */
@@ -478,8 +494,37 @@ nav.tabs .t.on{color:var(--accent);background:var(--accent-soft)}
   z-index:80;background:var(--ink);color:var(--bg);
   padding:9px 15px;border-radius:999px;font-size:13px;font-weight:600;
   box-shadow:var(--shadow);pointer-events:none;
-  animation:fade .15s ease-out;max-width:90vw;text-align:center;
+  animation:fade .15s ease-out;text-align:center;
+  /* left:50% caps a shrink-to-fit fixed box at 50vw, which wraps anything
+     longer than a few words. max-content opts out of that. */
+  width:max-content;max-width:90vw;
 }
+/* The undo variant is the one toast you can hit — but only the pill itself
+   takes pointer events, so a 10-second toast can't sit on top of Finish. */
+.toast.act{
+  display:flex;align-items:center;gap:6px;
+  padding:5px 6px 5px 15px;text-align:left;
+}
+.toast.act span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toast.act button{
+  pointer-events:auto;
+  color:inherit;font-weight:800;font-size:13px;letter-spacing:.03em;
+  padding:7px 12px;border-radius:999px;flex:0 0 auto;
+  border:1px solid currentColor;
+}
+.toast.act button:active{opacity:.6}
+
+/* plate inventory editor */
+.plate-ed{display:flex;flex-direction:column;gap:6px;margin:8px 0 4px}
+.plate-ed .pr-row{display:flex;align-items:center;gap:8px}
+.plate-ed .pr-row .txt{width:78px}
+.plate-ed .pr-row .x{font-size:12px;color:var(--ink-3);flex:0 0 auto}
+.plate-ed .pr-row .sp{flex:1}
+.plate-ed .pr-row .rm{
+  width:34px;height:34px;border-radius:8px;color:var(--ink-3);
+  display:flex;align-items:center;justify-content:center;flex:0 0 auto;
+}
+.plate-ed .pr-row .rm:active{background:var(--panel-2)}
 .empty{text-align:center;color:var(--ink-3);font-size:14px;padding:26px 10px}
 hr.sep{border:none;border-top:1px solid var(--line);margin:18px 0 14px}
 </style>
@@ -516,10 +561,12 @@ var mem=null;
 
 function defaultState(){
   return {
-    version:3,
+    version:4,
     settings:{unit:"lb",rest:120,autoRest:true,buzz:true,inc:5,
+              sound:true, notify:false,
               doubleDefault:true,repLow:8,repHigh:12,
               bodyweight:0, deloadUntil:0, deloadSnooze:0,
+              bar:45, plates:defaultPlates("lb"),
               lastBackup:0},
     routines:[
       {id:uid(),key:"A",name:"Day A",exercises:[]},
@@ -538,7 +585,9 @@ function load(){
     var s=JSON.parse(raw);
     if(!s||!s.routines) return defaultState();
     s.settings=Object.assign(defaultState().settings,s.settings||{});
-    s.version=3;
+    if(!Array.isArray(s.settings.plates)||!s.settings.plates.length)
+      s.settings.plates=defaultPlates(s.settings.unit);
+    s.version=4;
     return s;
   }catch(e){ return defaultState(); }
 }
@@ -607,6 +656,24 @@ function toast(msg){
   document.body.appendChild(t);
   clearTimeout(toastTimer);
   toastTimer=setTimeout(function(){ t.remove(); },2200);
+}
+
+/* Destructive actions get a window to take it back rather than a confirm
+   dialog in front of every one of them. The caller keeps the removed object
+   alive in the closure; nothing is re-derived from the DOM. */
+function toastUndo(msg,fn){
+  var old=$(".toast"); if(old) old.remove();
+  var t=document.createElement("div");
+  t.className="toast act";
+  var label=document.createElement("span");
+  label.textContent=msg;
+  var b=document.createElement("button");
+  b.type="button"; b.textContent="Undo";
+  b.onclick=function(){ clearTimeout(toastTimer); t.remove(); fn(); };
+  t.appendChild(label); t.appendChild(b);
+  document.body.appendChild(t);
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){ t.remove(); },10000);
 }
 
 var ICON={
@@ -762,6 +829,62 @@ function startDeloadWeek(days){
 }
 function endDeloadWeek(){ S.settings.deloadUntil=0; writeNow(); }
 
+/* ============================ plates ============================
+   `bar` on an exercise is the weight of the empty bar, and 0 means the
+   exercise isn't a loaded barbell at all — that's the whole flag. The
+   inventory is counted in PAIRS, because you load a bar symmetrically and
+   thinking in pairs is what you actually do on the gym floor.
+   ================================================================ */
+function defaultPlates(u){
+  return u==="kg"
+    ? [{w:25,n:4},{w:20,n:1},{w:15,n:1},{w:10,n:2},{w:5,n:2},{w:2.5,n:2},{w:1.25,n:2}]
+    : [{w:45,n:4},{w:35,n:1},{w:25,n:2},{w:10,n:2},{w:5,n:2},{w:2.5,n:2}];
+}
+function defaultBar(u){ return u==="kg"?20:45; }
+function barOf(ex){ var b=num(ex&&ex.bar); return b>0?b:0; }
+function plateInv(){
+  return (S.settings.plates||[])
+    .filter(function(p){ return num(p.w)>0&&num(p.n)>0; })
+    .sort(function(a,b){ return num(b.w)-num(a.w); });
+}
+
+/* Greedy from the heaviest plate down, bounded by how many pairs you own.
+   Greedy is optimal for every real plate set (each denomination divides the
+   ones above it), and where it isn't we say so instead of pretending. */
+function platesFor(target,bar){
+  var per=(num(target)-num(bar))/2, out=[], got=0;
+  if(!(per>0)) return {list:[],per:per,got:num(bar),exact:per===0};
+  plateInv().forEach(function(p){
+    var w=num(p.w), n=Math.min(num(p.n),Math.floor((per-got+1e-9)/w));
+    if(n>0){ out.push({w:w,n:n}); got+=n*w; }
+  });
+  return {list:out,per:per,got:num(bar)+got*2,exact:Math.abs(got-per)<1e-9};
+}
+
+/* The line under a set row. Returns inner HTML only — the .plates node itself
+   is never replaced, so nothing on the logging path loses DOM identity. */
+function plateHint(ex,s){
+  var bar=barOf(ex);
+  if(!bar||bwMode(ex)!==0) return "";
+  var w=num(s.w);
+  if(!w) return "";
+  if(w<bar) return '<span class="off">under the '+fmt(bar)+' bar</span>';
+  var r=platesFor(w,bar);
+  if(!r.list.length) return '<span class="lb">SIDE</span>bar only';
+  return '<span class="lb">SIDE</span>'+
+    r.list.map(function(p){ return fmt(p.w)+(p.n>1?'<i>×'+p.n+'</i>':""); }).join("  ")+
+    (r.exact?"":' <span class="off">= '+fmt(r.got)+'</span>');
+}
+
+/* Only guessed for brand-new exercises, and always editable afterwards. */
+var BAR_YES=/barbell|squat|bench|deadlift|dead lift|romanian|rdl|overhead press|ohp|military|hip thrust|clean|snatch|good ?morning|pendlay|jm press|floor press/i;
+var BAR_NO=/dumbbell|\bdb\b|machine|cable|smith|kettlebell|\bkb\b|band|goblet|hack|leg press|pendulum|belt squat|bodyweight|assisted|landmine/i;
+function guessBar(name){
+  var n=String(name||"");
+  if(BAR_NO.test(n)) return 0;
+  return BAR_YES.test(n)?(num(S.settings.bar)||defaultBar(unit())):0;
+}
+
 function weekBounds(offset){
   var d=new Date(); d.setHours(0,0,0,0);
   var dow=(d.getDay()+6)%7;                 // Monday = 0
@@ -902,18 +1025,148 @@ function hexA(hex,a){
   return "rgba("+((n>>16)&255)+","+((n>>8)&255)+","+(n&255)+","+a+")";
 }
 
-/* ============================ rest timer ============================ */
+/* ============================ rest timer ============================
+   The countdown was always wall-clock correct, but the alert never arrived:
+   a backgrounded page gets its timers throttled to nothing and vibration is
+   ignored outright, so with the phone in a pocket the timer silently did
+   nothing. Android Chrome will not freeze a page that is *playing audio*, so
+   a rest keeps a near-silent loop running purely to stay alive, and swaps
+   that same already-unlocked element to an audible tone at zero.
+
+   Two WAVs are synthesised rather than embedded: keeps the one-file rule and
+   costs a few hundred bytes of code instead of a few KB of base64.
+   ==================================================================== */
+var AU_RATE=8000;
+function wavURL(rate,data){
+  var n=data.length, buf=new ArrayBuffer(44+n*2), v=new DataView(buf), i;
+  function tag(o,s){ for(var j=0;j<s.length;j++) v.setUint8(o+j,s.charCodeAt(j)); }
+  tag(0,"RIFF"); v.setUint32(4,36+n*2,true); tag(8,"WAVEfmt ");
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,rate,true); v.setUint32(28,rate*2,true);
+  v.setUint16(32,2,true); v.setUint16(34,16,true);
+  tag(36,"data"); v.setUint32(40,n*2,true);
+  for(i=0;i<n;i++) v.setInt16(44+i*2,Math.max(-1,Math.min(1,data[i]))*32767,true);
+  return URL.createObjectURL(new Blob([buf],{type:"audio/wav"}));
+}
+var AU=null;
+function audioURLs(){
+  if(AU) return AU;
+  var i,n=AU_RATE,quiet=new Float32Array(n);
+  /* Inaudible, but deliberately not digital silence — a track of pure zeroes
+     can be optimised away and stops counting as playback. */
+  for(i=0;i<n;i++) quiet[i]=(i%2?1:-1)/32767;
+  var beeps=3,on=.18,off=.14,tot=Math.round(n*beeps*(on+off)),alarm=new Float32Array(tot);
+  for(var b=0;b<beeps;b++){
+    var st=Math.round(b*(on+off)*n), len=Math.round(on*n);
+    for(i=0;i<len;i++){
+      var env=Math.min(1,i/(n*.008),(len-i)/(n*.02));   // no clicks at the edges
+      alarm[st+i]=Math.sin(2*Math.PI*880*i/n)*.9*env;
+    }
+  }
+  AU={quiet:wavURL(AU_RATE,quiet),alarm:wavURL(AU_RATE,alarm)};
+  return AU;
+}
+var restAudio=null;
+function audioEl(){
+  if(!restAudio){
+    restAudio=document.createElement("audio");
+    restAudio.setAttribute("playsinline","");
+    restAudio.preload="auto";
+    restAudio.volume=1;
+    document.body.appendChild(restAudio);
+  }
+  return restAudio;
+}
+function playSrc(url,loop){
+  try{
+    var a=audioEl();
+    a.loop=!!loop; a.src=url;
+    var p=a.play();
+    if(p&&p.catch) p.catch(function(){});   // autoplay refused; vibration still tries
+  }catch(e){}
+}
+function audioStop(){ if(restAudio){ try{ restAudio.loop=false; restAudio.pause(); }catch(e){} } }
+/* Only worth keeping the page alive if something is going to happen at zero. */
+function wantsBgAlert(){ return !!(S.settings.sound||S.settings.notify); }
+
+function notifyRestDone(){
+  if(!S.settings.notify) return;
+  if(!("Notification" in window)||Notification.permission!=="granted") return;
+  var opts={body:"Next set.",tag:"ironlog-rest",renotify:true,
+            icon:"icon-192.png",badge:"icon-192.png",vibrate:[90,70,90]};
+  try{
+    /* .ready never resolves when nothing is registered — the artifact build
+       has no service worker — so test for a live controller, not for the API. */
+    if(navigator.serviceWorker&&navigator.serviceWorker.controller){
+      navigator.serviceWorker.ready
+        .then(function(reg){ return reg.showNotification("Rest done",opts); })
+        .catch(function(){ try{ new Notification("Rest done",opts); }catch(e){} });
+    } else new Notification("Rest done",opts);
+  }catch(e){}
+}
+function clearRestNote(){
+  if(!navigator.serviceWorker||!navigator.serviceWorker.controller) return;
+  navigator.serviceWorker.ready.then(function(reg){
+    if(!reg.getNotifications) return;
+    reg.getNotifications({tag:"ironlog-rest"}).then(function(ns){
+      ns.forEach(function(x){ x.close(); });
+    }).catch(function(){});
+  }).catch(function(){});
+}
+function notifyState(){
+  if(!("Notification" in window)) return "none";
+  return Notification.permission;               // granted | denied | default
+}
+/* Asked only when the switch is tapped, never on load, and the refusal path
+   is a visible message rather than a switch that silently won't stay on. */
+function askNotify(cb){
+  if(!("Notification" in window)) return cb(false,"This browser can't show notifications.");
+  if(Notification.permission==="granted") return cb(true,"");
+  if(Notification.permission==="denied")
+    return cb(false,"Notifications are blocked for this site — turn them back on in your browser settings.");
+  try{
+    /* Chrome resolves a promise *and* fires the legacy callback, so guard. */
+    var done=false;
+    var fin=function(p){
+      if(done) return; done=true;
+      cb(p==="granted",p==="granted"?"":"Notifications weren't allowed.");
+    };
+    var r=Notification.requestPermission(fin);
+    if(r&&r.then) r.then(fin,function(){ fin("denied"); });
+  }catch(e){ cb(false,"Couldn't ask for permission."); }
+}
+
 var rest={endsAt:0,total:0}, buzzed=false;
-function startRest(sec){ rest.total=sec; rest.endsAt=Date.now()+sec*1000; renderHeader(); }
-function stopRest(){ rest.endsAt=0; renderHeader(); }
+function startRest(sec){
+  rest.total=sec; rest.endsAt=Date.now()+sec*1000; buzzed=false;
+  clearRestNote();
+  if(wantsBgAlert()) playSrc(audioURLs().quiet,true);
+  renderHeader();
+}
+function stopRest(){ rest.endsAt=0; buzzed=false; audioStop(); clearRestNote(); renderHeader(); }
+function restDone(){
+  if(S.settings.sound) playSrc(audioURLs().alarm,false);
+  else audioStop();
+  buzz([90,70,90,70,160]);
+  notifyRestDone();
+}
 setInterval(function(){
   if(rest.endsAt){
     var left=(rest.endsAt-Date.now())/1000;
-    if(left<=0&&!buzzed){ buzzed=true; buzz([80,60,80]); }
-    if(left>-1) buzzed=false;
+    if(left<=0&&!buzzed){
+      buzzed=true;
+      /* If the page was frozen anyway and thawed minutes later, don't shout
+         at someone who is already looking at the screen. */
+      if(left>-90) restDone(); else audioStop();
+    }
     renderHeader();
   } else if(S.active){ renderHeader(); }
 },1000);
+document.addEventListener("visibilitychange",function(){
+  if(document.hidden) return;
+  clearRestNote();
+  if(rest.endsAt||S.active) renderHeader();
+});
 
 /* ============================ sheets ============================ */
 function sheet(html,onMount){
@@ -1029,7 +1282,8 @@ function makeSessionEx(planEx,planId){
   return {
     id:uid(), planId:planId||null, name:planEx.name,
     targetReps:p.r, reps:num(planEx.reps)||p.r, repTop:num(planEx.repTop)||0,
-    inc:planEx.inc||null, bw:bwMode(planEx), supplemental:!planId, note:"",
+    inc:planEx.inc||null, bw:bwMode(planEx), bar:barOf(planEx),
+    supplemental:!planId, note:"",
     why:p.why, kind:p.kind,
     lastW:last?num(last.sets[0].w):null, lastR:last?num(last.sets[0].r):null,
     sets:sets
@@ -1193,6 +1447,7 @@ function exerciseCard(ex,ei){
       '</div>'+
       (s.pr?'<span class="prtag">PR</span>':"")+
       '<button class="tick" data-act="toggle" aria-label="Log set">'+ICON.check+'</button>'+
+      '<div class="plates">'+plateHint(ex,s)+'</div>'+
     '</div>';
   });
   html+='</div>';
@@ -1217,8 +1472,19 @@ function refreshSetRow(ei,si){
   if(st.done&&st.pr&&!tag){
     var el=document.createElement("span");
     el.className="prtag"; el.textContent="PR";
-    row.insertBefore(el,row.lastElementChild);
+    row.insertBefore(el,$(".tick",row));
   } else if((!st.done||!st.pr)&&tag){ tag.remove(); }
+  refreshPlates(ei,si,row);
+}
+/* Weight changed, so the plate breakdown did too. Writes into the existing
+   .plates node — the node itself is never replaced, and it can't take a tap. */
+function refreshPlates(ei,si,row){
+  row=row||$('.set[data-ei="'+ei+'"][data-si="'+si+'"]');
+  if(!row) return;
+  var el=$(".plates",row);
+  if(!el) return;
+  var ex=S.active.exercises[ei];
+  el.innerHTML=plateHint(ex,ex.sets[si]);
 }
 function refreshSummary(){
   var el=$("#sess-summary");
@@ -1266,6 +1532,7 @@ $("#view").addEventListener("click",function(e){
     st[f]=String(Math.max(0,round(num(st[f])+d*by,2)));
     $('input[data-f="'+f+'"]',row).value=st[f];
     if(st.done){ st.load=effLoad(st.w,bwMode(ex)); refreshSummary(); }
+    if(f==="w") refreshPlates(+row.dataset.ei,+row.dataset.si,row);
     buzz(8); save(); return;
   }
 
@@ -1331,6 +1598,7 @@ $("#view").addEventListener("input",function(e){
     var ex=S.active.exercises[+row.dataset.ei], st=ex.sets[+row.dataset.si];
     st[inp.dataset.f]=inp.value;
     if(st.done){ st.load=effLoad(st.w,bwMode(ex)); refreshSummary(); }
+    if(inp.dataset.f==="w") refreshPlates(+row.dataset.ei,+row.dataset.si,row);
     save();
   } else if(inp.matches('[data-act="snote"]')){
     S.active.note=inp.value; save();
@@ -1376,6 +1644,19 @@ function loadTypeRow(mode,attr){
       ? '<div class="tiny" style="color:var(--bad);margin-bottom:8px">Set your bodyweight under Plan → Session so this can compute real loads.</div>':"");
 }
 
+/* One number does the whole job: the empty bar's weight, or blank for
+   anything that isn't a loaded barbell. */
+function barRow(ex,attr){
+  var bar=barOf(ex);
+  return '<div class="field-row"><div class="fl">Barbell<div class="fh">'+
+      (bwMode(ex)!==0
+        ? "Plate maths is only shown for weighted lifts"
+        : bar?"Showing plates per side over a "+fmt(bar)+" "+unit()+" bar"
+             :"Bar weight — leave blank for dumbbells, machines and cables")+
+    '</div></div>'+
+    '<input class="txt small" inputmode="decimal" type="number" step="any" placeholder="—" data-'+attr+'="1" value="'+(bar||"")+'"></div>';
+}
+
 function exerciseMenu(ei){
   var ex=S.active.exercises[ei];
   sheet('<h3>'+esc(ex.name)+'</h3><div class="sub">'+plural(working(ex.sets).length,"working set")+
@@ -1391,8 +1672,15 @@ function exerciseMenu(ei){
     '<div class="field-row"><div class="fl">Weight step</div>'+
       '<input class="txt small" inputmode="decimal" type="number" step="any" data-x="inc" value="'+esc(ex.inc||S.settings.inc)+'"></div>'+
     loadTypeRow(bwMode(ex),"bw")+
+    barRow(ex,"bar")+
     '<div class="menu" style="margin-top:10px">'+
       '<button data-x="warmup">+ Add a warm-up set</button>'+
+      /* NB: not data-x="top"/"up" — this sheet already uses data-x="top" for
+         the rep-range field, and the collision silently binds the handler to
+         the wrong element. */
+      (ei>0?'<button data-x="mvtop">Move to the top</button>':"")+
+      (ei>0?'<button data-x="mvup">Move up</button>':"")+
+      (ei<S.active.exercises.length-1?'<button data-x="mvdn">Move down</button>':"")+
       (!ex.planId&&S.active.routineId?'<button data-x="keep">Add permanently to '+esc(S.active.name)+'</button>':"")+
       '<button data-x="hist">See history &amp; chart</button>'+
       '<button data-x="rm" class="dang">Remove from this session</button>'+
@@ -1410,22 +1698,47 @@ function exerciseMenu(ei){
           save(); closeSheet(); viewToday(); refreshSummary(); exerciseMenu(ei);
         };
       });
+      $('[data-bar]',el).oninput=function(){
+        ex.bar=Math.max(0,num(this.value));
+        save(); viewToday(); refreshSummary();
+      };
       $('[data-x="warmup"]',el).onclick=function(){
         ex.sets.unshift({w:ex.sets[0]?ex.sets[0].w:"",r:"5",warm:true,done:false});
         save(); closeSheet(); viewToday(); refreshSummary();
       };
+      /* Reordering is structural, not the between-sets path, so a full
+         viewToday() re-render is fine here. */
+      function moveTo(to){
+        var moved=S.active.exercises.splice(ei,1)[0];
+        S.active.exercises.splice(to,0,moved);
+        save(); closeSheet(); viewToday(); refreshSummary();
+        var card=$('.card.ex[data-ei="'+to+'"]');
+        if(card&&card.scrollIntoView) card.scrollIntoView({block:"start"});
+        toast(moved.name+(to===0?" moved to the top":" moved"));
+      }
+      var mt=$('[data-x="mvtop"]',el), mu=$('[data-x="mvup"]',el), md=$('[data-x="mvdn"]',el);
+      if(mt) mt.onclick=function(){ moveTo(0); };
+      if(mu) mu.onclick=function(){ moveTo(ei-1); };
+      if(md) md.onclick=function(){ moveTo(ei+1); };
       var keep=$('[data-x="keep"]',el);
       if(keep) keep.onclick=function(){
         var r=S.routines.find(function(x){ return x.id===S.active.routineId; });
         if(!r) return;
         var ne={id:uid(),name:ex.name,sets:working(ex.sets).length,reps:num(ex.reps)||8,
-                repTop:ex.repTop||0,inc:ex.inc||null,bw:bwMode(ex)};
+                repTop:ex.repTop||0,inc:ex.inc||null,bw:bwMode(ex),bar:barOf(ex)};
         r.exercises.push(ne); ex.planId=ne.id; ex.supplemental=false;
         save(); closeSheet(); viewToday(); refreshSummary(); toast("Added to "+r.name);
       };
       $('[data-x="hist"]',el).onclick=function(){ closeSheet(); liftSheet(ex.name); };
       $('[data-x="rm"]',el).onclick=function(){
-        S.active.exercises.splice(ei,1); save(); closeSheet(); viewToday(); refreshSummary();
+        var gone=S.active.exercises.splice(ei,1)[0];
+        save(); closeSheet(); viewToday(); refreshSummary();
+        toastUndo("Removed "+gone.name,function(){
+          if(!S.active) return;                    // finished or discarded meanwhile
+          S.active.exercises.splice(Math.min(ei,S.active.exercises.length),0,gone);
+          save(); if(TAB==="today"){ viewToday(); refreshSummary(); }
+          toast(gone.name+" is back");
+        });
       };
       $('[data-x="done"]',el).onclick=function(){
         var newName=nameEl.value.trim();
@@ -1480,7 +1793,8 @@ function pickExercise(target,onPick){
           sets:last?last.sets.length:3,
           reps:S.settings.doubleDefault?S.settings.repLow:(last?num(last.sets[0].r):8),
           repTop:S.settings.doubleDefault?S.settings.repHigh:0,
-          inc:null, bw:last?last.bw:0
+          inc:null, bw:last?last.bw:0,
+          bar:last&&last.bar!==undefined?barOf(last):guessBar(name)
         },null));
         save(); viewToday(); refreshSummary();
         window.scrollTo(0,document.body.scrollHeight);
@@ -1712,8 +2026,17 @@ function sessionSheet(id){
     $('[data-x="edit"]',el).onclick=function(){ editSession(id); };
     $('[data-x="del"]',el).onclick=function(){
       confirmSheet("Delete this session?","It's removed from your history and stats.","Delete",function(){
-        S.sessions=S.sessions.filter(function(x){ return x.id!==id; });
-        recomputePRs(); writeNow(); render(); toast("Session deleted");
+        var i=S.sessions.findIndex(function(x){ return x.id===id; });
+        if(i<0) return;
+        var gone=S.sessions[i];
+        S.sessions.splice(i,1);
+        /* PRs are derived from the whole history, so both directions have to
+           rebuild them or a deleted record leaves a ghost behind. */
+        recomputePRs(); writeNow(); render();
+        toastUndo("Session deleted",function(){
+          S.sessions.splice(Math.min(i,S.sessions.length),0,gone);
+          recomputePRs(); writeNow(); render(); toast("Session restored");
+        });
       },true);
     };
   });
@@ -1868,7 +2191,8 @@ function viewPlan(){
       var range=e.repTop>e.reps?(e.reps+"–"+e.repTop):String(e.reps);
       var mode=bwMode(e);
       html+='<div class="pex">'+
-        '<span class="pxn">'+esc(e.name)+(mode?' <span class="chip tag">'+(mode===1?"BW":"ASST")+'</span>':"")+'</span>'+
+        '<span class="pxn">'+esc(e.name)+(mode?' <span class="chip tag">'+(mode===1?"BW":"ASST")+'</span>':"")+
+          (!mode&&barOf(e)?' <span class="chip tag">BAR '+fmt(barOf(e))+'</span>':"")+'</span>'+
         '<span class="pxs">'+e.sets+'×'+esc(range)+'</span>'+
         '<button class="iconbtn" data-act="pex-up" data-ri="'+ri+'" data-ei="'+ei+'" aria-label="Move up">↑</button>'+
         '<button class="iconbtn" data-act="pex-edit" data-ri="'+ri+'" data-ei="'+ei+'" aria-label="Edit">⋯</button>'+
@@ -1914,6 +2238,39 @@ function viewPlan(){
       '<button class="switch'+(S.settings.autoRest?" on":"")+'" data-set="autoRest"></button></div>'+
     '<div class="field-row"><div class="fl">Vibrate<div class="fh">On logging a set and when rest ends</div></div>'+
       '<button class="switch'+(S.settings.buzz?" on":"")+'" data-set="buzz"></button></div>'+
+    '<div class="field-row"><div class="fl">Alarm when rest ends'+
+      '<div class="fh">Beeps out loud, and keeps the timer running with the screen off</div></div>'+
+      '<button class="switch'+(S.settings.sound?" on":"")+'" data-set="sound"></button></div>'+
+    '<div class="field-row"><div class="fl">Notify when rest ends'+
+      '<div class="fh">'+(notifyState()==="denied"
+        ? '<span style="color:var(--bad)">Blocked in your browser settings for this site</span>'
+        : notifyState()==="none"
+          ? "This browser can't show notifications"
+          : "Shows up on the lock screen. Needs permission.")+'</div></div>'+
+      '<button class="switch'+(S.settings.notify?" on":"")+'" data-act="toggle-notify"></button></div>'+
+  '</div>';
+
+  html+='<div class="eyebrow" style="margin:6px 0 0">Barbell</div><div class="card">'+
+    '<div class="field-row"><div class="fl">Bar weight<div class="fh">Used for new barbell exercises. Set it per exercise in its ⋯ menu.</div></div>'+
+      '<input class="txt small" inputmode="decimal" type="number" step="any" data-set="bar" value="'+esc(S.settings.bar||"")+'"></div>'+
+    '<div class="field-row" style="display:block">'+
+      '<div class="fl">Plates you own<div class="fh">Counted in pairs — one for each side.</div></div>'+
+      '<div class="plate-ed">'+
+        (S.settings.plates||[]).map(function(p,i){
+          return '<div class="pr-row">'+
+            '<input class="txt" inputmode="decimal" type="number" step="any" data-pw="'+i+'" value="'+esc(p.w)+'">'+
+            '<span class="x">'+esc(unit())+' ×</span>'+
+            '<input class="txt" style="width:60px" inputmode="numeric" type="number" data-pn="'+i+'" value="'+esc(p.n)+'">'+
+            '<span class="x">pairs</span><span class="sp"></span>'+
+            '<button class="rm" data-act="plate-rm" data-i="'+i+'" aria-label="Remove this plate">✕</button>'+
+          '</div>';
+        }).join("")+
+      '</div>'+
+      '<div class="row" style="gap:8px;margin-top:8px">'+
+        '<button class="btn sm ghost" style="flex:1" data-act="plate-add">+ Add a size</button>'+
+        '<button class="btn sm ghost" style="flex:1" data-act="plate-reset">Reset to '+esc(unit())+'</button>'+
+      '</div>'+
+    '</div>'+
   '</div>';
 
   html+='<div class="eyebrow" style="margin:6px 0 0">Data</div><div class="card"><div class="stack">'+
@@ -1961,11 +2318,36 @@ $("#view").addEventListener("click",function(e){
   var pe=t.closest('[data-act="pex-edit"]');
   if(pe){ planExMenu(+pe.dataset.ri,+pe.dataset.ei); return; }
 
+  /* Notifications need a grant, so this switch can't be a plain toggle: it
+     only goes on if the browser actually says yes. */
+  if(t.closest('[data-act="toggle-notify"]')){
+    if(S.settings.notify){ S.settings.notify=false; writeNow(); viewPlan(); return; }
+    askNotify(function(ok,why){
+      S.settings.notify=ok; writeNow(); viewPlan();
+      toast(ok?"Rest alerts will show on your lock screen":(why||"Notifications weren't allowed."));
+    });
+    return;
+  }
+  var pAdd=t.closest('[data-act="plate-add"]');
+  if(pAdd){ S.settings.plates.push({w:0,n:1}); save(); viewPlan(); return; }
+  var pRm=t.closest('[data-act="plate-rm"]');
+  if(pRm){ S.settings.plates.splice(+pRm.dataset.i,1); save(); viewPlan(); return; }
+  if(t.closest('[data-act="plate-reset"]')){
+    S.settings.plates=defaultPlates(unit());
+    S.settings.bar=defaultBar(unit());
+    save(); viewPlan(); toast("Back to the standard "+unit()+" set"); return;
+  }
+
   var sw=t.closest('[data-set]');
   if(sw&&sw.classList.contains("switch")){
     var k2=sw.dataset.set; S.settings[k2]=!S.settings[k2];
-    sw.classList.toggle("on",S.settings[k2]); save(); return;
+    sw.classList.toggle("on",S.settings[k2]); save();
+    if(k2==="sound"&&S.settings[k2]) playSrc(audioURLs().alarm,false);   // proves it works
+    if(k2==="sound"&&!S.settings[k2]&&!S.settings.notify) audioStop();
+    return;
   }
+  var pw=t.closest("[data-pw],[data-pn]");
+  if(pw) return;                                  // let the input handler have it
   if(t.closest('[data-act="export"]')){ doExport(); return; }
   if(t.closest('[data-act="import"]')){ doImport(); return; }
   if(t.closest('[data-act="wipe"]')){
@@ -1982,7 +2364,21 @@ $("#view").addEventListener("change",function(e){
   if(k==="rest"&&S.settings.rest<5) S.settings.rest=5;
   if(k==="repLow") S.settings.repLow=Math.max(1,S.settings.repLow);
   if(k==="repHigh") S.settings.repHigh=Math.max(S.settings.repLow,S.settings.repHigh);
+  if(k==="bar") S.settings.bar=Math.max(0,S.settings.bar);
   save();
+});
+/* Plate rows update on input rather than change, so editing the inventory
+   never re-renders the list out from under the field you're typing in. */
+$("#view").addEventListener("input",function(e){
+  if(TAB!=="plan") return;
+  var el=e.target, p;
+  if(el.dataset.pw!==undefined){
+    p=S.settings.plates[+el.dataset.pw];
+    if(p){ p.w=Math.max(0,num(el.value)); save(); }
+  } else if(el.dataset.pn!==undefined){
+    p=S.settings.plates[+el.dataset.pn];
+    if(p){ p.n=Math.max(0,Math.round(num(el.value))); save(); }
+  }
 });
 
 function addToPlan(name){
@@ -1994,7 +2390,8 @@ function addToPlan(name){
     sets:last?last.sets.length:3,
     reps:S.settings.doubleDefault?S.settings.repLow:(last?num(last.sets[0].r):8),
     repTop:S.settings.doubleDefault?S.settings.repHigh:0,
-    inc:null, bw:last?last.bw:0
+    inc:null, bw:last?last.bw:0,
+    bar:last&&last.bar!==undefined?barOf(last):guessBar(name)
   });
   save(); viewPlan();
 }
@@ -2014,7 +2411,13 @@ function dayMenu(ri){
       var d=$('[data-x="del"]',el);
       if(d) d.onclick=function(){
         confirmSheet("Delete "+r.name+"?","Past sessions stay in your history.","Delete",function(){
-          S.routines.splice(ri,1); save(); viewPlan();
+          var gone=S.routines.splice(ri,1)[0];
+          save(); viewPlan();
+          toastUndo("Deleted "+gone.name,function(){
+            S.routines.splice(Math.min(ri,S.routines.length),0,gone);
+            save(); if(TAB==="plan") viewPlan();
+            toast(gone.name+" is back");
+          });
         },true);
       };
       $('[data-x="done"]',el).onclick=function(){ closeSheet(); viewPlan(); };
@@ -2039,6 +2442,7 @@ function planExMenu(ri,ei){
     '<div class="field-row"><div class="fl">Weight step<div class="fh">Blank uses the default ('+esc(S.settings.inc)+')</div></div>'+
       '<input class="txt small" inputmode="decimal" type="number" step="any" data-x="inc" value="'+(ex.inc||"")+'"></div>'+
     loadTypeRow(bwMode(ex),"pbw")+
+    barRow(ex,"pbar")+
     '<div class="menu" style="margin-top:10px">'+
       (ei>0?'<button data-x="up">Move up</button>':"")+
       (ei<r.exercises.length-1?'<button data-x="down">Move down</button>':"")+
@@ -2055,11 +2459,21 @@ function planExMenu(ri,ei){
       $$('[data-pbw]',el).forEach(function(b){
         b.onclick=function(){ ex.bw=num(b.dataset.pbw); save(); closeSheet(); viewPlan(); planExMenu(ri,ei); };
       });
+      $('[data-pbar]',el).oninput=function(){ ex.bar=Math.max(0,num(this.value)); save(); };
       var up=$('[data-x="up"]',el), dn=$('[data-x="down"]',el);
       if(up) up.onclick=function(){ var t=r.exercises[ei-1]; r.exercises[ei-1]=ex; r.exercises[ei]=t; save(); closeSheet(); viewPlan(); };
       if(dn) dn.onclick=function(){ var t=r.exercises[ei+1]; r.exercises[ei+1]=ex; r.exercises[ei]=t; save(); closeSheet(); viewPlan(); };
       $('[data-x="hist"]',el).onclick=function(){ closeSheet(); liftSheet(ex.name); };
-      $('[data-x="del"]',el).onclick=function(){ r.exercises.splice(ei,1); save(); closeSheet(); viewPlan(); };
+      $('[data-x="del"]',el).onclick=function(){
+        var gone=r.exercises.splice(ei,1)[0];
+        save(); closeSheet(); viewPlan();
+        toastUndo("Removed "+gone.name,function(){
+          if(S.routines.indexOf(r)<0) return;      // the whole day went too
+          r.exercises.splice(Math.min(ei,r.exercises.length),0,gone);
+          save(); if(TAB==="plan") viewPlan();
+          toast(gone.name+" is back");
+        });
+      };
       $('[data-x="done"]',el).onclick=function(){
         var newName=nameEl.value.trim();
         if(newName&&newName!==ex.name) renameExercise(ex.name,newName);

@@ -15,9 +15,11 @@ tools/build-artifact.ps1   regenerates artifact-body.html (only needed for the C
 
 ## Put it online (GitHub Pages)
 
-> **Status: not deployed.** Nothing has been uploaded to GitHub yet, so
-> `https://nderkowski.github.io/ironlog/` does not exist until you do the steps
-> below. They're yours to run — they need your GitHub login.
+> **Status: live at https://nderkowski.github.io/ironlog/** — the steps below are
+> kept as the record of how it was set up, and for anyone forking this.
+>
+> To update a deployed copy, push the changed files and **bump `CACHE` in `sw.js`**
+> in the same commit, or installed phones keep serving the cached old version.
 
 Ten minutes, once.
 

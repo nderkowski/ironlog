@@ -9,42 +9,58 @@ Ship in slices; each slice should leave the app fully usable.
 
 ---
 
-## Slice 0 — confirm the last round on a real phone
+## Slice 0 — confirm on a real phone
 
-Nothing new. Three things shipped that could not be verified from a desktop
-browser, and all three are load-bearing:
+**Still open, and now blocking more than it was.** Everything here is a thing a
+desktop browser structurally cannot answer.
 
 - [ ] The tap-freeze fix on Android Chrome (the reason the re-render was removed)
 - [ ] The backup share sheet — does `navigator.share({files})` actually reach Drive
-- [ ] Install to home screen once GitHub Pages is live, then a full offline session
-      (nothing is deployed yet — the repo at `nderkowski/ironlog` still has to be
-      created by hand; see README)
+- [ ] Install to home screen from https://nderkowski.github.io/ironlog/, then a
+      full offline session
+- [ ] **New, and the important one:** does the rest alarm fire with the screen off
+      and the phone in a pocket? The quiet-audio keep-alive is verified in the
+      foreground, but whether Android Chrome keeps the page alive on a locked
+      screen is the entire question and it can only be answered on the phone.
+      Start a rest, lock, pocket, wait.
+- [ ] Notification grant path — headless Chromium only exercised the refusal.
 
 If the tap freeze survives, the next suspect is the artifact iframe rather than
 the app, and the self-hosted build should be tested before changing any more code.
 
+If the rest alarm *doesn't* survive a locked screen, the fallback is a
+`showTrigger` notification or accepting that the alarm needs the app foregrounded
+— but don't reach for either until the phone says the current approach failed.
+
+**If the backup share sheet turns out to be broken, that jumps the queue ahead of
+Slice 2.** A logger with no working backup is one cleared browser away from
+losing everything, which outranks any feature on this list.
+
 ---
 
-## Slice 1 — the gym-floor essentials
+## Slice 1 — the gym-floor essentials ✅ *shipped 1 Aug 2026*
 
-Everything here is hit in a normal session and is currently missing.
+**1. Rest timer that survives a locked screen.** A near-silent looping WAV keeps
+the page alive during a rest; at zero the same `<audio>` element swaps to an
+audible beep, plus vibration and an optional lock-screen notification. Two new
+settings (`sound`, `notify`); permission is asked only on tap and refusal is
+explained in place. See PROJECT_STATE for why it works this way.
+*Foreground-verified only — see Slice 0.*
 
-**1. Rest timer that survives a locked screen.** Today the countdown is wall-clock
-based so it's *correct* when you come back, but the vibration never fires from a
-backgrounded page. In a real gym the phone is in a pocket. Needs a Notification
-with a timestamp, or an audio element that keeps the page alive. Requires
-notification permission, so handle the denial path.
+**2. Plate calculator.** Per-exercise `bar` weight (0 = not a barbell, guessed
+from the name on creation), configurable inventory counted in pairs, and a plate
+line under every barbell set row that updates as you type. Inexact loads show the
+achievable total rather than lying.
 
-**2. Plate calculator.** Given a target and a bar weight, show plates per side.
-Should be a per-exercise flag (barbell yes, dumbbell no) with a configurable
-plate inventory. Highest-value-per-line-of-code item on this list.
+**3. Reorder exercises mid-workout.** "Move to the top" / up / down in the
+exercise ⋯ menu, which is what a busy rack actually calls for.
 
-**3. Reorder exercises mid-workout.** A rack is busy and you do things out of
-order. Plan editing only offers "move up" and there is no in-session equivalent.
+**4. Undo after a destructive action.** 10-second undo toast on the four
+destructive paths, holding the removed object in a closure.
 
-**4. Undo after a destructive action.** Deleting a session or an exercise is
-confirm-then-gone. Keep the last deleted object in memory and offer undo in the
-toast for ~10 seconds.
+Also fixed in passing: the artifact build script mangled every non-ASCII
+character (PowerShell 5.1 encoding defaults), and the toast wrapped to three
+lines because a fixed-position shrink-to-fit box is capped at 50vw by `left:50%`.
 
 ---
 
@@ -118,7 +134,9 @@ Not bugs, but they should be revisited and are honest limits of the current mode
   flat lifts the goal rather than a warning.
 - **Unit switching relabels without converting.** Flipping lb → kg leaves every
   historical number numerically identical. Either convert the whole log on switch
-  or refuse to switch once history exists.
+  or refuse to switch once history exists. It now also strands the bar weight and
+  plate inventory in the old unit — there's a "Reset to kg/lb" button in settings,
+  but nothing prompts you to press it.
 - **Bodyweight is a single current value.** `session.bw` snapshots it per session
   going forward, but sessions logged before that field existed have none, and
   there's no bodyweight history. If bodyweight tracking gets built, backfill it.

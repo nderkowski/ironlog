@@ -4,7 +4,7 @@ Read this first. It is the current state of the app, the reasoning behind the
 non-obvious parts, and what has actually been verified. Pair it with
 [ROADMAP.md](ROADMAP.md) for what to build next.
 
-*Last updated: 31 Jul 2026 — built with Claude Opus 5.*
+*Last updated: 1 Aug 2026 — built with Claude Opus 5.*
 
 ---
 
@@ -27,10 +27,14 @@ between-sets moment is wrong unless it removes two decisions elsewhere.
 | Build step | `tools/build-artifact.ps1` (strips the doctype/head, drops the SW registration) |
 | PWA support | `manifest.webmanifest`, `sw.js`, `icon-*.png` |
 | Live artifact | https://claude.ai/code/artifact/af735a88-8f5a-480e-abe1-fe22f4c684fc (private to Nick's Claude account) |
-| Self-hosted | **not deployed.** Target is https://nderkowski.github.io/ironlog/ — repo does not exist yet; steps in [README.md](README.md) |
+| Self-hosted | https://nderkowski.github.io/ironlog/ — live from GitHub Pages |
 
 After editing `index.html`: run the build script, republish the artifact, and
 **bump `CACHE` in `sw.js`** or self-hosted installs keep serving the old copy.
+
+The build script must read *and* write UTF-8 explicitly. Windows PowerShell 5.1
+reads as ANSI by default and writes a BOM with `-Encoding utf8`; the first
+published artifact had every em-dash mangled to `â€"` because of it.
 
 ## Architecture
 
@@ -47,6 +51,12 @@ Vanilla JS, no framework, no build, no dependencies, no network calls. One IIFE.
 - **Exception, and it matters:** logging a set does *not* re-render. See below.
 - Events use delegation on `#view`. There are two click listeners: the first
   handles Today, the second early-returns unless `TAB` is progress or plan.
+- **`data-x` values are scoped to a sheet, so they collide.** Sheet handlers wire
+  up with `$('[data-x="..."]', el)`, which returns the *first* match in the whole
+  sheet — a menu button named `top` silently binds its handler to the rep-range
+  input of the same name, and the button does nothing. The in-session reorder
+  buttons are `mvtop` / `mvup` / `mvdn` for exactly this reason. Grep the sheet
+  before naming a new one.
 
 ### The data model
 
@@ -55,15 +65,17 @@ S = {
   version, settings, routines[], sessions[], active
 }
 
-settings = { unit, rest, autoRest, buzz, inc,
+settings = { unit, rest, autoRest, buzz, sound, notify, inc,
              doubleDefault, repLow, repHigh,
-             bodyweight, deloadUntil, deloadSnooze, lastBackup }
+             bodyweight, deloadUntil, deloadSnooze,
+             bar, plates[], lastBackup }
+  plates[] = { w, n }        // n = PAIRS owned, not singles
 
 routine  = { id, key, name, exercises[] }
-  exercise (plan) = { id, name, sets, reps, repTop, inc, bw }
+  exercise (plan) = { id, name, sets, reps, repTop, inc, bw, bar }
 
 session  = { id, ts, endTs, routineId, key, name, note, bw, deload, exercises[] }
-  exercise (logged) = { id, planId, name, targetReps, reps, repTop, inc, bw,
+  exercise (logged) = { id, planId, name, targetReps, reps, repTop, inc, bw, bar,
                         supplemental, why, kind, lastW, lastR, sets[] }
     set = { w, r, done, warm, pr, load, ts }
 ```
@@ -83,6 +95,10 @@ Notes that will bite you if you miss them:
 - **`deload: true` sessions are excluded from `exWorking()`**, which is what
   `trend()` and `lastPerf()` read. They still appear in history, volume totals
   and charts. `exSessions()` returns everything.
+- **`bar` is both the flag and the value.** `bar: 0` (or absent) means "not a
+  loaded barbell" and suppresses the plate line entirely; any positive number is
+  the empty bar's weight. There is no separate boolean to keep in sync.
+  `guessBar()` only ever runs when an exercise is first created.
 
 ### Why logging a set doesn't re-render
 
@@ -96,7 +112,64 @@ uninteractable."
 `refreshSummary()`, which touch only the affected nodes. Verified: the input keeps
 DOM identity *and* keyboard focus across a toggle. **Do not reintroduce a full
 re-render on the set-logging path.** Structural changes (adding a set, adding an
-exercise) may still re-render — they're not in the between-sets hot path.
+exercise, reordering) may still re-render — they're not in the between-sets hot
+path.
+
+The plate line under each set row obeys the same rule. `refreshPlates()` writes
+`innerHTML` into the *existing* `.plates` node rather than replacing it, and the
+node is `pointer-events: none`, so it can neither lose DOM identity nor swallow
+a tap aimed at the tick.
+
+### Why the rest timer plays silent audio
+
+The countdown was always wall-clock correct, but the alert never arrived: a
+backgrounded page has its timers throttled to nothing and `navigator.vibrate()`
+is ignored outright. With the phone in a pocket — the only case that matters —
+the timer did nothing at all.
+
+Android Chrome will not freeze a page that is *playing audio*. So starting a rest
+plays a one-second, near-silent WAV on loop purely to keep the page alive, and at
+zero the **same, already-unlocked** `<audio>` element swaps to an audible tone.
+Reusing one element is what avoids the autoplay problem: the first `play()`
+happens inside the tap that logged the set, and everything after that inherits
+that gesture.
+
+Details worth keeping:
+
+- Both WAVs are **synthesised in JS** (`wavURL()`) rather than embedded as
+  base64 — it keeps the one-file rule at a few hundred bytes of code instead of
+  a few KB of payload.
+- The quiet loop is dithered ±1/32767, not digital silence. A track of pure
+  zeroes can be optimised away and stops counting as playback.
+- If the page gets frozen anyway and thaws late, the alarm is **suppressed past
+  90 seconds** rather than shouting at someone already looking at the screen.
+- Notification permission is requested only when the switch is tapped, never on
+  load, and refusal is reported in the settings row instead of a switch that
+  silently won't stay on.
+- `navigator.serviceWorker.ready` never resolves when nothing is registered, so
+  the notification path tests `.controller` and falls back to `new Notification`.
+  This matters: the artifact build has no service worker.
+
+### Plate maths
+
+`platesFor(target, bar)` works from `(target − bar) / 2` and goes greedy from the
+heaviest plate down, bounded by how many pairs you own. Greedy is optimal for
+every real plate set — each denomination divides the ones above it — and where it
+isn't, the line shows the achievable total (`= 135`) rather than pretending.
+The inventory is counted in **pairs**, because that's how you load a bar.
+
+Only `bwMode(ex) === 0` gets a plate line; assisted and bodyweight work never
+involves loading a bar.
+
+### Undo
+
+`toastUndo(msg, fn)` holds the removed object in a closure for 10 seconds — no
+re-derivation from the DOM, no tombstone in `S`. Wired to the four destructive
+paths: delete session, remove exercise from session, remove plan exercise, delete
+training day. The session one re-runs `recomputePRs()` in **both** directions.
+
+Only the Undo pill takes pointer events; the toast body is `pointer-events: none`
+so a 10-second toast can't sit on top of "Finish workout".
 
 ---
 
@@ -150,6 +223,10 @@ record behind that poisons every future comparison.
 Tested against seeded histories in Chrome via a local static server, plus a
 320 px-wide viewport pass and both colour themes. No console errors on any path.
 
+The Slice 1 round was driven with Playwright against mobile-emulated Chromium
+(390×844, touch), which exercises real clicks and real focus rather than calling
+functions directly. That's how the `data-x="top"` collision below was caught.
+
 **Verified working**
 
 - Split rotation, carry-forward prefill, one-tap logging, rest timer, PR badges
@@ -168,6 +245,24 @@ Tested against seeded histories in Chrome via a local static server, plus a
 - Export / import / bad-file rejection; service worker serves the whole app with
   the server killed
 
+Slice 1 specifically:
+
+- Rest alarm: quiet loop starts on rest and is `loop: true` / playing; at zero the
+  element swaps to the ~1 s beep track with `loop: false`; fires exactly once; skip
+  and restart both stop the audio
+- Plate line: 225 over a 45 bar → `45×2`; 185 → `45 25`; 137 → `45 = 135` flagged
+  as inexact; below the bar flagged; absent on dumbbell work and on assisted /
+  bodyweight modes; survives a set toggle; updates on both typing and the ± steppers
+- `guessBar()` picks up "Back Squat" and "Romanian Deadlift", stays off
+  "Dumbbell Bench Press"
+- Reorder: move-to-top from the ⋯ menu, with the card scrolled into view
+- Undo on all four paths, restoring at the original index; the session path
+  restores PR flags via `recomputePRs()`
+- The toast body does not intercept taps (checked with `elementFromPoint`)
+- Plate inventory editing keeps input focus — it updates on `input`, no re-render
+- Notification **denial** path (headless Chromium reports `denied`): switch stays
+  off and the reason is shown
+
 **Not verified — needs a real phone**
 
 - The "can't tap anything" fix. The cause is understood and the mechanism is
@@ -175,7 +270,14 @@ Tested against seeded histories in Chrome via a local static server, plus a
   confirm it.
 - `navigator.share({files})` — the backup share sheet. Desktop Chrome reports
   `canShare: false`, so that button was never exercised; the download fallback was.
-- Install-to-home-screen and the standalone launch, since nothing is deployed yet.
+- Install-to-home-screen and the standalone launch from Pages.
+- **The whole point of the rest alarm**: that the quiet loop actually keeps the
+  page alive on Android Chrome with the screen off and the phone in a pocket.
+  The mechanism is verified in the foreground; the background survival is exactly
+  what a desktop browser cannot tell you. Test it by starting a rest, locking the
+  phone, pocketing it, and waiting.
+- Notification **grant** path. Headless Chromium has no notification support, so
+  only the refusal branch was exercised.
 
 ## Settled decisions
 
