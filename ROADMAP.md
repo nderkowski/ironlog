@@ -36,9 +36,12 @@ relies on Android's own backup or the user moving it. Options, cheapest first:
 
 1. **Nothing more.** Downloads is auto-synced on many Android setups. Cheapest,
    and unverifiable without checking this specific phone.
-2. **A share target that works.** Find out *why* `navigator.share` fails here
-   (the app now records the error — read it off the backup sheet) and fix or
-   route around it.
+2. **A share target that works.** The device reports
+   `NotAllowedError: Permission denied` with no prompt ever shown. That error
+   means either missing user activation or a refused file type — never an
+   actual denial. Backup → "Sharing not working? Test it" now distinguishes
+   them on the device. Sharing defaults to `text/plain` first, which may fix it
+   outright.
 3. **Google Drive appdata, client-side OAuth.** Genuinely seamless: sign in
    once, every finished session uploads to a private app folder. No backend of
    ours. Costs a Google Cloud OAuth client, an external script, and a network

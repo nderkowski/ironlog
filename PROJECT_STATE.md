@@ -73,7 +73,8 @@ S = {
   version, settings, routines[], sessions[], active
 }
 
-settings = { unit, rest, autoRest, buzz, sound, notify, rpe, autoBackup, inc,
+settings = { unit, rest, autoRest, buzz, sound, notify, rpe, autoBackup,
+             shareMode, inc,
              doubleDefault, repLow, repHigh,
              bodyweight, deloadUntil, deloadSnooze,
              bar, plates[], lastBackup }
@@ -231,6 +232,28 @@ this check was wrong and put the button in a branch a fresh install never
 reaches — which would have made it useless in precisely the situation it exists
 for. Verified by wiping localStorage and restoring from a file the app itself
 had just written.
+
+### "NotAllowedError: Permission denied" is not about permission
+
+`navigator.share()` rejects with `NotAllowedError` in two unrelated cases, and
+**neither involves a prompt** — which is why the message is so misleading. The
+device reported it having never been asked anything.
+
+1. The call had no **transient user activation**.
+2. Chrome refused the **file's type**, even though `canShare()` had just said
+   yes. The two disagree in practice.
+
+The fixes are opposite, so the app no longer guesses: `shareTestSheet()` tries
+four payloads one tap at a time — `.txt` file, `.json` file, file plus title,
+and text with no file — and reports each result. If one works, it is stored in
+`settings.shareMode` and used by "Send a copy" from then on; if all four fail
+identically, the browser is blocking sharing outright and no file-type change
+will help. Backing out of a sheet that *opened* counts as working, because the
+question is whether the sheet appears at all.
+
+The default order now tries **`text/plain` first**: it is on every allowlist,
+the contents are the same JSON either way, and the importer takes both. A
+working share beats a tidier file extension. Downloads are still `.json`.
 
 ### Backup must never dead-end
 

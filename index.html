@@ -642,7 +642,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v9";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v10";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -651,7 +651,7 @@ function defaultState(){
   return {
     version:4,
     settings:{unit:"lb",rest:120,autoRest:true,buzz:true,inc:5,
-              sound:true, notify:false, rpe:false, autoBackup:true,
+              sound:true, notify:false, rpe:false, autoBackup:true, shareMode:"",
               doubleDefault:true,repLow:8,repHigh:12,
               bodyweight:0, deloadUntil:0, deloadSnooze:0,
               bar:45, plates:defaultPlates("lb"),
@@ -3355,17 +3355,93 @@ function markBackedUp(){ S.settings.lastBackup=Date.now(); writeNow(); }
    every share target accepts — and let canShare() pick. The contents are the
    same JSON either way, and the importer takes both. */
 function shareableFile(data){
-  var opts=[["application/json",backupName()],
-            ["text/plain",backupName().replace(/\.json$/,".txt")]];
+  var opts=shareVariants(data);
+  /* A mode proven to work on this device wins over the default order. */
   for(var i=0;i<opts.length;i++){
-    try{
-      var f=new File([data],opts[i][1],{type:opts[i][0]});
-      if(navigator.canShare&&navigator.canShare({files:[f]})) return f;
-    }catch(e){}
+    if(opts[i].k===S.settings.shareMode&&opts[i].file) return opts[i].file;
+  }
+  for(i=0;i<opts.length;i++){
+    if(opts[i].file&&opts[i].can) return opts[i].file;
   }
   return null;
 }
 var lastShareErr="";
+
+/* ---- why sharing fails, answered on the device instead of guessed ----
+   navigator.share() rejects with NotAllowedError in two unrelated cases: the
+   call had no transient user activation, or Chrome refused the file's type.
+   No permission prompt is involved in either, which is why "Permission denied"
+   is such a misleading string. The fixes are opposite, so the app tries the
+   variants one tap at a time and remembers which one worked. */
+function shareVariants(data){
+  function f(name,type){ try{ return new File([data],name,{type:type}); }catch(e){ return null; } }
+  var base=backupName();
+  var list=[
+    {k:"txt",   label:"File as .txt",        file:f(base.replace(/\.json$/,".txt"),"text/plain")},
+    {k:"json",  label:"File as .json",       file:f(base,"application/json")},
+    {k:"titled",label:"File plus a title",   file:f(base,"application/json"), title:true},
+    {k:"text",  label:"Plain text, no file", file:null, text:true}
+  ];
+  list.forEach(function(v){
+    try{
+      v.can = v.text ? !!navigator.share
+            : !!(v.file&&navigator.canShare&&navigator.canShare({files:[v.file]}));
+    }catch(e){ v.can=false; }
+  });
+  return list;
+}
+function sharePayload(v,data){
+  if(v.text) return {title:"Iron Log backup",text:data.slice(0,1500)};
+  return v.title ? {files:[v.file],title:"Iron Log backup"} : {files:[v.file]};
+}
+var shareResults={};
+function shareTestSheet(){
+  var data=payload();
+  var vs=shareVariants(data);
+  function draw(){
+    var anyOk=Object.keys(shareResults).some(function(k){ return shareResults[k]==="worked"; });
+    sheet('<h3>Why sharing fails</h3>'+
+      '<div class="sub">Tap each one. The share sheet should open — back out of it and the result lands here. '+
+      'If <b>every</b> line fails the same way, the problem is this browser blocking sharing outright, not the file type.</div>'+
+      '<div class="card" style="padding:0;margin-bottom:12px">'+
+        vs.map(function(v){
+          var r=shareResults[v.k];
+          return '<div class="field-row" style="padding:10px 12px;margin:0">'+
+            '<div class="fl">'+esc(v.label)+
+              '<div class="fh">'+(v.can?"allowed by canShare()":"canShare() says no")+'</div></div>'+
+            (r?'<div class="num tiny" style="color:'+(r==="worked"?"var(--good)":"var(--bad)")+'">'+esc(r)+'</div>'
+              :'<button class="btn sm ghost" data-try="'+v.k+'">Try</button>')+
+          '</div>';
+        }).join("")+
+      '</div>'+
+      (anyOk?'<div class="banner calm" style="margin-bottom:12px"><div class="bt">Found one that works</div>'+
+        '<div class="bd">"Send a copy" will use it from now on.</div></div>':"")+
+      '<button class="btn ghost block" data-x="close">Close</button>',
+      function(el){
+        $$("[data-try]",el).forEach(function(btn){
+          btn.onclick=function(){
+            var v=vs.filter(function(x){ return x.k===btn.dataset.try; })[0];
+            var p;
+            try{ p=navigator.share(sharePayload(v,data)); }
+            catch(err){ shareResults[v.k]=(err&&err.name)||"threw"; draw(); return; }
+            if(!p||!p.then){ shareResults[v.k]="no promise"; draw(); return; }
+            p.then(function(){
+              shareResults[v.k]="worked";
+              if(!v.text){ S.settings.shareMode=v.k; writeNow(); lastShareErr=""; }
+              draw();
+            }).catch(function(err){
+              /* Backing out of a sheet that opened still proves it opened. */
+              shareResults[v.k]=(err&&err.name==="AbortError")?"worked":((err&&err.name)||"failed");
+              if(shareResults[v.k]==="worked"&&!v.text){ S.settings.shareMode=v.k; writeNow(); lastShareErr=""; }
+              draw();
+            });
+          };
+        });
+        $('[data-x="close"]',el).onclick=function(){ closeSheet(); render(); };
+      });
+  }
+  draw();
+}
 
 /* One tap into whatever the phone can share to — Drive, Files, email, iCloud. */
 function backupSheet(){
@@ -3376,12 +3452,15 @@ function backupSheet(){
     '<div class="sub">'+plural(S.sessions.length,"session")+' · '+Math.round(data.length/1024)+' KB. '+
       'Send yourself a copy anywhere that syncs — Drive, Files, email. Importing it later restores everything exactly.</div>'+
     (lastShareErr?'<div class="banner warn" style="margin-bottom:10px"><div class="bt">Sharing failed last time</div>'+
-      '<div class="bd">'+esc(lastShareErr)+' — "Save file" below always works.</div></div>':"")+
+      '<div class="bd">'+esc(lastShareErr)+' — "Save file" below always works. That error does not mean you '+
+      'refused a prompt; there isn\'t one. It means the browser blocked the call.</div>'+
+      '</div>':"")+
     (file&&!lastShareErr?'<button class="btn primary big block" data-x="share" style="margin-bottom:8px">Send a copy…</button>':
       file?'<button class="btn block" data-x="share" style="margin-bottom:8px">Try sharing again</button>':
       '<div class="tiny muted" style="margin-bottom:8px">This browser won\'t share files, so save one instead.</div>')+
     '<button class="btn '+(file&&!lastShareErr?"":"primary big ")+'block" data-x="dl">Save file to this device</button>'+
     '<button class="btn ghost block" style="margin-top:8px" data-x="copy">Copy as text</button>'+
+    (file?'<button class="tiny muted block" style="width:100%;padding:10px 0" data-x="why">Sharing not working? Test it ›</button>':"")+
     (S.settings.lastBackup?'<div class="tiny muted" style="text-align:center;margin-top:12px">Last copy '+relDate(S.settings.lastBackup)+'</div>':""),
     function(el){
       var sh=$('[data-x="share"]',el);
@@ -3389,7 +3468,11 @@ function backupSheet(){
         /* Nothing async before share() — Chrome needs the tap's user
            activation still live when it is called. */
         var p, settled=false;
-        try{ p=navigator.share({files:[file],title:"Iron Log backup"}); }
+        /* No title unless a titled variant is what proved to work — a bare
+           files payload is the most widely accepted shape. */
+        var body=S.settings.shareMode==="titled"
+          ? {files:[file],title:"Iron Log backup"} : {files:[file]};
+        try{ p=navigator.share(body); }
         catch(err){ shareFailed(err,data); return; }
         if(!p||!p.then){ shareFailed(new Error("share() returned nothing"),data); return; }
         /* A share() that neither resolves nor rejects looks exactly like a dead
@@ -3410,6 +3493,8 @@ function backupSheet(){
           shareFailed(err,data);
         });
       };
+      var why=$('[data-x="why"]',el);
+      if(why) why.onclick=function(){ shareTestSheet(); };
       $('[data-x="dl"]',el).onclick=function(){ downloadBackup(data); closeSheet(); render(); };
       $('[data-x="copy"]',el).onclick=function(){
         if(navigator.clipboard){
