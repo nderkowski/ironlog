@@ -2,7 +2,9 @@
 
 Read this first. It is the current state of the app, the reasoning behind the
 non-obvious parts, and what has actually been verified. Pair it with
-[ROADMAP.md](ROADMAP.md) for what to build next.
+[ROADMAP.md](ROADMAP.md) for what to build next, and [PRODUCT.md](PRODUCT.md)
+for the commercial question. **[Traps](#traps--read-before-changing-anything)
+is the section to read before touching anything.**
 
 *Last updated: 1 Aug 2026 — built with Claude Opus 5.*
 
@@ -242,6 +244,10 @@ device reported it having never been asked anything.
 1. The call had no **transient user activation**.
 2. Chrome refused the **file's type**, even though `canShare()` had just said
    yes. The two disagree in practice.
+
+**On this device it was cause 2, confirmed by the on-device test:** `.txt` and
+plain text share fine, `application/json` does not. Sharing has worked since the
+default order was changed to try `text/plain` first.
 
 The fixes are opposite, so the app no longer guesses: `shareTestSheet()` tries
 four payloads one tap at a time — `.txt` file, `.json` file, file plus title,
@@ -509,6 +515,51 @@ Slice 3:
   phone, pocketing it, and waiting.
 - Notification **grant** path. Headless Chromium has no notification support, so
   only the refusal branch was exercised.
+
+## Traps — read before changing anything
+
+Every one of these cost real time. They are in rough order of how badly they
+bite.
+
+1. **Never re-render on the set-logging path.** `toggleSet()` and the ± steppers
+   mutate state and refresh individual nodes. Rebuilding `#view.innerHTML`
+   between sets desyncs Android Chrome's touch targets and the app goes
+   unresponsive mid-workout. Structural changes may re-render; logging may not.
+2. **GitHub Pages serves `main`.** Work on a branch is invisible to the phone.
+   A whole test round was lost to this. `BUILD` prints at the foot of the Plan
+   tab — check it on the device before believing any bug report.
+3. **An empty `catch` on a user-facing action is a bug**, even when the common
+   case is benign. `.catch(function(){/* user cancelled */})` made a genuinely
+   broken share indistinguishable from a cancelled one, and the symptom was a
+   button that did nothing at all. Cancels are silent; everything else reports.
+4. **`NotAllowedError` from `navigator.share()` is not about permission.** No
+   prompt exists. It means missing user activation *or* a refused file type.
+   `canShare()` approving a type does not mean `share()` will accept it.
+5. **Chrome scores tab audibility from real signal power.** A keep-alive track at
+   -90 dBFS counts as silence and the tab gets frozen anyway. It has to be
+   inaudible to a human but loud to the meter — hence 30 Hz at -27 dBFS.
+6. **`data-x` values collide inside a sheet.** `$('[data-x="top"]', el)` returns
+   the first match in the whole sheet, so a menu button named `top` silently
+   binds its handler to the rep-range input. Grep the sheet before naming one.
+7. **A `<button>` as a flex item is not content-sized in Chrome.** One measured
+   112px wide regardless of its text, as both a float and a flex item.
+   `display:inline-flex` on the button fixes it. This will look like styling and
+   is not.
+8. **`recomputePRs()` after *any* history edit, in both directions.** Delete,
+   undo, import, editor save. A corrected typo otherwise leaves a phantom record
+   that poisons every future comparison.
+9. **Read muscle tags through `tagsOf()`, never `ex.mg`.** Most history has no
+   tags; the fallback chain is what makes the weekly report meaningful instead
+   of reporting zero.
+10. **Fresh-install detection must key off "no data", not "no routines".** A
+    wiped browser lands on a stock A/B/C split with empty days. The restore
+    prompt was first written into a branch that a fresh install never reaches —
+    useless in exactly the situation it exists for.
+11. **Volume is undefined for time and distance.** Use `exVolume(e)` so the
+    metric can't be forgotten at a call site.
+12. **Test through the UI, not the functions.** The `data-x` collision, the
+    112px button and the miswired restore prompt were all invisible to
+    unit-style checks and obvious the moment a real click drove them.
 
 ## Settled decisions
 

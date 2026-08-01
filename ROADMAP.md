@@ -1,7 +1,8 @@
 # Iron Log — roadmap
 
 Prioritised backlog. Read [PROJECT_STATE.md](PROJECT_STATE.md) first for how the
-app is put together and why.
+app is put together and why, and [PRODUCT.md](PRODUCT.md) if the question is
+whether any of this should be sold rather than what to build next.
 
 Ordering logic: **things that corrupt data or break trust first**, then things a
 user hits every session, then things that would only show up as feature requests.
@@ -9,44 +10,35 @@ Ship in slices; each slice should leave the app fully usable.
 
 ---
 
-## Slice 0 — confirm on a real phone
+## Slice 0 — confirm on a real phone ✅ *closed 1 Aug 2026*
 
-Tested on Nick's Android, 1 Aug 2026, against the v7 Pages deploy.
+Tested on Nick's Android against the v7–v10 Pages deploys. Everything here was
+something a desktop browser structurally could not answer.
 
-- [x] **The tap-freeze fix.** Gone. The re-render removal was the right call, and
-      the rule about never re-rendering on the set-logging path stands.
-- [x] **The rest alarm with the screen off. It works.** Self-test reported the
-      alarm at 20.7s of a 20s rest with a longest tick gap of 1s — the page was
-      never frozen. This was the single biggest unknown in the project.
-- [x] **Lock-screen notification.** Fires and displays. The grant path is now
-      exercised, not just the refusal.
-- [x] **Backup — the share sheet is broken on this device, and that is now
-      handled rather than hidden.** It errors cleanly and falls back to writing
-      a file, confirmed on the phone. Since sharing can't be relied on, backup
-      no longer depends on it: finishing a workout writes a file automatically,
-      riding the tap you already made.
-- [ ] Install to home screen, then a full offline session.
-- [ ] Confirm the auto-backup file actually appears after a real workout, and
-      that restoring it on a wiped browser brings everything back. The round
-      trip passes in Chromium; the device has not done it yet.
+- [x] **The tap-freeze fix.** Gone. Removing the re-render was the right call,
+      and the rule against re-rendering on the set-logging path stands.
+- [x] **The rest alarm with the screen off. It works.** Self-test: alarm at
+      20.7s of a 20s rest, longest tick gap 1s — the page was never frozen.
+      This was the single biggest unknown in the project.
+- [x] **Lock-screen notification.** Fires and displays.
+- [x] **Backup sharing. Fixed, and the cause is known.** Chrome was refusing
+      `application/json` as a shareable file type. Not user activation, not a
+      permission — it reports `NotAllowedError: Permission denied` for a refused
+      type, with no prompt ever shown, which sent the first diagnosis the wrong
+      way. On-device testing confirmed `.txt` works and `.json` does not.
+      Sharing now offers `text/plain` first and the Android share sheet opens.
+- [x] **Auto-backup.** Finishing a workout writes a file with no extra tap.
 
-**Still not seamless enough, and this is the live question.** A file in
-Downloads is safe from a cleared browser but not from a lost phone — and it
-relies on Android's own backup or the user moving it. Options, cheapest first:
+Still open, low risk:
 
-1. **Nothing more.** Downloads is auto-synced on many Android setups. Cheapest,
-   and unverifiable without checking this specific phone.
-2. **A share target that works.** The device reports
-   `NotAllowedError: Permission denied` with no prompt ever shown. That error
-   means either missing user activation or a refused file type — never an
-   actual denial. Backup → "Sharing not working? Test it" now distinguishes
-   them on the device. Sharing defaults to `text/plain` first, which may fix it
-   outright.
-3. **Google Drive appdata, client-side OAuth.** Genuinely seamless: sign in
-   once, every finished session uploads to a private app folder. No backend of
-   ours. Costs a Google Cloud OAuth client, an external script, and a network
-   dependency in an app that currently makes zero network calls — which is a
-   real change to what this thing *is*, not just more code.
+- [ ] Install to home screen, then a full offline session end to end.
+- [ ] Confirm on-device that a wiped browser restores from an auto-backup file.
+      The round trip passes in Chromium but the phone has not done it.
+
+**Backup is no longer the thing blocking everything.** There are three
+independent paths off the device now — one-tap share, an automatic file per
+workout, and copy-as-text — plus a restore prompt on a fresh install. What is
+still missing is *off-phone* durability without a manual step, which is Slice 4.
 
 ---
 

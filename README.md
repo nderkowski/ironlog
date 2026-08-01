@@ -8,7 +8,11 @@ index.html                 the whole app
 manifest.webmanifest       makes it installable
 sw.js                      offline cache
 icon-*.png                 home screen icons
-tools/build-artifact.ps1   regenerates artifact-body.html (only needed for the Claude artifact copy)
+tools/build-artifact.ps1   regenerates artifact-body.html (retired; kept for reference)
+
+PROJECT_STATE.md           how it works, why, and the traps to avoid
+ROADMAP.md                 what is built and what is next
+PRODUCT.md                 what it would take to sell it
 ```
 
 ---
