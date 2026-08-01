@@ -344,6 +344,75 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .banner.warn .bd{color:var(--bad);opacity:.85}
 .banner .acts{display:flex;gap:8px;margin-top:10px}
 
+/* ---- weekly sets by muscle ---- */
+.mrow{
+  display:grid;grid-template-columns:82px 1fr 34px;align-items:center;
+  gap:9px;padding:5px var(--pad);
+}
+.mrow .mn{font-size:13px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mrow .mv{
+  font-family:var(--mono);font-variant-numeric:tabular-nums;
+  font-size:13px;font-weight:700;text-align:right;
+}
+.track{position:relative;height:16px;border-radius:5px;background:var(--panel-2);overflow:hidden}
+.track .now{position:absolute;inset:0 auto 0 0;background:var(--accent);border-radius:5px}
+.track .tick{position:absolute;top:0;bottom:0;width:1px;background:var(--bg);opacity:.75}
+/* Last week is a marker, not a bar behind the fill: a ghost bar is invisible
+   whenever this week is bigger, which is exactly when you'd want to see it. */
+.track .prev{
+  position:absolute;top:1px;bottom:1px;width:2px;margin-left:-1px;
+  background:var(--ink-2);border-radius:2px;
+}
+.mrow.zero .mn,.mrow.zero .mv{color:var(--ink-3)}
+
+/* ---- PR board ---- */
+.prrow{
+  display:flex;align-items:baseline;gap:10px;width:100%;text-align:left;
+  padding:10px var(--pad);border-top:1px solid var(--line);
+}
+.prrow:first-child{border-top:none}
+.prrow .prn{flex:1;min-width:0;font-size:14px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prrow .prs{font-family:var(--mono);font-size:13px;font-weight:700;flex:0 0 auto}
+.prrow .prd{font-family:var(--mono);font-size:11px;color:var(--ink-3);flex:0 0 auto;width:52px;text-align:right}
+
+/* ---- calendar ---- */
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal .dow{
+  font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--ink-3);
+  text-align:center;padding-bottom:2px;
+}
+.cal .cell{
+  aspect-ratio:1;border-radius:7px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:12px;color:var(--ink-3);
+  border:1px solid transparent;
+}
+.cal .cell.pad{visibility:hidden}
+.cal .cell.today{border-color:var(--ink-3)}
+.cal .cell.hit{background:var(--accent-soft);color:var(--accent);font-weight:700}
+.cal .cell.hit .k{font-size:9px;letter-spacing:.05em;opacity:.85;margin-top:1px}
+.cal .cell.hit:active{background:var(--accent);color:var(--on-accent)}
+.calhead{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+.calhead .cm{flex:1;font-size:14px;font-weight:700}
+
+/* ---- muscle picker ---- */
+.mgrid{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 2px}
+.mchip{
+  padding:8px 12px;border-radius:999px;border:1px solid var(--line);
+  font-size:13px;font-weight:600;color:var(--ink-2);background:transparent;
+}
+.mchip.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.mchip.on2{background:var(--accent-soft);border-color:var(--accent-soft);color:var(--accent)}
+.mchip.off{opacity:.45}
+.navrow{
+  display:flex;align-items:center;gap:10px;padding:9px 0;
+  border-top:1px solid var(--line);width:100%;text-align:left;
+}
+.navrow .fl{flex:1;font-size:14px}
+.navrow .fv{font-size:13px;color:var(--ink-3);text-align:right;max-width:52%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.navrow .ch{color:var(--ink-3);font-size:15px}
+
 .plift{
   display:flex;align-items:center;gap:12px;
   padding:11px var(--pad);border-top:1px solid var(--line);
@@ -876,6 +945,105 @@ function plateHint(ex,s){
     (r.exact?"":' <span class="off">= '+fmt(r.got)+'</span>');
 }
 
+/* ============================ muscle groups ============================
+   `mg` is the main muscle (one, or "") and `mg2` is a list of helpers.
+   A working set counts 1.0 toward the main muscle and 0.5 toward each helper.
+   Full credit for everything is how volume trackers lie to you: three sets of
+   bench would read as three chest AND three triceps AND three shoulders, and
+   suddenly you're "doing" 40 triceps sets a week.
+   ====================================================================== */
+var MUSCLES=[
+  {k:"chest",   n:"Chest"},
+  {k:"back",    n:"Back"},
+  {k:"traps",   n:"Traps"},
+  {k:"delts",   n:"Shoulders"},
+  {k:"biceps",  n:"Biceps"},
+  {k:"triceps", n:"Triceps"},
+  {k:"forearms",n:"Forearms"},
+  {k:"quads",   n:"Quads"},
+  {k:"hams",    n:"Hamstrings"},
+  {k:"glutes",  n:"Glutes"},
+  {k:"calves",  n:"Calves"},
+  {k:"core",    n:"Core"}
+];
+function muscleName(k){
+  for(var i=0;i<MUSCLES.length;i++) if(MUSCLES[i].k===k) return MUSCLES[i].n;
+  return "";
+}
+function isMuscle(k){ return !!muscleName(k); }
+
+/* First match wins, so the order is the specification: "leg curl" has to be
+   caught before "curl", "upright row" before "row". */
+var MG_GUESS=[
+  [/leg\s*curl|lying\s*curl|nordic|ham(string)?\s*curl/i, "hams",   []],
+  [/rdl|romanian|good\s?morning|stiff.?leg/i,             "hams",   ["glutes","back"]],
+  [/deadlift|dead\s*lift/i,                               "back",   ["hams","glutes","traps"]],
+  [/hip\s*thrust|glute\s*(bridge|kick)|hyperextension|back\s*extension/i,"glutes",["hams"]],
+  [/leg\s*extension|knee\s*extension/i,                   "quads",  []],
+  [/squat|leg\s*press|lunge|step.?up|hack|sissy/i,        "quads",  ["glutes","hams"]],
+  [/calf|calve|toe\s*press/i,                             "calves", []],
+  [/shrug/i,                                              "traps",  []],
+  [/upright\s*row|lateral\s*raise|side\s*raise|front\s*raise/i,"delts",[]],
+  [/rear\s*delt|face\s*pull|reverse\s*(fly|flye|pec)/i,   "delts",  ["back","traps"]],
+  [/overhead\s*press|\bohp\b|shoulder\s*press|military|arnold/i,"delts",["triceps"]],
+  [/bench|chest\s*press|push.?up|\bdip\b|dips|\bfly\b|flye|\bpec\b/i,"chest",["triceps","delts"]],
+  [/pull.?up|chin.?up|pull.?down|lat\s*pull|pullover|\brow\b|rows/i,"back",["biceps"]],
+  [/tricep|skull\s?crusher|push.?down|press.?down|kick.?back|jm\s*press|close.?grip/i,"triceps",[]],
+  [/curl/i,                                               "biceps", ["forearms"]],
+  [/wrist|\bgrip\b|farmer|hang(ing)?\s*hold/i,            "forearms",[]],
+  [/plank|crunch|sit.?up|leg\s*raise|ab\s*(wheel|roll)|russian\s*twist|woodchop|pallof|\bcore\b|\babs?\b/i,"core",[]]
+];
+function guessMuscles(name){
+  var n=String(name||"");
+  for(var i=0;i<MG_GUESS.length;i++)
+    if(MG_GUESS[i][0].test(n)) return {mg:MG_GUESS[i][1], mg2:MG_GUESS[i][2].slice()};
+  return {mg:"", mg2:[]};
+}
+
+/* Tags live on the exercise, but history logged before this feature has none —
+   and a report that says "0 sets, ever" would be worse than useless. So an
+   untagged exercise falls back to however that lift is tagged in the plan
+   today, and failing that to the name guess. */
+function mgIndex(){
+  var idx={};
+  S.routines.forEach(function(r){ r.exercises.forEach(function(e){
+    if(e.mg||(e.mg2&&e.mg2.length)) idx[normName(e.name)]={mg:e.mg||"",mg2:e.mg2||[]};
+  });});
+  return idx;
+}
+function tagsOf(ex,idx){
+  if(ex.mg||(ex.mg2&&ex.mg2.length)) return {mg:ex.mg||"",mg2:ex.mg2||[]};
+  var t=(idx||mgIndex())[normName(ex.name)];
+  return t?t:guessMuscles(ex.name);
+}
+function tagLabel(t){
+  if(!t.mg&&!t.mg2.length) return "";
+  var s=t.mg?muscleName(t.mg):"—";
+  if(t.mg2.length) s+=" + "+t.mg2.map(muscleName).filter(Boolean).join(", ");
+  return s;
+}
+
+/* Weekly sets per muscle, the headline hypertrophy number. Deload sessions
+   count: you still did the sets. */
+function setsByMuscle(a,b){
+  var idx=mgIndex(), out={}, untagged=0;
+  MUSCLES.forEach(function(m){ out[m.k]=0; });
+  S.sessions.forEach(function(s){
+    if(s.ts<a||s.ts>=b) return;
+    s.exercises.forEach(function(e){
+      var n=working(e.sets).filter(function(x){ return x.done!==false; }).length;
+      if(!n) return;
+      var t=tagsOf(e,idx);
+      var main=isMuscle(t.mg)?t.mg:"";
+      var sec=(t.mg2||[]).filter(isMuscle);
+      if(!main&&!sec.length){ untagged+=n; return; }
+      if(main) out[main]+=n;
+      sec.forEach(function(k){ out[k]+=n*0.5; });
+    });
+  });
+  return {by:out, untagged:untagged};
+}
+
 /* Only guessed for brand-new exercises, and always editable afterwards. */
 var BAR_YES=/barbell|squat|bench|deadlift|dead lift|romanian|rdl|overhead press|ohp|military|hip thrust|clean|snatch|good ?morning|pendlay|jm press|floor press/i;
 var BAR_NO=/dumbbell|\bdb\b|machine|cable|smith|kettlebell|\bkb\b|band|goblet|hack|leg press|pendulum|belt squat|bodyweight|assisted|landmine/i;
@@ -898,6 +1066,51 @@ function volumeInRange(a,b){
     if(s.ts>=a&&s.ts<b){ n++; s.exercises.forEach(function(e){ v+=sessionVolume(e.sets); }); }
   });
   return {v:v,n:n};
+}
+
+/* Every lift's best set by estimated 1RM, newest record first — the screen
+   you actually want to look at after a good session. */
+function prBoard(){
+  var out=[];
+  allExerciseNames().forEach(function(x){
+    var best=null, bestV=0, bestTs=0, bestBw=0;
+    exSessions(x.name).forEach(function(s){
+      s.sets.forEach(function(st){
+        var v=e1rm(loadOf(st),num(st.r));
+        if(v>bestV){ bestV=v; best=st; bestTs=s.ts; bestBw=s.bw; }
+      });
+    });
+    if(best) out.push({name:x.name,set:best,e:bestV,ts:bestTs,bw:bestBw});
+  });
+  return out.sort(function(a,b){ return b.ts-a.ts||b.e-a.e; });
+}
+
+/* Month grid, Monday-first to match weekBounds(). Returns 7-wide rows of
+   {day, ts, sessions[]} with nulls for the leading and trailing padding. */
+function monthGrid(offset){
+  var now=new Date();
+  var m=new Date(now.getFullYear(),now.getMonth()-(offset||0),1);
+  var year=m.getFullYear(), mon=m.getMonth();
+  var first=(new Date(year,mon,1).getDay()+6)%7;         // Monday = 0
+  var days=new Date(year,mon+1,0).getDate();
+  var byDay={};
+  S.sessions.forEach(function(s){
+    var d=new Date(s.ts);
+    if(d.getFullYear()===year&&d.getMonth()===mon){
+      (byDay[d.getDate()]=byDay[d.getDate()]||[]).push(s);
+    }
+  });
+  var cells=[],i;
+  for(i=0;i<first;i++) cells.push(null);
+  for(i=1;i<=days;i++) cells.push({day:i,ts:new Date(year,mon,i).getTime(),sessions:byDay[i]||[]});
+  while(cells.length%7) cells.push(null);
+  var rows=[];
+  for(i=0;i<cells.length;i+=7) rows.push(cells.slice(i,i+7));
+  var trained=Object.keys(byDay).length;
+  var n=0; Object.keys(byDay).forEach(function(k){ n+=byDay[k].length; });
+  return {rows:rows, label:m.toLocaleDateString(undefined,{month:"long",year:"numeric"}),
+          trained:trained, sessions:n, days:days, year:year, mon:mon,
+          isCurrent:(offset||0)===0};
 }
 
 /* ============================ the progression engine ============================
@@ -1196,7 +1409,7 @@ function confirmSheet(title,body,label,fn,danger){
 
 /* ============================ navigation ============================ */
 var TAB="today";
-function go(t){ TAB=t; closeSheet(); render(); window.scrollTo(0,0); }
+function go(t){ TAB=t; calOffset=0; closeSheet(); render(); window.scrollTo(0,0); }
 function renderTabs(){
   var tabs=[["today","Today",ICON.today],["progress","Progress",ICON.prog],["plan","Plan",ICON.plan]];
   $("#tabs").innerHTML=tabs.map(function(t){
@@ -1283,6 +1496,7 @@ function makeSessionEx(planEx,planId){
     id:uid(), planId:planId||null, name:planEx.name,
     targetReps:p.r, reps:num(planEx.reps)||p.r, repTop:num(planEx.repTop)||0,
     inc:planEx.inc||null, bw:bwMode(planEx), bar:barOf(planEx),
+    mg:planEx.mg||"", mg2:(planEx.mg2||[]).slice(),
     supplemental:!planId, note:"",
     why:p.why, kind:p.kind,
     lastW:last?num(last.sets[0].w):null, lastR:last?num(last.sets[0].r):null,
@@ -1644,6 +1858,71 @@ function loadTypeRow(mode,attr){
       ? '<div class="tiny" style="color:var(--bad);margin-bottom:8px">Set your bodyweight under Plan → Session so this can compute real loads.</div>':"");
 }
 
+/* A summary row that opens the picker, rather than 24 chips inline — the
+   exercise menu is already long and this is set once per exercise, not per set. */
+function muscleRow(ex){
+  var t=tagsOf(ex), lab=tagLabel(t);
+  var own=!!(ex.mg||(ex.mg2&&ex.mg2.length));
+  return '<button class="navrow" data-x="mg"><span class="fl">Muscles'+
+    (own?"":'<div class="fh">'+(lab?"Guessed from the name — tap to confirm":"Not set, so its sets go uncounted")+'</div>')+
+    '</span><span class="fv">'+esc(lab||"None")+'</span><span class="ch">›</span></button>';
+}
+
+/* Main muscle and helpers are separate controls on purpose. A single tri-state
+   chip would be smaller but you'd have to already know the rule to use it. */
+function musclesSheet(ex,after){
+  /* Materialise the guess on open. Otherwise the summary row reads through
+     tagsOf() and shows "Quads + Glutes" while the picker shows nothing
+     selected — same exercise, two answers. */
+  if(!ex.mg&&!(ex.mg2||[]).length){
+    var g=tagsOf(ex);
+    ex.mg=g.mg; ex.mg2=g.mg2.slice();
+    if(ex.mg||ex.mg2.length) save();
+  }
+  function draw(){
+    var t={mg:ex.mg||"", mg2:(ex.mg2||[]).slice()};
+    sheet('<h3>Muscles</h3><div class="sub">'+esc(ex.name)+'</div>'+
+      '<div class="eyebrow">Main muscle</div>'+
+      '<div class="mgrid">'+MUSCLES.map(function(m){
+        return '<button class="mchip'+(t.mg===m.k?" on":"")+'" data-m="'+m.k+'">'+esc(m.n)+'</button>';
+      }).join("")+'</div>'+
+      '<div class="tiny muted" style="margin-bottom:12px">Each working set counts 1 toward this.</div>'+
+      '<div class="eyebrow">Also works</div>'+
+      '<div class="mgrid">'+MUSCLES.map(function(m){
+        var on=t.mg2.indexOf(m.k)>=0;
+        return '<button class="mchip'+(on?" on2":"")+(t.mg===m.k?" off":"")+'" data-m2="'+m.k+'"'+
+          (t.mg===m.k?" disabled":"")+'>'+esc(m.n)+'</button>';
+      }).join("")+'</div>'+
+      '<div class="tiny muted" style="margin-bottom:12px">Half a set each, so pressing doesn\'t inflate your triceps count.'+
+        '<br>Clearing falls back to a guess from the name.</div>'+
+      '<div class="row" style="gap:8px">'+
+        '<button class="btn ghost" style="flex:1" data-x="clear">Clear</button>'+
+        '<button class="btn primary" style="flex:1" data-x="done">Done</button>'+
+      '</div>',
+      function(el){
+        $$('[data-m]',el).forEach(function(b){
+          b.onclick=function(){
+            var k=b.dataset.m;
+            ex.mg=(ex.mg===k)?"":k;
+            /* A muscle can't be its own helper. */
+            if(ex.mg) ex.mg2=(ex.mg2||[]).filter(function(x){ return x!==ex.mg; });
+            save(); draw();
+          };
+        });
+        $$('[data-m2]',el).forEach(function(b){
+          b.onclick=function(){
+            var k=b.dataset.m2, a=(ex.mg2||[]).slice(), i=a.indexOf(k);
+            if(i>=0) a.splice(i,1); else a.push(k);
+            ex.mg2=a; save(); draw();
+          };
+        });
+        $('[data-x="clear"]',el).onclick=function(){ ex.mg=""; ex.mg2=[]; save(); draw(); };
+        $('[data-x="done"]',el).onclick=function(){ writeNow(); closeSheet(); if(after) after(); };
+      });
+  }
+  draw();
+}
+
 /* One number does the whole job: the empty bar's weight, or blank for
    anything that isn't a loaded barbell. */
 function barRow(ex,attr){
@@ -1673,6 +1952,7 @@ function exerciseMenu(ei){
       '<input class="txt small" inputmode="decimal" type="number" step="any" data-x="inc" value="'+esc(ex.inc||S.settings.inc)+'"></div>'+
     loadTypeRow(bwMode(ex),"bw")+
     barRow(ex,"bar")+
+    muscleRow(ex)+
     '<div class="menu" style="margin-top:10px">'+
       '<button data-x="warmup">+ Add a warm-up set</button>'+
       /* NB: not data-x="top"/"up" — this sheet already uses data-x="top" for
@@ -1702,6 +1982,9 @@ function exerciseMenu(ei){
         ex.bar=Math.max(0,num(this.value));
         save(); viewToday(); refreshSummary();
       };
+      $('[data-x="mg"]',el).onclick=function(){
+        musclesSheet(ex,function(){ exerciseMenu(ei); });
+      };
       $('[data-x="warmup"]',el).onclick=function(){
         ex.sets.unshift({w:ex.sets[0]?ex.sets[0].w:"",r:"5",warm:true,done:false});
         save(); closeSheet(); viewToday(); refreshSummary();
@@ -1725,7 +2008,8 @@ function exerciseMenu(ei){
         var r=S.routines.find(function(x){ return x.id===S.active.routineId; });
         if(!r) return;
         var ne={id:uid(),name:ex.name,sets:working(ex.sets).length,reps:num(ex.reps)||8,
-                repTop:ex.repTop||0,inc:ex.inc||null,bw:bwMode(ex),bar:barOf(ex)};
+                repTop:ex.repTop||0,inc:ex.inc||null,bw:bwMode(ex),bar:barOf(ex),
+                mg:ex.mg||"",mg2:(ex.mg2||[]).slice()};
         r.exercises.push(ne); ex.planId=ne.id; ex.supplemental=false;
         save(); closeSheet(); viewToday(); refreshSummary(); toast("Added to "+r.name);
       };
@@ -1787,14 +2071,15 @@ function pickExercise(target,onPick){
         closeSheet();
         if(onPick){ onPick(name); return; }
         if(target==="plan"){ addToPlan(name); return; }
-        var last=lastPerf(name);
+        var last=lastPerf(name), mgN=tagsOf({name:name});
         S.active.exercises.push(makeSessionEx({
           name:name,
           sets:last?last.sets.length:3,
           reps:S.settings.doubleDefault?S.settings.repLow:(last?num(last.sets[0].r):8),
           repTop:S.settings.doubleDefault?S.settings.repHigh:0,
           inc:null, bw:last?last.bw:0,
-          bar:last&&last.bar!==undefined?barOf(last):guessBar(name)
+          bar:last&&last.bar!==undefined?barOf(last):guessBar(name),
+          mg:mgN.mg, mg2:mgN.mg2
         },null));
         save(); viewToday(); refreshSummary();
         window.scrollTo(0,document.body.scrollHeight);
@@ -1912,6 +2197,8 @@ function viewProgress(){
       (b.v?(delta>=0?"+":"")+Math.round(delta)+"%":"—")+'</div><div class="l">vs last wk</div></div>'+
   '</div>';
 
+  html+=weeklySetsCard(tw,lw);
+
   var names=trackedLifts();
   allExerciseNames().forEach(function(x){ if(names.indexOf(x.name)<0) names.push(x.name); });
   var withData=names.filter(function(n){ return exSessions(n).length>0; });
@@ -1930,6 +2217,9 @@ function viewProgress(){
     '</button>';
   });
   html+='</div>';
+
+  html+=prCard();
+  html+=calendarCard();
 
   html+='<div class="eyebrow" style="margin-bottom:7px">History</div>'+
     '<div class="tiny muted" style="margin-bottom:7px">Tap any session to fix or add sets.</div>'+
@@ -1950,6 +2240,112 @@ function viewProgress(){
     if(c) spark(c,exSessions(n).map(sessionTopE1RM).reverse().slice(-12));
   });
 }
+/* The hypertrophy number. Solid bar is this week, ghost bar behind it is last
+   week, so direction reads at a glance without a second chart. */
+function weeklySetsCard(tw,lw){
+  var now=setsByMuscle(tw.start,tw.end), prev=setsByMuscle(lw.start,lw.end);
+  var shown=MUSCLES.filter(function(m){ return now.by[m.k]>0||prev.by[m.k]>0; });
+  var zero=MUSCLES.filter(function(m){ return !(now.by[m.k]>0||prev.by[m.k]>0); });
+
+  var html='<div class="row" style="margin-bottom:7px"><div class="eyebrow">Weekly sets</div>'+
+    '<span class="tiny muted" style="margin-left:auto">this week vs last</span></div>';
+
+  if(!shown.length){
+    return html+'<div class="card" style="margin-bottom:12px"><div class="empty">'+
+      (now.untagged||prev.untagged
+        ? 'Nothing is tagged yet.<br>Open an exercise in Plan and set its muscles.'
+        : 'No sets logged in the last two weeks.')+'</div></div>';
+  }
+
+  var max=0;
+  shown.forEach(function(m){ max=Math.max(max,now.by[m.k],prev.by[m.k]); });
+  var scale=Math.max(max,12);
+  shown.sort(function(a,b){ return now.by[b.k]-now.by[a.k]; });
+
+  html+='<div class="card" style="padding:9px 0;margin-bottom:12px">';
+  shown.forEach(function(m){
+    var a=now.by[m.k], b=prev.by[m.k];
+    html+='<div class="mrow'+(a?"":" zero")+'">'+
+      '<div class="mn">'+esc(m.n)+'</div>'+
+      '<div class="track">'+
+        '<div class="now" style="width:'+(a/scale*100).toFixed(1)+'%"></div>'+
+        (scale>10?'<div class="tick" style="left:'+(10/scale*100).toFixed(1)+'%"></div>':"")+
+        (scale>20?'<div class="tick" style="left:'+(20/scale*100).toFixed(1)+'%"></div>':"")+
+        (b>0?'<div class="prev" style="left:'+(b/scale*100).toFixed(1)+'%" title="last week"></div>':"")+
+      '</div>'+
+      '<div class="mv">'+fmt(a)+'</div>'+
+    '</div>';
+  });
+  html+='<div class="tiny muted" style="padding:6px var(--pad) 2px">'+
+    'The dark line is last week. '+
+    (scale>10?'Faint marks are 10 and 20 sets — the usual weekly range for growth. ':"")+
+    'A set counts 1 for the main muscle, ½ for a helper.</div>';
+  if(zero.length)
+    html+='<div class="tiny muted" style="padding:0 var(--pad) 4px">Nothing for '+
+      esc(zero.map(function(m){ return m.n.toLowerCase(); }).join(", "))+'.</div>';
+  if(now.untagged)
+    html+='<div class="tiny" style="padding:2px var(--pad) 4px;color:var(--bad)">'+
+      plural(now.untagged,"set")+' this week aren\'t counted — those exercises have no muscles set.</div>';
+  html+='</div>';
+  return html;
+}
+
+function prCard(){
+  var board=prBoard();
+  if(!board.length) return "";
+  var top=board.slice(0,5);
+  var html='<div class="row" style="margin-bottom:7px"><div class="eyebrow">Records</div>'+
+    (board.length>5?'<button class="tiny muted" style="margin-left:auto" data-act="pr-all">See all '+board.length+' ›</button>':"")+
+    '</div><div class="card" style="padding:0;margin-bottom:12px">'+top.map(prRowHTML).join("")+'</div>';
+  return html;
+}
+function prRowHTML(p){
+  return '<button class="prrow" data-lift="'+esc(p.name)+'">'+
+    '<span class="prn">'+esc(p.name)+'</span>'+
+    '<span class="prs">'+entryText(p.set,p.bw)+' × '+num(p.set.r)+'</span>'+
+    '<span class="prd">'+esc(shortDate(p.ts))+'</span></button>';
+}
+function prSheet(){
+  var board=prBoard();
+  sheet('<h3>Records</h3><div class="sub">Best estimated 1RM for every lift, newest first.</div>'+
+    '<div class="card" style="padding:0">'+board.map(prRowHTML).join("")+'</div>',
+    function(el){
+      $$("[data-lift]",el).forEach(function(b){
+        b.onclick=function(){ closeSheet(); liftSheet(b.dataset.lift); };
+      });
+    });
+}
+
+var calOffset=0;
+function calendarCard(){
+  var g=monthGrid(calOffset);
+  var todayTs=new Date(); todayTs.setHours(0,0,0,0); todayTs=todayTs.getTime();
+  var html='<div class="calhead">'+
+      '<div class="eyebrow">Consistency</div>'+
+      '<div style="flex:1"></div>'+
+      '<button class="iconbtn" data-cal="-1" aria-label="Earlier month">‹</button>'+
+      '<button class="iconbtn" data-cal="1" aria-label="Later month"'+(calOffset<=0?" disabled":"")+'>›</button>'+
+    '</div>'+
+    '<div class="card" style="margin-bottom:12px">'+
+      '<div class="row" style="margin-bottom:9px"><div style="font-size:14px;font-weight:700">'+esc(g.label)+'</div>'+
+        '<div class="tiny muted" style="margin-left:auto">'+
+          (g.sessions?plural(g.sessions,"session")+' · '+plural(g.trained,"day"):"nothing logged")+'</div></div>'+
+      '<div class="cal">'+
+      ["M","T","W","T","F","S","S"].map(function(d){ return '<div class="dow">'+d+'</div>'; }).join("");
+  g.rows.forEach(function(row){
+    row.forEach(function(c){
+      if(!c){ html+='<div class="cell pad"></div>'; return; }
+      var hit=c.sessions.length;
+      html+='<'+(hit?'button':'div')+' class="cell'+(hit?" hit":"")+(c.ts===todayTs?" today":"")+'"'+
+        (hit?' data-calday="'+c.sessions[0].id+'"':"")+'>'+c.day+
+        (hit?'<span class="k">'+esc(hit>1?hit+"×":c.sessions[0].key||"·")+'</span>':"")+
+      '</'+(hit?'button':'div')+'>';
+    });
+  });
+  html+='</div></div>';
+  return html;
+}
+
 function kfmt(v){
   if(v>=1e6) return (v/1e6).toFixed(1)+"M";
   if(v>=1e4) return Math.round(v/1e3)+"k";
@@ -2193,7 +2589,7 @@ function viewPlan(){
       html+='<div class="pex">'+
         '<span class="pxn">'+esc(e.name)+(mode?' <span class="chip tag">'+(mode===1?"BW":"ASST")+'</span>':"")+
           (!mode&&barOf(e)?' <span class="chip tag">BAR '+fmt(barOf(e))+'</span>':"")+'</span>'+
-        '<span class="pxs">'+e.sets+'×'+esc(range)+'</span>'+
+        '<span class="pxs">'+esc(muscleName(tagsOf(e).mg)||"?")+' · '+e.sets+'×'+esc(range)+'</span>'+
         '<button class="iconbtn" data-act="pex-up" data-ri="'+ri+'" data-ei="'+ei+'" aria-label="Move up">↑</button>'+
         '<button class="iconbtn" data-act="pex-edit" data-ri="'+ri+'" data-ei="'+ei+'" aria-label="Edit">⋯</button>'+
       '</div>';
@@ -2292,6 +2688,15 @@ function viewPlan(){
 
 $("#view").addEventListener("click",function(e){
   if(TAB==="progress"){
+    var cal=e.target.closest("[data-cal]");
+    if(cal){
+      /* offset counts backwards, and there is no future to page into */
+      calOffset=Math.max(0,calOffset-(+cal.dataset.cal));
+      viewProgress(); return;
+    }
+    var cd=e.target.closest("[data-calday]");
+    if(cd){ sessionSheet(cd.dataset.calday); return; }
+    if(e.target.closest('[data-act="pr-all"]')){ prSheet(); return; }
     var lb=e.target.closest("[data-lift]");
     if(lb){ liftSheet(lb.dataset.lift); return; }
     var sb=e.target.closest("[data-sess]");
@@ -2384,14 +2789,15 @@ $("#view").addEventListener("input",function(e){
 function addToPlan(name){
   var r=S.routines[editingRoutine];
   if(!r) return;
-  var last=lastPerf(name);
+  var last=lastPerf(name), mgN=tagsOf({name:name});
   r.exercises.push({
     id:uid(), name:name,
     sets:last?last.sets.length:3,
     reps:S.settings.doubleDefault?S.settings.repLow:(last?num(last.sets[0].r):8),
     repTop:S.settings.doubleDefault?S.settings.repHigh:0,
     inc:null, bw:last?last.bw:0,
-    bar:last&&last.bar!==undefined?barOf(last):guessBar(name)
+    bar:last&&last.bar!==undefined?barOf(last):guessBar(name),
+    mg:mgN.mg, mg2:mgN.mg2
   });
   save(); viewPlan();
 }
@@ -2443,6 +2849,7 @@ function planExMenu(ri,ei){
       '<input class="txt small" inputmode="decimal" type="number" step="any" data-x="inc" value="'+(ex.inc||"")+'"></div>'+
     loadTypeRow(bwMode(ex),"pbw")+
     barRow(ex,"pbar")+
+    muscleRow(ex)+
     '<div class="menu" style="margin-top:10px">'+
       (ei>0?'<button data-x="up">Move up</button>':"")+
       (ei<r.exercises.length-1?'<button data-x="down">Move down</button>':"")+
@@ -2460,6 +2867,9 @@ function planExMenu(ri,ei){
         b.onclick=function(){ ex.bw=num(b.dataset.pbw); save(); closeSheet(); viewPlan(); planExMenu(ri,ei); };
       });
       $('[data-pbar]',el).oninput=function(){ ex.bar=Math.max(0,num(this.value)); save(); };
+      $('[data-x="mg"]',el).onclick=function(){
+        musclesSheet(ex,function(){ viewPlan(); planExMenu(ri,ei); });
+      };
       var up=$('[data-x="up"]',el), dn=$('[data-x="down"]',el);
       if(up) up.onclick=function(){ var t=r.exercises[ei-1]; r.exercises[ei-1]=ex; r.exercises[ei]=t; save(); closeSheet(); viewPlan(); };
       if(dn) dn.onclick=function(){ var t=r.exercises[ei+1]; r.exercises[ei+1]=ex; r.exercises[ei]=t; save(); closeSheet(); viewPlan(); };

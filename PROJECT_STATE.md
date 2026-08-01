@@ -23,18 +23,21 @@ between-sets moment is wrong unless it removes two decisions elsewhere.
 | | |
 |---|---|
 | Canonical source | `index.html` — a complete, self-hostable HTML document |
-| Artifact copy | `artifact-body.html` — **generated**, never edit by hand |
-| Build step | `tools/build-artifact.ps1` (strips the doctype/head, drops the SW registration) |
 | PWA support | `manifest.webmanifest`, `sw.js`, `icon-*.png` |
-| Live artifact | https://claude.ai/code/artifact/af735a88-8f5a-480e-abe1-fe22f4c684fc (private to Nick's Claude account) |
-| Self-hosted | https://nderkowski.github.io/ironlog/ — live from GitHub Pages |
+| Live app | https://nderkowski.github.io/ironlog/ — GitHub Pages, deployed from `main` |
+| Repo | `nderkowski/ironlog` |
 
-After editing `index.html`: run the build script, republish the artifact, and
-**bump `CACHE` in `sw.js`** or self-hosted installs keep serving the old copy.
+**The repo is the product.** After editing `index.html`, **bump `CACHE` in
+`sw.js` in the same commit** — otherwise installed phones keep serving the old
+copy from cache, and you'll debug a version that isn't running.
 
-The build script must read *and* write UTF-8 explicitly. Windows PowerShell 5.1
-reads as ANSI by default and writes a BOM with `-Encoding utf8`; the first
-published artifact had every em-dash mangled to `â€"` because of it.
+> **The Claude artifact is no longer maintained.** It was how the app was
+> delivered before Pages existed. `tools/build-artifact.ps1` and the generated
+> `artifact-body.html` are kept for reference only — don't run the build or
+> republish as part of normal work. If you ever do revive it, note that the
+> script must read *and* write UTF-8 explicitly: Windows PowerShell 5.1 reads as
+> ANSI by default and writes a BOM with `-Encoding utf8`, which mangled every
+> em-dash in the published copy to `â€"`.
 
 ## Architecture
 
@@ -72,11 +75,11 @@ settings = { unit, rest, autoRest, buzz, sound, notify, inc,
   plates[] = { w, n }        // n = PAIRS owned, not singles
 
 routine  = { id, key, name, exercises[] }
-  exercise (plan) = { id, name, sets, reps, repTop, inc, bw, bar }
+  exercise (plan) = { id, name, sets, reps, repTop, inc, bw, bar, mg, mg2[] }
 
 session  = { id, ts, endTs, routineId, key, name, note, bw, deload, exercises[] }
   exercise (logged) = { id, planId, name, targetReps, reps, repTop, inc, bw, bar,
-                        supplemental, why, kind, lastW, lastR, sets[] }
+                        mg, mg2[], supplemental, why, kind, lastW, lastR, sets[] }
     set = { w, r, done, warm, pr, load, ts }
 ```
 
@@ -99,6 +102,13 @@ Notes that will bite you if you miss them:
   loaded barbell" and suppresses the plate line entirely; any positive number is
   the empty bar's weight. There is no separate boolean to keep in sync.
   `guessBar()` only ever runs when an exercise is first created.
+- **Muscle tags fall back, they don't default.** `mg` (one main muscle) and
+  `mg2[]` (helpers) may be absent on any exercise — every session logged before
+  the feature existed has none. `tagsOf(ex)` resolves in order: the exercise's
+  own tags → however that *name* is tagged in the plan today → `guessMuscles()`
+  from the name. That's what makes the weekly report meaningful on day one
+  instead of reading "0 sets, ever". Always read tags through `tagsOf()`, never
+  `ex.mg` directly, or old history silently drops out of the report.
 
 ### Why logging a set doesn't re-render
 
@@ -160,6 +170,27 @@ The inventory is counted in **pairs**, because that's how you load a bar.
 
 Only `bwMode(ex) === 0` gets a plate line; assisted and bodyweight work never
 involves loading a bar.
+
+### Weekly sets per muscle
+
+The hypertrophy metric, and the reason the Progress tab is worth opening. A
+completed working set counts **1.0 toward the main muscle and 0.5 toward each
+helper**. Full credit everywhere is how volume trackers lie: three sets of bench
+would read as three chest *and* three triceps *and* three shoulders, and a
+four-exercise session would claim 40 triceps sets a week.
+
+Deload sessions count — you still did the sets. Warm-ups don't, like everywhere
+else.
+
+The bar is this week; the dark line across it is last week. It's a marker rather
+than a ghost bar behind the fill, because a ghost bar is invisible exactly when
+this week is bigger — the case you most want to see. Faint marks sit at 10 and
+20 sets, the usual weekly range for growth.
+
+`guessMuscles()` is an **ordered** list and the order is the specification:
+`leg curl` has to be tested before `curl`, `upright row` before `row`. Adding a
+pattern in the wrong place silently re-tags existing lifts, since untagged
+history resolves through the guess.
 
 ### Undo
 
@@ -262,6 +293,22 @@ Slice 1 specifically:
 - Plate inventory editing keeps input focus — it updates on `input`, no re-render
 - Notification **denial** path (headless Chromium reports `denied`): switch stays
   off and the reason is shown
+
+Slice 2, against a seeded 8-week A/B history whose sessions carry **no** tags,
+so the `tagsOf()` fallback is what's under test:
+
+- Weekly sets arithmetic, checked number by number — bench gives Chest 3 (not 6);
+  Triceps 3 = bench 1.5 + overhead press 1.5; Back 7.5 = row 3 + pulldown 3 +
+  RDL helper 1.5
+- Retagging Back Squat to Core moved 3 sets out of Quads and into Core **across
+  the existing history**, and Quads dropped off the list entirely
+- The last-week marker sits left of the fill when the week is up and right of it
+  when the week is down, measured in pixels rather than eyeballed
+- PR board: capped at 5, "see all" lists every lift, a row opens the lift sheet
+- Calendar: marks trained days, outlines today, disables paging into the future,
+  a trained day opens that session, and the month resets on re-entering the tab
+- The muscle picker preselects the guess, main muscle is disabled as its own
+  helper, and both persist
 
 **Not verified — needs a real phone**
 

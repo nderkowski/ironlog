@@ -64,22 +64,28 @@ lines because a fixed-position shrink-to-fit box is capped at 50vw by `left:50%`
 
 ---
 
-## Slice 2 — make Progress worth opening
+## Slice 2 — make Progress worth opening ✅ *shipped 1 Aug 2026*
 
-The Progress tab currently answers "is this lift moving." It cannot answer the
-question serious lifters actually ask.
+**5. Muscle-group tagging and weekly sets per muscle.** 12 groups, one main
+muscle plus helpers per exercise, guessed from the name and editable in a picker.
+A set counts 1.0 for the main muscle and 0.5 for each helper — full credit
+everywhere is how volume trackers inflate. Untagged history resolves through the
+plan's current tagging and then the name guess, so the report is meaningful
+against existing data rather than starting at zero.
 
-**5. Muscle-group tagging and weekly sets per muscle.** Exercises have no
-categorisation at all today, so nothing can report weekly sets for back, chest,
-quads. This is *the* hypertrophy metric and it is the biggest single gap in the
-app. Needs a `muscles: []` field on the plan exercise, a sensible default guess
-from the name, and a stacked weekly view.
+Shipped as `mg` + `mg2[]` rather than the `muscles: []` the roadmap sketched:
+a flat array can't express "main vs helper", and without that distinction the
+half-set rule has nothing to hang on.
 
-**6. A PR board.** PRs exist per set but there is no one screen that lists every
-lift's best. It's the thing people screenshot.
+Bars are this week with last week as a marker line, not the stacked view
+originally sketched — stacking answers "what made up this week", which is not the
+question. "Is this muscle getting more or less than last week" is.
 
-**7. Calendar / consistency view.** A month grid of trained days. Cheap to build
-from `sessions[].ts`, and it answers "am I actually showing up."
+**6. A PR board.** Every lift's best set by estimated 1RM, newest record first.
+Top 5 in Progress, "see all" for the full board, each row opens the lift's chart.
+
+**7. Calendar / consistency view.** Month grid, Monday-first, trained days marked
+with the routine key. Tap a day to open that session. Pages backwards only.
 
 ---
 
@@ -137,6 +143,15 @@ Not bugs, but they should be revisited and are honest limits of the current mode
   or refuse to switch once history exists. It now also strands the bar weight and
   plate inventory in the old unit — there's a "Reset to kg/lb" button in settings,
   but nothing prompts you to press it.
+- **The ½-set helper weighting is a convention, not a measurement.** It's the
+  common one and it beats both alternatives (full credit inflates, main-only
+  undercounts pressing triceps), but nobody has derived it. If it ever needs to
+  be defended, make the weight per-exercise rather than global.
+- **`guessMuscles()` is a regex list and will mis-tag something eventually.**
+  It's first-match-wins and order-sensitive. The cost is capped — every guess is
+  visible in the Plan row and overridable in two taps — but a wrong guess is
+  silent until you look. Consider surfacing "N exercises still on a guess"
+  in Plan.
 - **Bodyweight is a single current value.** `session.bw` snapshots it per session
   going forward, but sessions logged before that field existed have none, and
   there's no bodyweight history. If bodyweight tracking gets built, backfill it.
@@ -151,5 +166,6 @@ Recorded so they don't get relitigated every session:
 - **Social features, feeds, sharing workouts.** Not the job.
 - **Exercise demo videos or an exercise database.** Bloat; the name is enough.
 - **A framework or a build step.** One file that runs anywhere is the feature.
-  The only build is the artifact-body generator, and that exists solely because
-  the artifact host supplies its own document wrapper.
+- **Maintaining the Claude artifact copy.** The repo and GitHub Pages are the
+  product now. `tools/build-artifact.ps1` and `artifact-body.html` stay in the
+  tree as history; don't rebuild or republish them as part of normal work.
