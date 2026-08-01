@@ -37,8 +37,8 @@ something a desktop browser structurally could not answer.
 
 Still open, low risk:
 
-- [ ] Install to home screen, then a full offline session end to end.
-- [ ] Confirm on-device that a wiped browser restores from an auto-backup file.
+- [ x] Install to home screen, then a full offline session end to end.
+- [ x] Confirm on-device that a wiped browser restores from an auto-backup file.
       The round trip passes in Chromium but the phone has not done it.
 
 **Backup is no longer the thing blocking everything.** There are three
