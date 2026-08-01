@@ -301,13 +301,31 @@ h1,h2,h3{margin:0;text-wrap:balance}
    row, and it is pointer-events:none so it can never eat a tap. */
 .plates{
   grid-column:1/-1;
+  display:flex;align-items:center;gap:8px;
   font-family:var(--mono);font-variant-numeric:tabular-nums;
   font-size:11px;color:var(--ink-3);
   padding-left:25px;margin-top:-3px;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   pointer-events:none;
 }
 .plates:empty{display:none}
+.plates .ptext{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* display:inline-flex is load-bearing, not decoration. A plain <button> here
+   measured 112px wide no matter what text it held — its width was not content
+   driven at all, in Chrome, as either a float or a flex item. inline-flex
+   makes it shrink-wrap its label like every other chip in the app. */
+.plates .rpe{
+  display:inline-flex;align-items:center;
+  flex:0 0 auto;pointer-events:auto;
+  font-size:11px;font-weight:700;letter-spacing:.02em;
+  color:var(--ink-3);padding:6px 11px;border-radius:999px;
+  border:1px solid var(--line);
+}
+.plates .rpe.set{color:var(--accent);border-color:var(--accent-soft);background:var(--accent-soft)}
+.gtag{
+  display:inline-block;font-family:var(--mono);font-size:11px;font-weight:700;
+  color:var(--accent);background:var(--accent-soft);
+  padding:1px 6px;border-radius:6px;margin-right:7px;vertical-align:2px;
+}
 .plates .lb{letter-spacing:.06em;margin-right:5px;opacity:.7}
 .plates i{font-style:normal;opacity:.65}
 .plates .off{color:var(--bad)}
@@ -632,7 +650,7 @@ function defaultState(){
   return {
     version:4,
     settings:{unit:"lb",rest:120,autoRest:true,buzz:true,inc:5,
-              sound:true, notify:false,
+              sound:true, notify:false, rpe:false,
               doubleDefault:true,repLow:8,repHigh:12,
               bodyweight:0, deloadUntil:0, deloadSnooze:0,
               bar:45, plates:defaultPlates("lb"),
@@ -793,7 +811,7 @@ function exSessions(name){
       var e=s.exercises[j];
       if(normName(e.name)!==k) continue;
       var sets=working(e.sets).filter(function(x){ return x.done!==false&&num(x.r)>0; });
-      if(sets.length) out.push({ts:s.ts,sets:sets,sessionId:s.id,deload:!!s.deload,bw:bwMode(e)});
+      if(sets.length) out.push({ts:s.ts,sets:sets,sessionId:s.id,deload:!!s.deload,bw:bwMode(e),metric:metricOf(e)});
     }
   }
   return out;
@@ -813,19 +831,47 @@ function lastRawSets(name){
   }
   return null;
 }
-function bestE1RM(name){
+/* ============================ metrics ============================
+   0 = reps (the default, and what every calculation used to assume)
+   1 = time     — `r` holds seconds
+   2 = distance — `r` holds distance in whatever unit you already think in
+   `r` is reused rather than adding a field, so every input, stepper and
+   history record keeps working unchanged; only its meaning moves.
+   ================================================================= */
+function metricOf(ex){ return num(ex&&ex.metric)||0; }
+function metricNoun(m){ return m===1?"seconds":m===2?"distance":"reps"; }
+function metricShort(m){ return m===1?"secs":m===2?"dist":"reps"; }
+function metricJoin(m){ return m===0?"×":"for"; }
+function metricStep(m){ return m===0?1:5; }
+function metricSuffix(m){ return m===1?"s":""; }
+/* Reps get Epley. Time and distance have no 1RM, so the comparable number is
+   the work itself, scaled by load so a heavier carry still counts as harder.
+   max(load,1) keeps an unloaded plank on its own seconds. */
+function setScore(s,m){
+  if(m===1||m===2) return num(s.r)*Math.max(loadOf(s),1);
+  return e1rm(loadOf(s),num(s.r));
+}
+function scoreLabel(m){ return m===1?"best hold":m===2?"best distance":"e1RM"; }
+
+function bestScore(name){
   var best=0;
-  exSessions(name).forEach(function(s){ s.sets.forEach(function(x){ best=Math.max(best,e1rm(loadOf(x),num(x.r))); }); });
+  exSessions(name).forEach(function(s){
+    s.sets.forEach(function(x){ best=Math.max(best,setScore(x,s.metric)); });
+  });
   return best;
 }
-function sessionTopE1RM(s){
-  var b=0; s.sets.forEach(function(x){ b=Math.max(b,e1rm(loadOf(x),num(x.r))); }); return b;
+function sessionTopScore(s){
+  var b=0; s.sets.forEach(function(x){ b=Math.max(b,setScore(x,s.metric)); }); return b;
 }
-function sessionVolume(sets){
+/* Volume is weight × reps, which is only defined for rep work. A plank or a
+   carry contributes nothing to a pound total rather than a fabricated one. */
+function sessionVolume(sets,m){
+  if(num(m)) return 0;
   var v=0;
   (sets||[]).forEach(function(x){ if(x.done!==false&&!x.warm) v+=loadOf(x)*num(x.r); });
   return v;
 }
+function exVolume(e){ return sessionVolume(e.sets,metricOf(e)); }
 function allExerciseNames(){
   var seen={},out=[];
   S.sessions.forEach(function(s){ s.exercises.forEach(function(e){
@@ -846,7 +892,7 @@ function recomputePRs(){
       var k=normName(e.name);
       e.sets.forEach(function(x){
         if(x.warm||x.done===false){ x.pr=false; return; }
-        var v=e1rm(loadOf(x),num(x.r)), prev=best[k]||0;
+        var v=setScore(x,metricOf(e)), prev=best[k]||0;
         x.pr=prev>0&&v>prev+0.01;
         if(v>prev) best[k]=v;
       });
@@ -858,7 +904,7 @@ function recomputePRs(){
 function trend(name){
   var h=exWorking(name);
   if(h.length<4) return {state:"new",n:h.length,pct:0};
-  var vals=h.map(sessionTopE1RM);
+  var vals=h.map(sessionTopScore);
   var mean=function(a){ return a.reduce(function(x,y){return x+y;},0)/a.length; };
   var a=mean(vals.slice(0,3)), b=mean(vals.slice(3,6));
   if(!b) return {state:"new",n:h.length,pct:0};
@@ -930,8 +976,20 @@ function platesFor(target,bar){
   return {list:out,per:per,got:num(bar)+got*2,exact:Math.abs(got-per)<1e-9};
 }
 
-/* The line under a set row. Returns inner HTML only — the .plates node itself
-   is never replaced, so nothing on the logging path loses DOM identity. */
+/* Everything on the set row's second line. Returns inner HTML only — the
+   .plates node itself is never replaced, so nothing on the logging path loses
+   DOM identity. The RPE chip re-enables pointer events on itself; the rest of
+   the line stays inert so it can't steal a tap meant for the tick. */
+function rowExtras(ex,s){
+  var pl=plateHint(ex,s), rp="";
+  if(S.settings.rpe&&s.done)
+    rp='<button class="rpe'+(num(s.rpe)?" set":"")+'" data-act="rpe" aria-label="Rate how hard that set was">'+
+      (num(s.rpe)?"RPE "+fmt(s.rpe):"RPE")+'</button>';
+  if(!pl&&!rp) return "";              // keeps .plates:empty hiding the row
+  return '<span class="ptext">'+pl+'</span>'+rp;
+}
+
+/* The plate line. Returns inner HTML only. */
 function plateHint(ex,s){
   var bar=barOf(ex);
   if(!bar||bwMode(ex)!==0) return "";
@@ -986,7 +1044,11 @@ var MG_GUESS=[
   [/upright\s*row|lateral\s*raise|side\s*raise|front\s*raise/i,"delts",[]],
   [/rear\s*delt|face\s*pull|reverse\s*(fly|flye|pec)/i,   "delts",  ["back","traps"]],
   [/overhead\s*press|\bohp\b|shoulder\s*press|military|arnold/i,"delts",["triceps"]],
-  [/bench|chest\s*press|push.?up|\bdip\b|dips|\bfly\b|flye|\bpec\b/i,"chest",["triceps","delts"]],
+  [/bench|chest\s*press|push.?up|\bdips?\b|\bfly\b|flye|\bpec\b/i,"chest",["triceps","delts"]],
+  /* Generic presses, but only after the overhead and leg variants above have
+     had their turn — and only when the word "press" is actually there, so
+     "incline dumbbell curl" still falls through to biceps. */
+  [/(incline|decline|floor|dumbbell|\bdb\b)[\w\s-]*press/i,"chest",["triceps","delts"]],
   [/pull.?up|chin.?up|pull.?down|lat\s*pull|pullover|\brow\b|rows/i,"back",["biceps"]],
   [/tricep|skull\s?crusher|push.?down|press.?down|kick.?back|jm\s*press|close.?grip/i,"triceps",[]],
   [/curl/i,                                               "biceps", ["forearms"]],
@@ -1063,7 +1125,7 @@ function weekBounds(offset){
 function volumeInRange(a,b){
   var v=0,n=0;
   S.sessions.forEach(function(s){
-    if(s.ts>=a&&s.ts<b){ n++; s.exercises.forEach(function(e){ v+=sessionVolume(e.sets); }); }
+    if(s.ts>=a&&s.ts<b){ n++; s.exercises.forEach(function(e){ v+=exVolume(e); }); }
   });
   return {v:v,n:n};
 }
@@ -1073,14 +1135,14 @@ function volumeInRange(a,b){
 function prBoard(){
   var out=[];
   allExerciseNames().forEach(function(x){
-    var best=null, bestV=0, bestTs=0, bestBw=0;
+    var best=null, bestV=0, bestTs=0, bestBw=0, bestMet=0;
     exSessions(x.name).forEach(function(s){
       s.sets.forEach(function(st){
-        var v=e1rm(loadOf(st),num(st.r));
-        if(v>bestV){ bestV=v; best=st; bestTs=s.ts; bestBw=s.bw; }
+        var v=setScore(st,s.metric);
+        if(v>bestV){ bestV=v; best=st; bestTs=s.ts; bestBw=s.bw; bestMet=s.metric; }
       });
     });
-    if(best) out.push({name:x.name,set:best,e:bestV,ts:bestTs,bw:bestBw});
+    if(best) out.push({name:x.name,set:best,e:bestV,ts:bestTs,bw:bestBw,metric:bestMet});
   });
   return out.sort(function(a,b){ return b.ts-a.ts||b.e-a.e; });
 }
@@ -1139,9 +1201,19 @@ function harderPhrase(step,mode){
   return mode===2 ? "take "+fmt(step)+" "+unit()+" off the assist"
                   : "add "+fmt(step)+" "+unit();
 }
+/* "12s" for twelve reps, "60s" for sixty seconds — both read naturally.
+   Distance has no such suffix. */
+function amtText(v,m){ return m===2?String(v):(v+"s"); }
+function rpeMean(sets){
+  var v=(sets||[]).filter(function(s){ return num(s.rpe)>0; });
+  if(!v.length||v.length*2<sets.length) return 0;
+  return v.reduce(function(a,s){ return a+num(s.rpe); },0)/v.length;
+}
 
 function prescribe(name,ex){
   var step=stepFor(ex);
+  var met=metricOf(ex);
+  var rstep=metricStep(met);
   var low=Math.max(1,num(ex.reps)||num(S.settings.repLow)||8);
   var top=num(ex.repTop)||0;
   var mode=bwMode(ex);
@@ -1177,20 +1249,39 @@ function prescribe(name,ex){
     return {w:back,r:low,sets:nsets,why:"Sliding 3 sessions — back off to "+fmt(back),kind:"deload"};
   }
 
+  /* If last time was already a grind, adding load buys a stall. Only fires
+     when RPE was actually recorded on at least half the working sets, so it is
+     invisible to anyone not using the feature. */
+  var rp=rpeMean(last.sets);
+  if(rp>=9.5)
+    return {w:w,r:Math.max(low,minR),sets:nsets,
+            why:"Averaged RPE "+fmt(rp)+" last time — repeat it before adding",kind:"hold"};
+
+  /* A plank or an unloaded carry has nothing to add weight to, so the metric
+     itself is the progression axis and the range top is a floor, not a cap. */
+  var noLoad=met!==0&&mode===0&&!(w>0);
+  var nextR=Math.min(top||1e9,minR+rstep);
+
   if(top>low){                                        // double progression
-    if(minR>=top)
+    if(minR>=top){
+      if(noLoad) return {w:w,r:minR+rstep,sets:nsets,
+              why:"Held "+amtText(top,met)+" on every set — go for "+(minR+rstep),kind:"up"};
       return {w:harder(w,step,mode),r:low,sets:nsets,
-              why:"Hit "+top+"s on every set — "+harderPhrase(step,mode),kind:"up"};
+              why:"Hit "+amtText(top,met)+" on every set — "+harderPhrase(step,mode),kind:"up"};
+    }
     if(minR>=low)
-      return {w:w,r:Math.min(top,minR+1),sets:nsets,
-              why:"Same weight — go for "+Math.min(top,minR+1)+" this time",kind:"reps"};
-    return {w:w,r:low,sets:nsets,why:"Fell short of "+low+" — run it back",kind:"hold"};
+      return {w:w,r:nextR,sets:nsets,
+              why:(noLoad?"Same as last time":"Same weight")+" — go for "+nextR+" this time",kind:"reps"};
+    return {w:w,r:low,sets:nsets,why:"Fell short of "+amtText(low,met)+" — run it back",kind:"hold"};
   }
 
-  if(minR>=low)                                       // straight sets
+  if(minR>=low){                                      // straight sets
+    if(noLoad) return {w:w,r:minR+rstep,sets:nsets,
+            why:"Hit all "+amtText(low,met)+" — go for "+(minR+rstep),kind:"up"};
     return {w:harder(w,step,mode),r:low,sets:nsets,
-            why:"Hit all "+low+"s — "+harderPhrase(step,mode),kind:"up"};
-  return {w:w,r:low,sets:nsets,why:"Missed "+low+" last time — run it back",kind:"hold"};
+            why:"Hit all "+amtText(low,met)+" — "+harderPhrase(step,mode),kind:"up"};
+  }
+  return {w:w,r:low,sets:nsets,why:"Missed "+amtText(low,met)+" last time — run it back",kind:"hold"};
 }
 
 /* ============================ sparkline ============================ */
@@ -1495,7 +1586,8 @@ function makeSessionEx(planEx,planId){
   return {
     id:uid(), planId:planId||null, name:planEx.name,
     targetReps:p.r, reps:num(planEx.reps)||p.r, repTop:num(planEx.repTop)||0,
-    inc:planEx.inc||null, bw:bwMode(planEx), bar:barOf(planEx),
+    inc:planEx.inc||null, bw:bwMode(planEx), bar:barOf(planEx), metric:metricOf(planEx),
+    link:!!planEx.link,
     mg:planEx.mg||"", mg2:(planEx.mg2||[]).slice(),
     supplemental:!planId, note:"",
     why:p.why, kind:p.kind,
@@ -1551,7 +1643,7 @@ function todayIdle(){
   var last=S.sessions[0];
   if(last){
     var vol=0,sets=0;
-    last.exercises.forEach(function(e){ vol+=sessionVolume(e.sets); sets+=working(e.sets).length; });
+    last.exercises.forEach(function(e){ vol+=exVolume(e); sets+=working(e.sets).length; });
     html+='<div class="card">'+
       '<div class="row"><div class="eyebrow">Last session</div><div style="flex:1"></div>'+
       '<span class="tiny muted">'+esc(relDate(last.ts))+'</span></div>'+
@@ -1604,18 +1696,21 @@ function todayActive(){
 }
 
 function exerciseCard(ex,ei){
-  var best=bestE1RM(ex.name);
+  var best=bestScore(ex.name);
   var last=lastPerf(ex.name);
   var t=trend(ex.name);
   var mode=bwMode(ex);
-  var range=ex.repTop>ex.reps?(ex.reps+"–"+ex.repTop):String(ex.targetReps);
+  var met=metricOf(ex);
+  var range=(ex.repTop>ex.reps?(ex.reps+"–"+ex.repTop):String(ex.targetReps))+metricSuffix(met);
   var nWork=working(ex.sets).length;
+  var gtag=groupTag(S.active.exercises,ei);
 
   var html='<section class="card ex" data-ei="'+ei+'">'+
     '<div class="ex-head"><div class="t">'+
-      '<div class="ex-name">'+esc(ex.name)+'</div>'+
+      '<div class="ex-name">'+(gtag?'<span class="gtag">'+esc(gtag)+'</span>':"")+esc(ex.name)+'</div>'+
       '<div class="ex-meta">'+
         '<span>'+nWork+' × '+esc(range)+(ex.repTop>ex.reps?" range":" target")+'</span>'+
+        (met?'<span class="chip tag">'+(met===1?"TIME":"DISTANCE")+'</span>':"")+
         (mode===1?'<span class="chip tag">BODYWEIGHT</span>':mode===2?'<span class="chip tag">ASSISTED</span>':"")+
         (ex.supplemental?'<span class="chip tag">EXTRA</span>':"")+
         (t.state==="down"?'<span class="chip bad tag">SLIPPING</span>':
@@ -1626,12 +1721,12 @@ function exerciseCard(ex,ei){
 
   html+='<div class="callout">';
   if(last){
-    var summary=last.sets.map(function(s){ return entryText(s,last.bw||mode)+"×"+num(s.r); }).join("  ");
+    var summary=last.sets.map(function(s){ return entryText(s,last.bw||mode)+metricJoin(met)+num(s.r)+metricSuffix(met); }).join("  ");
     var first=working(ex.sets)[0];
     var differs=ex.lastW!==null&&first&&(num(first.w)!==ex.lastW||num(first.r)!==ex.lastR);
     html+='<div class="lastrow"><span>'+esc(relDate(last.ts))+'</span>'+
       '<span class="num">'+esc(summary)+'</span>'+
-      (differs?'<button class="revert" data-act="revert" data-ei="'+ei+'">Keep '+esc(entryText({w:ex.lastW},mode))+'×'+ex.lastR+'</button>':"")+
+      (differs?'<button class="revert" data-act="revert" data-ei="'+ei+'">Keep '+esc(entryText({w:ex.lastW},mode))+metricJoin(met)+ex.lastR+metricSuffix(met)+'</button>':"")+
     '</div>';
   } else {
     html+='<div class="lastrow"><span>First time logging this one.</span></div>';
@@ -1653,15 +1748,15 @@ function exerciseCard(ex,ei){
         '<input inputmode="decimal" enterkeyhint="done" type="number" step="any" data-f="w" value="'+esc(s.w)+'" placeholder="'+esc(mode===1?"+":mode===2?"−":unit())+'" aria-label="Weight">'+
         '<button data-act="step" data-f="w" data-d="1" aria-label="More weight">+</button>'+
       '</div>'+
-      '<span class="times">×</span>'+
+      '<span class="times">'+metricJoin(met)+'</span>'+
       '<div class="grp">'+
-        '<button data-act="step" data-f="r" data-d="-1" aria-label="Fewer reps">−</button>'+
-        '<input inputmode="numeric" enterkeyhint="done" type="number" step="1" data-f="r" value="'+esc(s.r)+'" placeholder="reps" aria-label="Reps">'+
-        '<button data-act="step" data-f="r" data-d="1" aria-label="More reps">+</button>'+
+        '<button data-act="step" data-f="r" data-d="-1" aria-label="Less">−</button>'+
+        '<input inputmode="numeric" enterkeyhint="done" type="number" step="1" data-f="r" value="'+esc(s.r)+'" placeholder="'+esc(metricShort(met))+'" aria-label="'+esc(metricNoun(met))+'">'+
+        '<button data-act="step" data-f="r" data-d="1" aria-label="More">+</button>'+
       '</div>'+
       (s.pr?'<span class="prtag">PR</span>':"")+
       '<button class="tick" data-act="toggle" aria-label="Log set">'+ICON.check+'</button>'+
-      '<div class="plates">'+plateHint(ex,s)+'</div>'+
+      '<div class="plates">'+rowExtras(ex,s)+'</div>'+
     '</div>';
   });
   html+='</div>';
@@ -1669,7 +1764,7 @@ function exerciseCard(ex,ei){
   html+='<div class="ex-foot">'+
     '<button class="btn sm ghost" data-act="add-set" data-ei="'+ei+'">+ Set</button>'+
     (nWork>1?'<button class="btn sm ghost" data-act="del-set" data-ei="'+ei+'">− Set</button>':"")+
-    (best?'<span class="chip mono" style="margin-left:auto">best '+Math.round(best)+' e1RM</span>':"")+
+    (best?'<span class="chip mono" style="margin-left:auto">'+esc(scoreLabel(met))+' '+Math.round(best)+'</span>':"")+
   '</div></section>';
   return html;
 }
@@ -1698,7 +1793,7 @@ function refreshPlates(ei,si,row){
   var el=$(".plates",row);
   if(!el) return;
   var ex=S.active.exercises[ei];
-  el.innerHTML=plateHint(ex,ex.sets[si]);
+  el.innerHTML=rowExtras(ex,ex.sets[si]);
 }
 function refreshSummary(){
   var el=$("#sess-summary");
@@ -1742,7 +1837,7 @@ $("#view").addEventListener("click",function(e){
     var row=step.closest(".set");
     var f=step.dataset.f, d=num(step.dataset.d);
     var ex=S.active.exercises[+row.dataset.ei], st=ex.sets[+row.dataset.si];
-    var by=f==="w"?stepFor(ex):1;
+    var by=f==="w"?stepFor(ex):metricStep(metricOf(ex));
     st[f]=String(Math.max(0,round(num(st[f])+d*by,2)));
     $('input[data-f="'+f+'"]',row).value=st[f];
     if(st.done){ st.load=effLoad(st.w,bwMode(ex)); refreshSummary(); }
@@ -1757,6 +1852,12 @@ $("#view").addEventListener("click",function(e){
     return;
   }
 
+  var rp=t.closest('[data-act="rpe"]');
+  if(rp){
+    var rrow=rp.closest(".set");
+    rpeSheet(+rrow.dataset.ei,+rrow.dataset.si);
+    return;
+  }
   var wm=t.closest('[data-act="warm"]');
   if(wm){
     var r3=wm.closest(".set");
@@ -1834,15 +1935,46 @@ function toggleSet(ei,si){
   if(st.warm){ st.pr=false; }
   else {
     /* A PR has to beat the history and everything already done today. */
-    var histBest=bestE1RM(ex.name), bar=histBest;
-    ex.sets.forEach(function(o,i){ if(o.done&&!o.warm&&i!==si) bar=Math.max(bar,e1rm(loadOf(o),num(o.r))); });
-    st.pr=loadOf(st)>0&&histBest>0&&e1rm(loadOf(st),num(st.r))>bar+0.01;
+    var met=metricOf(ex);
+    var histBest=bestScore(ex.name), bar=histBest;
+    ex.sets.forEach(function(o,i){ if(o.done&&!o.warm&&i!==si) bar=Math.max(bar,setScore(o,met)); });
+    st.pr=setScore(st,met)>0&&histBest>0&&setScore(st,met)>bar+0.01;
   }
   buzz(14);
-  if(S.settings.autoRest) startRest(S.settings.rest);
+  if(S.settings.autoRest&&lastInGroup(S.active.exercises,ei)) startRest(S.settings.rest);
   save();
   refreshSetRow(ei,si); refreshSummary();
   if(st.pr) toast("New PR on "+ex.name);
+}
+
+/* Rated after the set, never before it — an extra field you must fill in to
+   log a set would break the one-tap rule outright. Off by default. */
+var RPE_SCALE=[10,9.5,9,8.5,8,7.5,7,6.5,6];
+function rpeHelp(v){
+  if(v>=10) return "nothing left";
+  if(v>=9.5) return "maybe half a rep left";
+  var rir=Math.round((10-v)*2)/2;
+  return fmt(rir)+" rep"+(rir===1?"":"s")+" in reserve";
+}
+function rpeSheet(ei,si){
+  var ex=S.active.exercises[ei], st=ex.sets[si];
+  sheet('<h3>How hard was that?</h3>'+
+    '<div class="sub">'+esc(ex.name)+' · set '+(si+1)+'. Optional — it only changes what gets prescribed if you log it.</div>'+
+    '<div class="picklist">'+RPE_SCALE.map(function(v){
+      return '<button data-rpe="'+v+'"'+(num(st.rpe)===v?' style="background:var(--panel-2)"':"")+'>'+
+        '<b>RPE '+fmt(v)+'</b><span class="h">'+esc(rpeHelp(v))+'</span></button>';
+    }).join("")+'</div>'+
+    '<button class="btn ghost block" style="margin-top:6px" data-x="clear">Clear</button>',
+    function(el){
+      $$("[data-rpe]",el).forEach(function(b){
+        b.onclick=function(){
+          st.rpe=num(b.dataset.rpe); save(); closeSheet(); refreshPlates(ei,si);
+        };
+      });
+      $('[data-x="clear"]',el).onclick=function(){
+        delete st.rpe; save(); closeSheet(); refreshPlates(ei,si);
+      };
+    });
 }
 
 function loadTypeRow(mode,attr){
@@ -1856,6 +1988,140 @@ function loadTypeRow(mode,attr){
     '</div>'+
     (mode!==0&&!num(S.settings.bodyweight)
       ? '<div class="tiny" style="color:var(--bad);margin-bottom:8px">Set your bodyweight under Plan → Session so this can compute real loads.</div>':"");
+}
+
+/* Reps is the default and always will be; the other two exist so planks and
+   carries stop being logged as a lie ("60 reps"). */
+/* ============================ templates ============================
+   Three empty days and a text box is a twenty-minute setup and the most
+   predictable reason to give up before the first session. These are ordinary
+   routines — nothing here is a special case afterwards; `bar` is left to
+   guessBar() and muscles to guessMuscles(), so a template gets exactly the
+   same treatment as anything you type yourself.
+   =================================================================== */
+var TEMPLATES=[
+  {id:"ppl", name:"Push / Pull / Legs",
+   note:"Three days, each hit once a week. The most common split there is.",
+   days:[
+     ["Push",["Bench Press","Overhead Press","Incline Dumbbell Press","Lateral Raise","Triceps Pushdown"]],
+     ["Pull",["Barbell Row","Lat Pulldown","Face Pull","Barbell Curl","Hammer Curl"]],
+     ["Legs",["Back Squat","Romanian Deadlift","Leg Press","Leg Curl","Standing Calf Raise"]]
+   ]},
+  {id:"ul", name:"Upper / Lower",
+   note:"Two days, run twice a week if you can. Good if you train four times.",
+   days:[
+     ["Upper",["Bench Press","Barbell Row","Overhead Press","Lat Pulldown","Barbell Curl","Triceps Pushdown"]],
+     ["Lower",["Back Squat","Romanian Deadlift","Leg Press","Leg Curl","Standing Calf Raise","Plank"]]
+   ]},
+  {id:"fb", name:"Full body, 3 days",
+   note:"Everything every session. Best return if you only train three times.",
+   days:[
+     ["Day A",["Back Squat","Bench Press","Barbell Row","Overhead Press","Plank"]],
+     ["Day B",["Deadlift","Overhead Press","Lat Pulldown","Leg Press","Hanging Leg Raise"]],
+     ["Day C",["Front Squat","Incline Dumbbell Press","Barbell Row","Barbell Curl","Standing Calf Raise"]]
+   ]}
+];
+function applyTemplate(t){
+  S.routines=t.days.map(function(d,i){
+    return {
+      id:uid(), key:String.fromCharCode(65+i), name:d[0],
+      exercises:d[1].map(function(n){
+        var g=guessMuscles(n);
+        return {id:uid(), name:n,
+                sets:3,
+                reps:S.settings.repLow||8,
+                repTop:S.settings.repHigh||12,
+                inc:null, bw:0, bar:guessBar(n), metric:guessMetric(n),
+                mg:g.mg, mg2:g.mg2};
+      })
+    };
+  });
+  writeNow();
+}
+/* Planks and carries in a template shouldn't arrive claiming "8 reps". */
+function guessMetric(name){
+  if(/plank|hold|dead ?hang|wall ?sit|\bl-?sit\b/i.test(name)) return 1;
+  if(/carry|walk|sled|prowler|\brun\b|row erg|bike|treadmill/i.test(name)) return 2;
+  return 0;
+}
+function templateSheet(){
+  var used=S.routines.some(function(r){ return r.exercises.length; });
+  sheet('<h3>Start from a template</h3>'+
+    '<div class="sub">'+(used
+      ? "This replaces your training days. Sessions already logged stay in your history."
+      : "Pick one and edit it — every exercise, rep range and set count is yours to change.")+'</div>'+
+    '<div class="picklist">'+TEMPLATES.map(function(t){
+      return '<button data-tpl="'+t.id+'" style="display:block">'+
+        '<div style="font-weight:700">'+esc(t.name)+'</div>'+
+        '<div class="tiny muted" style="margin-top:2px">'+esc(t.note)+'</div>'+
+        '<div class="tiny muted" style="margin-top:3px;font-family:var(--mono)">'+
+          esc(t.days.map(function(d){ return d[0]+" ("+d[1].length+")"; }).join(" · "))+'</div>'+
+      '</button>';
+    }).join("")+'</div>'+
+    '<button class="btn ghost block" style="margin-top:6px" data-x="cancel">Cancel</button>',
+    function(el){
+      $$("[data-tpl]",el).forEach(function(b){
+        b.onclick=function(){
+          var t=TEMPLATES.filter(function(x){ return x.id===b.dataset.tpl; })[0];
+          if(!t) return;
+          var before=JSON.parse(JSON.stringify(S.routines));
+          applyTemplate(t); closeSheet(); viewPlan();
+          toastUndo(t.name+" loaded",function(){
+            S.routines=before; writeNow(); if(TAB==="plan") viewPlan(); toast("Put your split back");
+          });
+        };
+      });
+      $('[data-x="cancel"]',el).onclick=closeSheet;
+    });
+}
+
+/* ============================ supersets ============================
+   A group is defined by ADJACENCY, not by a shared id: `link: true` means
+   "this exercise belongs with the one above it". Ids would need repairing
+   every time you reorder or delete; adjacency just re-derives, so moving an
+   exercise out of a pair simply ends the pair.
+   =================================================================== */
+function groupsOf(list){
+  var out=[], cur=[];
+  (list||[]).forEach(function(e,i){
+    if(i>0&&e.link) cur.push(i);
+    else { if(cur.length) out.push(cur); cur=[i]; }
+  });
+  if(cur.length) out.push(cur);
+  return out;
+}
+/* "A1" / "A2" for a superset member, "" for anything on its own. */
+function groupTag(list,i){
+  var gs=groupsOf(list);
+  for(var g=0;g<gs.length;g++){
+    var pos=gs[g].indexOf(i);
+    if(pos<0) continue;
+    if(gs[g].length<2) return "";
+    return String.fromCharCode(65+g)+(pos+1);
+  }
+  return "";
+}
+/* Rest belongs after the last exercise of a superset, not between its parts —
+   walking straight to the next station is the whole point. */
+function lastInGroup(list,i){
+  var next=list[i+1];
+  return !next||!next.link;
+}
+
+function rangeLabel(m){ return m===1?"Hold range (secs)":m===2?"Distance range":"Rep range"; }
+function metricRow(met,attr){
+  return '<div class="field-row"><div class="fl">Measured in<div class="fh">'+
+      (met===1?"Sets are held for a number of seconds"
+       :met===2?"Sets cover a distance — in whatever unit you already use"
+       :"Sets are counted in reps")+
+    '</div></div>'+
+    '<div class="seg" style="margin:0 0 4px">'+
+      '<button data-'+attr+'="0"'+(met===0?' class="on"':"")+'>Reps</button>'+
+      '<button data-'+attr+'="1"'+(met===1?' class="on"':"")+'>Time</button>'+
+      '<button data-'+attr+'="2"'+(met===2?' class="on"':"")+'>Distance</button>'+
+    '</div>'+
+    (met?'<div class="tiny muted" style="margin-bottom:8px">No pound volume is counted for '+
+      metricNoun(met)+' work — weight × reps isn\'t defined for it.</div>':"");
 }
 
 /* A summary row that opens the picker, rather than 24 chips inline — the
@@ -1942,7 +2208,7 @@ function exerciseMenu(ei){
       ' today · tap a set number to flag it a warm-up</div>'+
     '<div class="field-row"><div class="fl">Name</div>'+
       '<input class="txt" style="max-width:210px" data-x="name" value="'+esc(ex.name)+'"></div>'+
-    '<div class="field-row"><div class="fl">Rep range<div class="fh">Leave the second box empty for straight sets</div></div>'+
+    '<div class="field-row"><div class="fl">'+esc(rangeLabel(metricOf(ex)))+'<div class="fh">Leave the second box empty for straight sets</div></div>'+
       '<div class="row" style="gap:6px">'+
         '<input class="txt tiny-n" inputmode="numeric" type="number" data-x="low" value="'+esc(ex.reps)+'">'+
         '<span class="muted tiny">to</span>'+
@@ -1951,6 +2217,7 @@ function exerciseMenu(ei){
     '<div class="field-row"><div class="fl">Weight step</div>'+
       '<input class="txt small" inputmode="decimal" type="number" step="any" data-x="inc" value="'+esc(ex.inc||S.settings.inc)+'"></div>'+
     loadTypeRow(bwMode(ex),"bw")+
+    metricRow(metricOf(ex),"met")+
     barRow(ex,"bar")+
     muscleRow(ex)+
     '<div class="menu" style="margin-top:10px">'+
@@ -1958,6 +2225,7 @@ function exerciseMenu(ei){
       /* NB: not data-x="top"/"up" — this sheet already uses data-x="top" for
          the rep-range field, and the collision silently binds the handler to
          the wrong element. */
+      (ei>0?'<button data-x="link">'+(ex.link?"Break the superset":"Superset with the one above")+'</button>':"")+
       (ei>0?'<button data-x="mvtop">Move to the top</button>':"")+
       (ei>0?'<button data-x="mvup">Move up</button>':"")+
       (ei<S.active.exercises.length-1?'<button data-x="mvdn">Move down</button>':"")+
@@ -1985,6 +2253,11 @@ function exerciseMenu(ei){
       $('[data-x="mg"]',el).onclick=function(){
         musclesSheet(ex,function(){ exerciseMenu(ei); });
       };
+      $$('[data-met]',el).forEach(function(b){
+        b.onclick=function(){
+          ex.metric=num(b.dataset.met); save(); closeSheet(); viewToday(); refreshSummary(); exerciseMenu(ei);
+        };
+      });
       $('[data-x="warmup"]',el).onclick=function(){
         ex.sets.unshift({w:ex.sets[0]?ex.sets[0].w:"",r:"5",warm:true,done:false});
         save(); closeSheet(); viewToday(); refreshSummary();
@@ -1993,12 +2266,18 @@ function exerciseMenu(ei){
          viewToday() re-render is fine here. */
       function moveTo(to){
         var moved=S.active.exercises.splice(ei,1)[0];
+        if(to===0) moved.link=false;      // nothing above to pair with
         S.active.exercises.splice(to,0,moved);
         save(); closeSheet(); viewToday(); refreshSummary();
         var card=$('.card.ex[data-ei="'+to+'"]');
         if(card&&card.scrollIntoView) card.scrollIntoView({block:"start"});
         toast(moved.name+(to===0?" moved to the top":" moved"));
       }
+      var lk=$('[data-x="link"]',el);
+      if(lk) lk.onclick=function(){
+        ex.link=!ex.link; save(); closeSheet(); viewToday(); refreshSummary();
+        toast(ex.link?"Supersetted — no rest until the next one is done":"Superset broken");
+      };
       var mt=$('[data-x="mvtop"]',el), mu=$('[data-x="mvup"]',el), md=$('[data-x="mvdn"]',el);
       if(mt) mt.onclick=function(){ moveTo(0); };
       if(mu) mu.onclick=function(){ moveTo(ei-1); };
@@ -2008,7 +2287,7 @@ function exerciseMenu(ei){
         var r=S.routines.find(function(x){ return x.id===S.active.routineId; });
         if(!r) return;
         var ne={id:uid(),name:ex.name,sets:working(ex.sets).length,reps:num(ex.reps)||8,
-                repTop:ex.repTop||0,inc:ex.inc||null,bw:bwMode(ex),bar:barOf(ex),
+                repTop:ex.repTop||0,inc:ex.inc||null,bw:bwMode(ex),bar:barOf(ex),metric:metricOf(ex),link:!!ex.link,
                 mg:ex.mg||"",mg2:(ex.mg2||[]).slice()};
         r.exercises.push(ne); ex.planId=ne.id; ex.supplemental=false;
         save(); closeSheet(); viewToday(); refreshSummary(); toast("Added to "+r.name);
@@ -2079,6 +2358,7 @@ function pickExercise(target,onPick){
           repTop:S.settings.doubleDefault?S.settings.repHigh:0,
           inc:null, bw:last?last.bw:0,
           bar:last&&last.bar!==undefined?barOf(last):guessBar(name),
+          metric:last?metricOf(last):0,
           mg:mgN.mg, mg2:mgN.mg2
         },null));
         save(); viewToday(); refreshSummary();
@@ -2098,7 +2378,7 @@ function finishSheet(){
       if(!s.done) return;
       if(s.warm){ warm++; return; }
       sets++; vol+=effLoad(s.w,mode)*num(s.r);
-      if(s.pr&&(!top||e1rm(loadOf(s),num(s.r))>e1rm(loadOf(top),num(top.r)))) top=s;
+      if(s.pr&&(!top||setScore(s,metricOf(e))>setScore(top,metricOf(e)))) top=s;
     });
     if(top) prs.push(e.name+" "+entryText(top,mode)+"×"+num(top.r));
   });
@@ -2207,10 +2487,10 @@ function viewProgress(){
   if(!withData.length) html+='<div class="empty">No lift history yet.</div>';
   else withData.forEach(function(n,i){
     var h=exSessions(n), t=trend(n);
-    var top=h[0].sets.reduce(function(x,y){ return e1rm(loadOf(y),num(y.r))>e1rm(loadOf(x),num(x.r))?y:x; });
+    var top=h[0].sets.reduce(function(x,y){ return setScore(y,h[0].metric)>setScore(x,h[0].metric)?y:x; });
     html+='<button class="plift" data-lift="'+esc(n)+'">'+
       '<div class="pt"><div class="pn">'+esc(n)+'</div>'+
-      '<div class="ps">'+entryText(top,h[0].bw)+' × '+num(top.r)+' · '+relDate(h[0].ts)+'</div></div>'+
+      '<div class="ps">'+entryText(top,h[0].bw)+' '+metricJoin(h[0].metric)+' '+num(top.r)+metricSuffix(h[0].metric)+' · '+relDate(h[0].ts)+'</div></div>'+
       '<canvas data-spark="'+i+'"></canvas>'+
       '<span class="chip '+(t.state==="up"?"good":t.state==="down"?"bad":"")+' mono" style="font-size:11px">'+
         (t.state==="new"?(t.n+"/4"):(t.pct>=0?"+":"")+t.pct.toFixed(1)+"%")+'</span>'+
@@ -2226,7 +2506,7 @@ function viewProgress(){
     '<div class="card" style="padding:0">';
   S.sessions.slice(0,25).forEach(function(s){
     var vol=0,sets=0;
-    s.exercises.forEach(function(e){ vol+=sessionVolume(e.sets); sets+=working(e.sets).length; });
+    s.exercises.forEach(function(e){ vol+=exVolume(e); sets+=working(e.sets).length; });
     html+='<button class="sess" data-sess="'+s.id+'">'+
       '<span class="sd">'+esc(shortDate(s.ts))+'</span>'+
       '<span class="sn">'+esc(s.name)+(s.deload?' <span class="chip tag">DELOAD</span>':"")+'</span>'+
@@ -2237,7 +2517,7 @@ function viewProgress(){
   v.innerHTML=html;
   withData.forEach(function(n,i){
     var c=v.querySelector('canvas[data-spark="'+i+'"]');
-    if(c) spark(c,exSessions(n).map(sessionTopE1RM).reverse().slice(-12));
+    if(c) spark(c,exSessions(n).map(sessionTopScore).reverse().slice(-12));
   });
 }
 /* The hypertrophy number. Solid bar is this week, ghost bar behind it is last
@@ -2302,7 +2582,7 @@ function prCard(){
 function prRowHTML(p){
   return '<button class="prrow" data-lift="'+esc(p.name)+'">'+
     '<span class="prn">'+esc(p.name)+'</span>'+
-    '<span class="prs">'+entryText(p.set,p.bw)+' × '+num(p.set.r)+'</span>'+
+    '<span class="prs">'+entryText(p.set,p.bw)+' '+metricJoin(p.metric)+' '+num(p.set.r)+metricSuffix(p.metric)+'</span>'+
     '<span class="prd">'+esc(shortDate(p.ts))+'</span></button>';
 }
 function prSheet(){
@@ -2354,12 +2634,12 @@ function kfmt(v){
 }
 
 function liftSheet(name){
-  var h=exSessions(name), t=trend(name), best=bestE1RM(name);
+  var h=exSessions(name), t=trend(name), best=bestScore(name), met=h.length?h[0].metric:0;
   var html='<h3>'+esc(name)+'</h3>'+
-    '<div class="sub">'+plural(h.length,"session")+(best?' · best est. 1RM '+Math.round(best)+' '+unit():"")+'</div>';
+    '<div class="sub">'+plural(h.length,"session")+(best?' · '+scoreLabel(met)+' '+Math.round(best)+(met?"":" "+unit()):"")+'</div>';
   if(h.length>=2){
     html+='<div class="card" style="margin-bottom:12px">'+
-      '<div class="row"><div class="eyebrow">Estimated 1RM</div>'+
+      '<div class="row"><div class="eyebrow">'+(met===1?"Best hold":met===2?"Best distance":"Estimated 1RM")+'</div>'+
       '<span class="chip '+(t.state==="up"?"good":t.state==="down"?"bad":"")+' mono" style="margin-left:auto;font-size:11px">'+
         (t.state==="new"?"needs "+(4-t.n)+" more":(t.pct>=0?"+":"")+t.pct.toFixed(1)+"% recent")+'</span></div>'+
       '<canvas id="bigchart" style="width:100%;height:130px;display:block;margin-top:8px"></canvas></div>';
@@ -2372,20 +2652,21 @@ function liftSheet(name){
       '<div class="bd">Set a rep range on this lift so it climbs by reps before it climbs by weight.</div></div>';
   }
   html+='<div class="scrollx"><table class="hist"><thead><tr>'+
-    '<th>Date</th><th>Sets</th><th>Top</th><th>Est 1RM</th><th>Vol</th></tr></thead><tbody>';
+    '<th>Date</th><th>Sets</th><th>Top</th><th>'+(met?"Score":"Est 1RM")+'</th><th>Vol</th></tr></thead><tbody>';
   h.slice(0,20).forEach(function(s){
-    var top=s.sets.reduce(function(a,b){ return e1rm(loadOf(b),num(b.r))>e1rm(loadOf(a),num(a.r))?b:a; });
+    var top=s.sets.reduce(function(a,b){ return setScore(b,s.metric)>setScore(a,s.metric)?b:a; });
     html+='<tr'+(s.deload?' class="dl"':"")+'><td>'+esc(shortDate(s.ts))+(s.deload?" ·":"")+'</td><td>'+s.sets.length+'</td>'+
-      '<td>'+entryText(top,s.bw)+'×'+num(top.r)+'</td>'+
-      '<td>'+Math.round(sessionTopE1RM(s))+'</td>'+
-      '<td>'+kfmt(sessionVolume(s.sets))+'</td></tr>';
+      '<td>'+entryText(top,s.bw)+metricJoin(s.metric)+num(top.r)+metricSuffix(s.metric)+
+        (num(top.rpe)?'<span class="muted"> @'+fmt(top.rpe)+'</span>':"")+'</td>'+
+      '<td>'+Math.round(sessionTopScore(s))+'</td>'+
+      '<td>'+(s.metric?"—":kfmt(sessionVolume(s.sets,s.metric)))+'</td></tr>';
   });
   html+='</tbody></table>'+
     (h.some(function(x){return x.deload;})?'<div class="tiny muted" style="margin-top:6px">· deload session, excluded from trends</div>':"")+
     '</div>';
   sheet(html,function(el){
     var c=$("#bigchart",el);
-    if(c) spark(c,h.map(sessionTopE1RM).reverse().slice(-20),{grid:true,pad:8,lw:2.2,dot:3.4});
+    if(c) spark(c,h.map(sessionTopScore).reverse().slice(-20),{grid:true,pad:8,lw:2.2,dot:3.4});
   });
 }
 
@@ -2398,18 +2679,18 @@ var draft=null;
 function sessionSheet(id){
   var s=S.sessions.find(function(x){ return x.id===id; });
   if(!s) return;
-  var vol=0; s.exercises.forEach(function(e){ vol+=sessionVolume(e.sets); });
+  var vol=0; s.exercises.forEach(function(e){ vol+=exVolume(e); });
   var html='<h3>'+esc(s.name)+'</h3><div class="sub">'+
     esc(new Date(s.ts).toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))+
     (s.endTs?' · '+dur(s.endTs-s.ts):"")+' · '+commas(vol)+' '+unit()+
     (s.deload?' · deload':"")+'</div>';
   s.exercises.forEach(function(e){
-    var mode=bwMode(e);
+    var mode=bwMode(e), smet=metricOf(e);
     html+='<div class="card" style="margin-bottom:8px"><div class="ex-name" style="font-size:14px">'+esc(e.name)+
       (e.supplemental?' <span class="chip tag">EXTRA</span>':"")+'</div>'+
       '<div class="num tiny" style="margin-top:4px;color:var(--ink-2)">'+
       e.sets.map(function(x){
-        return (x.warm?"w ":"")+entryText(x,mode)+"×"+num(x.r)+(x.pr?" ★":"");
+        return (x.warm?"w ":"")+entryText(x,mode)+metricJoin(smet)+num(x.r)+metricSuffix(smet)+(x.pr?" ★":"");
       }).join("   ")+'</div></div>';
   });
   if(s.note) html+='<div class="card" style="margin-bottom:12px"><div class="eyebrow">Note</div><div style="margin-top:4px">'+esc(s.note)+'</div></div>';
@@ -2456,7 +2737,7 @@ function drawEditor(){
       '<button class="switch'+(d.deload?" on":"")+'" data-x="deload"></button></div>';
 
   d.exercises.forEach(function(e,ei){
-    var mode=bwMode(e);
+    var mode=bwMode(e), emet=metricOf(e);
     html+='<div class="card" style="margin:10px 0 0;padding:10px 12px">'+
       '<div class="row"><div class="ex-name" style="font-size:14px;flex:1">'+esc(e.name)+'</div>'+
         '<span class="tiny muted">'+esc(loadLabel(mode))+'</span>'+
@@ -2467,7 +2748,7 @@ function drawEditor(){
       html+='<div class="erow'+(s.warm?" warm":"")+'">'+
         '<button class="ei" data-warm="'+ei+'.'+si+'" title="Toggle warm-up">'+(s.warm?"W":wi)+'</button>'+
         '<input inputmode="decimal" type="number" step="any" data-f="w" data-k="'+ei+'.'+si+'" value="'+esc(s.w)+'">'+
-        '<span class="times">×</span>'+
+        '<span class="times">'+metricJoin(emet)+'</span>'+
         '<input inputmode="numeric" type="number" data-f="r" data-k="'+ei+'.'+si+'" value="'+esc(s.r)+'">'+
         '<button class="rm" data-rmset="'+ei+'.'+si+'" aria-label="Delete set">✕</button>'+
       '</div>';
@@ -2587,7 +2868,7 @@ function viewPlan(){
       var range=e.repTop>e.reps?(e.reps+"–"+e.repTop):String(e.reps);
       var mode=bwMode(e);
       html+='<div class="pex">'+
-        '<span class="pxn">'+esc(e.name)+(mode?' <span class="chip tag">'+(mode===1?"BW":"ASST")+'</span>':"")+
+        '<span class="pxn">'+(groupTag(r.exercises,ei)?'<span class="gtag">'+esc(groupTag(r.exercises,ei))+'</span>':"")+esc(e.name)+(mode?' <span class="chip tag">'+(mode===1?"BW":"ASST")+'</span>':"")+
           (!mode&&barOf(e)?' <span class="chip tag">BAR '+fmt(barOf(e))+'</span>':"")+'</span>'+
         '<span class="pxs">'+esc(muscleName(tagsOf(e).mg)||"?")+' · '+e.sets+'×'+esc(range)+'</span>'+
         '<button class="iconbtn" data-act="pex-up" data-ri="'+ri+'" data-ei="'+ei+'" aria-label="Move up">↑</button>'+
@@ -2599,7 +2880,10 @@ function viewPlan(){
       '</section>';
   });
 
-  html+='<button class="btn ghost block" data-act="day-add">+ Add a training day</button>';
+  html+='<div class="row" style="gap:8px">'+
+    '<button class="btn ghost" style="flex:1" data-act="day-add">+ Training day</button>'+
+    '<button class="btn ghost" style="flex:1" data-act="tpl">Start from a template</button>'+
+  '</div>';
 
   html+='<hr class="sep"><div class="eyebrow" style="margin-bottom:8px">Progression</div><div class="card">'+
     '<div class="field-row"><div class="fl">Double progression by default<div class="fh">New exercises climb by reps first, then weight</div></div>'+
@@ -2637,6 +2921,9 @@ function viewPlan(){
     '<div class="field-row"><div class="fl">Alarm when rest ends'+
       '<div class="fh">Beeps out loud, and keeps the timer running with the screen off</div></div>'+
       '<button class="switch'+(S.settings.sound?" on":"")+'" data-set="sound"></button></div>'+
+    '<div class="field-row"><div class="fl">Rate sets (RPE)'+
+      '<div class="fh">Adds an optional tag after you log a set. A hard week then holds the weight instead of adding.</div></div>'+
+      '<button class="switch'+(S.settings.rpe?" on":"")+'" data-set="rpe"></button></div>'+
     '<div class="field-row"><div class="fl">Notify when rest ends'+
       '<div class="fh">'+(notifyState()==="denied"
         ? '<span style="color:var(--bad)">Blocked in your browser settings for this site</span>'
@@ -2707,6 +2994,7 @@ $("#view").addEventListener("click",function(e){
   var t=e.target;
   var dm=t.closest('[data-act="day-menu"]');
   if(dm){ dayMenu(+dm.dataset.ri); return; }
+  if(t.closest('[data-act="tpl"]')){ templateSheet(); return; }
   if(t.closest('[data-act="day-add"]')){
     var k=String.fromCharCode(65+S.routines.length);
     S.routines.push({id:uid(),key:k,name:"Day "+k,exercises:[]});
@@ -2717,7 +3005,11 @@ $("#view").addEventListener("click",function(e){
   var pu=t.closest('[data-act="pex-up"]');
   if(pu){
     var r=S.routines[+pu.dataset.ri], i=+pu.dataset.ei;
-    if(i>0){ var tmp=r.exercises[i-1]; r.exercises[i-1]=r.exercises[i]; r.exercises[i]=tmp; save(); viewPlan(); }
+    if(i>0){
+      var tmp=r.exercises[i-1]; r.exercises[i-1]=r.exercises[i]; r.exercises[i]=tmp;
+      if(i-1===0) r.exercises[0].link=false;   // nothing above to pair with
+      save(); viewPlan();
+    }
     return;
   }
   var pe=t.closest('[data-act="pex-edit"]');
@@ -2797,6 +3089,7 @@ function addToPlan(name){
     repTop:S.settings.doubleDefault?S.settings.repHigh:0,
     inc:null, bw:last?last.bw:0,
     bar:last&&last.bar!==undefined?barOf(last):guessBar(name),
+    metric:last?metricOf(last):0,
     mg:mgN.mg, mg2:mgN.mg2
   });
   save(); viewPlan();
@@ -2839,7 +3132,7 @@ function planExMenu(ri,ei){
       '<input class="txt" style="max-width:210px" data-x="name" value="'+esc(ex.name)+'"></div>'+
     '<div class="field-row"><div class="fl">Sets</div>'+
       '<input class="txt small" inputmode="numeric" type="number" data-x="sets" value="'+ex.sets+'"></div>'+
-    '<div class="field-row"><div class="fl">Rep range<div class="fh">Empty second box = straight sets, add weight when you hit the target</div></div>'+
+    '<div class="field-row"><div class="fl">'+esc(rangeLabel(metricOf(ex)))+'<div class="fh">Empty second box = straight sets, add weight when you hit the target</div></div>'+
       '<div class="row" style="gap:6px">'+
         '<input class="txt tiny-n" inputmode="numeric" type="number" data-x="low" value="'+esc(ex.reps)+'">'+
         '<span class="muted tiny">to</span>'+
@@ -2848,9 +3141,11 @@ function planExMenu(ri,ei){
     '<div class="field-row"><div class="fl">Weight step<div class="fh">Blank uses the default ('+esc(S.settings.inc)+')</div></div>'+
       '<input class="txt small" inputmode="decimal" type="number" step="any" data-x="inc" value="'+(ex.inc||"")+'"></div>'+
     loadTypeRow(bwMode(ex),"pbw")+
+    metricRow(metricOf(ex),"pmet")+
     barRow(ex,"pbar")+
     muscleRow(ex)+
     '<div class="menu" style="margin-top:10px">'+
+      (ei>0?'<button data-x="link">'+(ex.link?"Break the superset":"Superset with the one above")+'</button>':"")+
       (ei>0?'<button data-x="up">Move up</button>':"")+
       (ei<r.exercises.length-1?'<button data-x="down">Move down</button>':"")+
       '<button data-x="hist">See history &amp; chart</button>'+
@@ -2867,11 +3162,17 @@ function planExMenu(ri,ei){
         b.onclick=function(){ ex.bw=num(b.dataset.pbw); save(); closeSheet(); viewPlan(); planExMenu(ri,ei); };
       });
       $('[data-pbar]',el).oninput=function(){ ex.bar=Math.max(0,num(this.value)); save(); };
+      $$('[data-pmet]',el).forEach(function(b){
+        b.onclick=function(){ ex.metric=num(b.dataset.pmet); save(); closeSheet(); viewPlan(); planExMenu(ri,ei); };
+      });
       $('[data-x="mg"]',el).onclick=function(){
         musclesSheet(ex,function(){ viewPlan(); planExMenu(ri,ei); });
       };
+      var plk=$('[data-x="link"]',el);
+      if(plk) plk.onclick=function(){ ex.link=!ex.link; save(); closeSheet(); viewPlan(); };
       var up=$('[data-x="up"]',el), dn=$('[data-x="down"]',el);
-      if(up) up.onclick=function(){ var t=r.exercises[ei-1]; r.exercises[ei-1]=ex; r.exercises[ei]=t; save(); closeSheet(); viewPlan(); };
+      if(up) up.onclick=function(){ var t=r.exercises[ei-1]; r.exercises[ei-1]=ex; r.exercises[ei]=t;
+        if(ei-1===0) ex.link=false; save(); closeSheet(); viewPlan(); };
       if(dn) dn.onclick=function(){ var t=r.exercises[ei+1]; r.exercises[ei+1]=ex; r.exercises[ei]=t; save(); closeSheet(); viewPlan(); };
       $('[data-x="hist"]',el).onclick=function(){ closeSheet(); liftSheet(ex.name); };
       $('[data-x="del"]',el).onclick=function(){
@@ -3011,7 +3312,7 @@ render();
 
 /* Offline support, only when self-hosted (the manifest is the tell). */
 if("serviceWorker" in navigator && $('link[rel="manifest"]') &&
-   (location.protocol==="https:"||location.hostname==="localhost")){
+   (location.protocol==="https:"||location.hostname==="localhost"||location.hostname==="127.0.0.1")){
   window.addEventListener("load",function(){
     navigator.serviceWorker.register("sw.js").catch(function(){});
   });

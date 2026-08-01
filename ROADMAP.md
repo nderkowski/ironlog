@@ -32,9 +32,11 @@ If the rest alarm *doesn't* survive a locked screen, the fallback is a
 `showTrigger` notification or accepting that the alarm needs the app foregrounded
 — but don't reach for either until the phone says the current approach failed.
 
-**If the backup share sheet turns out to be broken, that jumps the queue ahead of
-Slice 2.** A logger with no working backup is one cleared browser away from
-losing everything, which outranks any feature on this list.
+**If the backup share sheet turns out to be broken, it jumps the queue ahead of
+everything.** A logger with no working backup is one cleared browser away from
+losing the lot, which outranks any feature on this list — and with slices 1–3
+shipped, Slice 4 (sync) is the only thing left anyway, and it is the same
+problem wearing a bigger hat.
 
 ---
 
@@ -89,24 +91,33 @@ with the routine key. Tap a day to open that session. Pages backwards only.
 
 ---
 
-## Slice 3 — programming features
+## Slice 3 — programming features ✅ *shipped 1 Aug 2026*
 
-**8. Supersets.** No way to pair A1/A2. Needs a grouping concept on the session
-exercise and a rest-timer rule that only fires after the last item in a group.
+**8. Supersets.** `link: true` groups an exercise with the one above it, marked
+A1/A2 on the card, and the rest timer only fires after the last item in a group.
+Modelled by adjacency rather than group ids so reordering and deleting can't
+leave a corrupt group behind.
 
-**9. Timed and distance work.** Planks, carries, cardio. The data model is
-strictly weight × reps; a `metric` field on the exercise (`reps` | `seconds` |
-`distance`) would generalise it, but it touches every calculation — volume, e1RM,
-progression — so plan it properly rather than bolting it on.
+**9. Timed and distance work.** A `metric` field on the exercise reinterprets
+the existing `r` field as seconds or distance instead of adding a parallel one,
+so every input, stepper and history record kept working. Volume, e1RM, PRs,
+trends and the progression engine all branch on it. Unloaded timed work
+progresses by *time* — a plank that hits the top of its range is told to hold
+longer, not to add weight to a bar it doesn't have.
 
-**10. RPE / RIR per set.** Would make autoregulation far better than inferring
-intent from reps alone, and it's what modern programmes assume. Keep it optional
-and off the critical path — an extra required field per set would violate the
-one-tap rule.
+**10. RPE / RIR per set.** Off by default, rated after the set is logged, never
+required. A session averaging RPE 9.5+ repeats its weight instead of adding —
+and that rule stays dormant unless at least half the working sets were rated,
+so it is invisible to anyone who leaves the feature off.
 
-**11. Program templates.** Three empty days means typing every exercise by hand.
-"Setup took twenty minutes" is a predictable first complaint. Two or three
-presets (PPL, upper/lower, 5/3/1) would fix onboarding entirely.
+**11. Program templates.** Push/Pull/Legs, Upper/Lower and 3-day Full Body.
+They build ordinary routines — bar weights, muscles and metric all come from the
+same guessers used for anything you type by hand, so nothing is special-cased
+afterwards. Undoable for ten seconds like every other destructive action.
+
+Also fixed: the RPE chip rendered 112px wide regardless of its text, as both a
+float and a flex item, because a plain `<button>` there was not content-sized at
+all in Chrome. `display:inline-flex` on the chip is load-bearing, not styling.
 
 ---
 
@@ -119,8 +130,10 @@ taken. Everything else on this list is a weekend; this is a project. Options in
 increasing order of effort: a "restore from file on launch" prompt, a
 user-supplied cloud file handle, or a real backend with auth.
 
-Do not start this before slices 1–2. A logger that syncs but can't tell you
-weekly set counts is worse than one that does the reverse.
+Slices 1–3 are done, so this is now next. Start with the cheapest rung —
+"restore from file on launch" — because it is most of the safety for none of the
+server. Do Slice 0 first regardless: there is no point syncing a log the app
+can't reliably alert you from or back up.
 
 ---
 
@@ -138,6 +151,13 @@ Not bugs, but they should be revisited and are honest limits of the current mode
   now dismissible and deload-aware, which was the dangerous part. If it still
   fires too often, make it aware of intent — a cut or a maintenance block makes
   flat lifts the goal rather than a warning.
+- **Distance work has no unit.** `metric: 2` stores a bare number and the app
+  never asks whether it's metres, yards or laps. Fine for one person who knows
+  what they meant; wrong the moment the log is shared or charted against
+  anything else.
+- **The RPE 9.5 hold threshold is another defensible guess.** So is weighting a
+  helper muscle at ½ a set. Both are conventions, both are documented, neither
+  is derived.
 - **Unit switching relabels without converting.** Flipping lb → kg leaves every
   historical number numerically identical. Either convert the whole log on switch
   or refuse to switch once history exists. It now also strands the bar weight and

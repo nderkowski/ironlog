@@ -68,19 +68,21 @@ S = {
   version, settings, routines[], sessions[], active
 }
 
-settings = { unit, rest, autoRest, buzz, sound, notify, inc,
+settings = { unit, rest, autoRest, buzz, sound, notify, rpe, inc,
              doubleDefault, repLow, repHigh,
              bodyweight, deloadUntil, deloadSnooze,
              bar, plates[], lastBackup }
   plates[] = { w, n }        // n = PAIRS owned, not singles
 
 routine  = { id, key, name, exercises[] }
-  exercise (plan) = { id, name, sets, reps, repTop, inc, bw, bar, mg, mg2[] }
+  exercise (plan) = { id, name, sets, reps, repTop, inc, bw, bar, metric,
+                      link, mg, mg2[] }
 
 session  = { id, ts, endTs, routineId, key, name, note, bw, deload, exercises[] }
   exercise (logged) = { id, planId, name, targetReps, reps, repTop, inc, bw, bar,
-                        mg, mg2[], supplemental, why, kind, lastW, lastR, sets[] }
-    set = { w, r, done, warm, pr, load, ts }
+                        metric, link, mg, mg2[], supplemental, why, kind,
+                        lastW, lastR, sets[] }
+    set = { w, r, done, warm, pr, load, ts, rpe }
 ```
 
 Notes that will bite you if you miss them:
@@ -102,6 +104,24 @@ Notes that will bite you if you miss them:
   loaded barbell" and suppresses the plate line entirely; any positive number is
   the empty bar's weight. There is no separate boolean to keep in sync.
   `guessBar()` only ever runs when an exercise is first created.
+- **`r` is not always reps.** `metric` on the exercise reinterprets it:
+  0 reps, 1 seconds, 2 distance. The field is reused rather than adding a
+  second one, so every input, stepper, history record and editor kept working
+  untouched — only the meaning moves. Anything that compares "how much work"
+  must go through `setScore(set, metric)`, never `e1rm()` directly, or a plank
+  gets scored as if seconds were reps.
+- **Volume is only defined for rep work.** `sessionVolume()` returns 0 for
+  time and distance — weight × seconds isn't pounds. A session of nothing but
+  planks honestly reports 0 lb rather than inventing a number. Use `exVolume(e)`
+  so the metric is never forgotten at a call site.
+- **Supersets are adjacency, not ids.** `link: true` means "grouped with the
+  exercise above me". Ids would need repairing on every reorder and delete;
+  adjacency re-derives, so moving an exercise out of a pair just ends the pair.
+  Anything landing at index 0 gets `link` cleared, since there is nothing above
+  it to pair with.
+- **`rpe` on a set is always optional and often absent.** The engine rule only
+  fires when at least half a session's working sets carry one, so it is
+  invisible to anyone not using the feature.
 - **Muscle tags fall back, they don't default.** `mg` (one main muscle) and
   `mg2[]` (helpers) may be absent on any exercise — every session logged before
   the feature existed has none. `tagsOf(ex)` resolves in order: the exercise's
@@ -170,6 +190,37 @@ The inventory is counted in **pairs**, because that's how you load a bar.
 
 Only `bwMode(ex) === 0` gets a plate line; assisted and bodyweight work never
 involves loading a bar.
+
+### Metrics, supersets and RPE
+
+**Metrics.** `metricOf(ex)` returns 0 reps / 1 time / 2 distance and everything
+downstream branches on it: `setScore()` replaces `e1rm()` for PRs and trends,
+`sessionVolume()` refuses to invent pound totals, the ± stepper moves in 5s for
+time and distance, and the row separator reads "for" instead of "×".
+
+The progression rule that needed real thought is unloaded timed work. A plank
+has nothing to add weight to, so when `metric != 0` and there is no load, the
+range top stops being a cap and becomes a floor: hold 60s on every set and the
+next prescription is 65s, not "add 5 lb" to a bar that isn't there. Put weight
+on the same plank and it goes back to adding load at the top of the range.
+
+**Supersets.** `groupsOf()` derives contiguous runs of `link: true`; `groupTag()`
+labels them A1/A2 and returns "" for a group of one, so nothing is marked unless
+it's actually paired. `lastInGroup()` is what the rest timer consults —
+autoRest fires after the last exercise of a group and not between its parts,
+which is the entire point of supersetting.
+
+**RPE.** Off by default. The chip only appears on a set that is already logged,
+because rating a set you haven't done is meaningless and an extra required
+field would break the one-tap rule. `rpeMean()` returns 0 unless at least half
+the working sets carry a rating, and only a mean of 9.5+ changes anything: the
+prescription repeats instead of adding load. Anyone not using RPE sees
+identical behaviour to before.
+
+**Templates.** `applyTemplate()` builds ordinary routines — bar weights come
+from `guessBar()`, muscles from `guessMuscles()`, metric from `guessMetric()`.
+Nothing about a template exercise is special-cased afterwards. Replacing a split
+is undoable for ten seconds like every other destructive action.
 
 ### Weekly sets per muscle
 
@@ -310,6 +361,28 @@ so the `tagsOf()` fallback is what's under test:
 - The muscle picker preselects the guess, main muscle is disabled as its own
   helper, and both persist
 
+Slice 3:
+
+- Templates: all three load, PPL makes 3 days and 15 exercises, every one
+  arrives muscle-tagged and barbell lifts get a bar; undo restores the previous
+  split
+- Metric: a template Plank arrives as Time, the card shows a TIME chip, the row
+  separator reads "for", the placeholder says "secs", the stepper moves 5s while
+  reps still move 1, and a bench+plank session counts only the bench in volume
+- Progression: an unloaded plank at the top of its range prescribes 65s rather
+  than adding weight; mid-range it steps 5s; a *weighted* plank at the top does
+  add load
+- RPE: three sets at RPE 10 hold the weight ("Averaged RPE 10 last time"); the
+  same sets without ratings add 5 lb as before; one rating out of three is
+  ignored
+- Supersets: A1/A2 markers appear, no rest fires after the first of a pair, rest
+  does fire after the last
+- `guessMuscles()` checked against the twelve names most likely to be mis-tagged,
+  including the two the ordering exists for — `Incline Dumbbell Curl` → biceps
+  (not chest) and `JM Press` → triceps (not chest)
+- PWA install criteria: service worker activates, manifest has name + standalone
+  + 192 + 512 + maskable, and the shell caches for offline
+
 **Not verified — needs a real phone**
 
 - The "can't tap anything" fix. The cause is understood and the mechanism is
@@ -317,7 +390,9 @@ so the `tagsOf()` fallback is what's under test:
   confirm it.
 - `navigator.share({files})` — the backup share sheet. Desktop Chrome reports
   `canShare: false`, so that button was never exercised; the download fallback was.
-- Install-to-home-screen and the standalone launch from Pages.
+- Install-to-home-screen and the standalone launch from Pages. The install
+  *criteria* are verified in Chromium; whether Android actually offers the
+  prompt and launches fullscreen is not.
 - **The whole point of the rest alarm**: that the quiet loop actually keeps the
   page alive on Android Chrome with the screen off and the phone in a pocket.
   The mechanism is verified in the foreground; the background survival is exactly
