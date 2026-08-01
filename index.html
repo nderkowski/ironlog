@@ -642,7 +642,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v7";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v8";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -3319,29 +3319,64 @@ function payload(){ return JSON.stringify(S,null,2); }
 function backupName(){ return "ironlog-"+today()+".json"; }
 function markBackedUp(){ S.settings.lastBackup=Date.now(); writeNow(); }
 
+/* Android's share sheet refuses some file types outright, and which ones is not
+   something to guess at. Offer the tidy name first, fall back to .txt — which
+   every share target accepts — and let canShare() pick. The contents are the
+   same JSON either way, and the importer takes both. */
+function shareableFile(data){
+  var opts=[["application/json",backupName()],
+            ["text/plain",backupName().replace(/\.json$/,".txt")]];
+  for(var i=0;i<opts.length;i++){
+    try{
+      var f=new File([data],opts[i][1],{type:opts[i][0]});
+      if(navigator.canShare&&navigator.canShare({files:[f]})) return f;
+    }catch(e){}
+  }
+  return null;
+}
+var lastShareErr="";
+
 /* One tap into whatever the phone can share to — Drive, Files, email, iCloud. */
 function backupSheet(){
   var data=payload();
-  var canShare=false;
-  try{
-    var probe=new File([data],backupName(),{type:"application/json"});
-    canShare=!!(navigator.canShare&&navigator.canShare({files:[probe]}));
-  }catch(e){}
+  var file=shareableFile(data);
 
   sheet('<h3>Back up your log</h3>'+
     '<div class="sub">'+plural(S.sessions.length,"session")+' · '+Math.round(data.length/1024)+' KB. '+
       'Send yourself a copy anywhere that syncs — Drive, Files, email. Importing it later restores everything exactly.</div>'+
-    (canShare?'<button class="btn primary big block" data-x="share" style="margin-bottom:8px">Send a copy…</button>':"")+
-    '<button class="btn '+(canShare?"":"primary big ")+'block" data-x="dl">Save file to this device</button>'+
+    (lastShareErr?'<div class="banner warn" style="margin-bottom:10px"><div class="bt">Sharing failed last time</div>'+
+      '<div class="bd">'+esc(lastShareErr)+' — "Save file" below always works.</div></div>':"")+
+    (file?'<button class="btn primary big block" data-x="share" style="margin-bottom:8px">Send a copy…</button>':
+      '<div class="tiny muted" style="margin-bottom:8px">This browser won\'t share files, so save one instead.</div>')+
+    '<button class="btn '+(file?"":"primary big ")+'block" data-x="dl">Save file to this device</button>'+
     '<button class="btn ghost block" style="margin-top:8px" data-x="copy">Copy as text</button>'+
     (S.settings.lastBackup?'<div class="tiny muted" style="text-align:center;margin-top:12px">Last copy '+relDate(S.settings.lastBackup)+'</div>':""),
     function(el){
       var sh=$('[data-x="share"]',el);
       if(sh) sh.onclick=function(){
-        var f=new File([data],backupName(),{type:"application/json"});
-        navigator.share({files:[f],title:"Iron Log backup"}).then(function(){
+        /* Nothing async before share() — Chrome needs the tap's user
+           activation still live when it is called. */
+        var p, settled=false;
+        try{ p=navigator.share({files:[file],title:"Iron Log backup"}); }
+        catch(err){ shareFailed(err,data); return; }
+        if(!p||!p.then){ shareFailed(new Error("share() returned nothing"),data); return; }
+        /* A share() that neither resolves nor rejects looks exactly like a dead
+           button. If the sheet had opened it would have taken focus, so still
+           being focused after three seconds means it never appeared. */
+        var watchdog=setTimeout(function(){
+          if(settled||document.hidden||!document.hasFocus()) return;
+          settled=true;
+          shareFailed(new Error("the share sheet never opened"),data);
+        },3000);
+        p.then(function(){
+          if(settled) return;
+          settled=true; clearTimeout(watchdog); lastShareErr="";
           markBackedUp(); closeSheet(); render(); toast("Copy sent");
-        }).catch(function(){ /* user backed out of the share sheet */ });
+        }).catch(function(err){
+          if(settled) return;
+          settled=true; clearTimeout(watchdog);
+          shareFailed(err,data);
+        });
       };
       $('[data-x="dl"]',el).onclick=function(){ downloadBackup(data); closeSheet(); render(); };
       $('[data-x="copy"]',el).onclick=function(){
@@ -3352,7 +3387,19 @@ function backupSheet(){
       };
     });
 }
-function downloadBackup(data){
+/* The old version swallowed every rejection as "user backed out", which made a
+   genuinely broken share indistinguishable from a cancelled one — the reported
+   symptom was a button that did nothing at all. Cancelling is silent; anything
+   else says so and still leaves you holding a file. */
+function shareFailed(err,data){
+  var name=(err&&err.name)||"Error";
+  if(name==="AbortError"){ return; }            // you closed the share sheet
+  lastShareErr=name+(err&&err.message?": "+err.message:"");
+  downloadBackup(data,true);        // one message, not two fighting
+  closeSheet(); render();
+  toast("Share didn't work — saved to your files instead");
+}
+function downloadBackup(data,quiet){
   try{
     var blob=new Blob([data],{type:"application/json"});
     var url=URL.createObjectURL(blob);
@@ -3361,7 +3408,7 @@ function downloadBackup(data){
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function(){ URL.revokeObjectURL(url); },2000);
     markBackedUp();
-    toast("Saved to your downloads");
+    if(!quiet) toast("Saved to your downloads");
   }catch(e){ toast("Couldn't save the file — try Copy as text"); }
 }
 function doExport(){
@@ -3384,7 +3431,7 @@ function doExport(){
 }
 function doImport(){
   sheet('<h3>Import</h3><div class="sub">Replaces everything currently in the app. Pick a file you backed up, or paste the JSON.</div>'+
-    '<input type="file" accept="application/json,.json" data-x="file" style="margin-bottom:12px">'+
+    '<input type="file" accept="application/json,.json,text/plain,.txt" data-x="file" style="margin-bottom:12px">'+
     '<textarea class="txt" style="min-height:110px;font-family:var(--mono);font-size:12px" placeholder="…or paste here" data-x="paste"></textarea>'+
     '<div class="row" style="gap:8px;margin-top:10px">'+
     '<button class="btn ghost" style="flex:1" data-x="close">Cancel</button>'+

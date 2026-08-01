@@ -212,6 +212,27 @@ It also records how long the page was genuinely hidden and **refuses to report a
 pass if the screen was never off**, so a foreground run can't be mistaken for a
 real result.
 
+### Backup must never dead-end
+
+`navigator.share({files})` failed silently on a real device: no sheet, no error,
+nothing. Two independent causes, and both are worth remembering.
+
+The first was ours. The rejection handler was `.catch(function(){})` with a
+comment saying "user backed out of the share sheet" — so a genuine
+`NotAllowedError` and a deliberate cancel produced identical behaviour, namely
+none. **An empty catch on a user-facing action is a bug even when the common
+case is benign.** Cancelling is now silent; anything else names the error.
+
+The second is that a `share()` promise can neither resolve nor reject. A
+watchdog treats "still focused three seconds later" as proof the sheet never
+opened, since a real share sheet takes focus.
+
+Every failure path now ends with a file saved to the device and a message
+saying what happened, and the error is surfaced in the backup sheet next time
+it is opened. `shareableFile()` also probes `canShare` with `.json` first and
+falls back to `.txt`, because Android's allowlist for shareable types is not
+something to guess at.
+
 ### Plate maths
 
 `platesFor(target, bar)` works from `(target − bar) / 2` and goes greedy from the
@@ -414,6 +435,16 @@ Slice 3:
   (not chest) and `JM Press` → triceps (not chest)
 - PWA install criteria: service worker activates, manifest has name + standalone
   + 192 + 512 + maskable, and the shell caches for offline
+
+**Confirmed on a real phone** (Android, 1 Aug 2026, v7 deploy)
+
+- The tap-freeze is gone.
+- **The background alarm works.** Alarm at 20.7s of a 20s rest, longest tick gap
+  1s, screen off throughout — Chrome did not freeze the page. The 30 Hz
+  keep-alive plus MediaSession is doing its job.
+- The lock-screen notification fires.
+- **The share-sheet backup did not work at all**, and produced no error, which
+  is what led to the failure-path rework below.
 
 **Not verified — needs a real phone**
 

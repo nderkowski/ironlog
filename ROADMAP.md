@@ -11,37 +11,29 @@ Ship in slices; each slice should leave the app fully usable.
 
 ## Slice 0 — confirm on a real phone
 
-**Still open, and now blocking more than it was.** Everything here is a thing a
-desktop browser structurally cannot answer.
+Tested on Nick's Android, 1 Aug 2026, against the v7 Pages deploy.
 
-- [ ] The tap-freeze fix on Android Chrome (the reason the re-render was removed)
-- [ ] The backup share sheet — does `navigator.share({files})` actually reach Drive
-- [ ] Install to home screen from https://nderkowski.github.io/ironlog/, then a
-      full offline session
-- [ ] **The important one:** does the rest alarm fire with the screen off?
-      First attempt reported no sound, but it was run against a Pages deploy
-      that predated the feature, so it tested nothing. It also found a real bug
-      on the way: the keep-alive track was ~-90 dBFS, which Chrome scores as
-      silence, so the tab would have frozen regardless. Now a 30 Hz tone at
-      -27 dBFS plus a MediaSession. Use Plan → "Test the alarm with the screen
-      off" — it reports tick gaps and refuses to pass if the screen stayed on.
-- [ ] Notification grant path — headless Chromium only exercised the refusal.
+- [x] **The tap-freeze fix.** Gone. The re-render removal was the right call, and
+      the rule about never re-rendering on the set-logging path stands.
+- [x] **The rest alarm with the screen off. It works.** Self-test reported the
+      alarm at 20.7s of a 20s rest with a longest tick gap of 1s — the page was
+      never frozen. This was the single biggest unknown in the project.
+- [x] **Lock-screen notification.** Fires and displays. The grant path is now
+      exercised, not just the refusal.
+- [ ] **Backup share sheet — FAILED, fixed, needs a retest.** "Send a copy…"
+      produced no share sheet and no error. Two causes, both real: the catch
+      swallowed every rejection as "user cancelled", so a broken share and a
+      cancelled one were indistinguishable; and a share that never settles at
+      all looked identical to a dead button. Now: cancelling stays silent,
+      anything else names the error, falls back to saving a file, and says so.
+      A watchdog catches the never-settles case. `.txt` is offered if Android
+      refuses `.json`. **Retest on v8.**
+- [ ] Install to home screen, then a full offline session.
 
-If the tap freeze survives, the next suspect is the artifact iframe rather than
-the app, and the self-hosted build should be tested before changing any more code.
-
-If the self-test still reports a frozen page, the audio route is exhausted:
-`Notification` timestamp triggers were never shipped in Chrome, and a service
-worker cannot hold a timer. The honest remaining options are a push server
-(which means Slice 4's backend arriving early) or accepting that the alarm
-needs the app in the foreground and saying so in the UI. Do not guess — read
-the tick gaps first.
-
-**If the backup share sheet turns out to be broken, it jumps the queue ahead of
-everything.** A logger with no working backup is one cleared browser away from
-losing the lot, which outranks any feature on this list — and with slices 1–3
-shipped, Slice 4 (sync) is the only thing left anyway, and it is the same
-problem wearing a bigger hat.
+The one open question is whether sharing works *at all* on this device. It no
+longer matters much for safety — every failure path now ends with a file in
+Downloads — but "one tap into Drive" was the point, and a manual save the user
+has to remember is a worse backup than one they don't.
 
 ---
 
@@ -53,7 +45,7 @@ rest; at zero the same `<audio>` element swaps to an
 audible beep, plus vibration and an optional lock-screen notification. Two new
 settings (`sound`, `notify`); permission is asked only on tap and refusal is
 explained in place. See PROJECT_STATE for why it works this way.
-*Foreground-verified only — see Slice 0.*
+**Confirmed working on a locked Android screen** — see Slice 0.
 
 **2. Plate calculator.** Per-exercise `bar` weight (0 = not a barbell, guessed
 from the name on creation), configurable inventory counted in pairs, and a plate
@@ -136,10 +128,11 @@ taken. Everything else on this list is a weekend; this is a project. Options in
 increasing order of effort: a "restore from file on launch" prompt, a
 user-supplied cloud file handle, or a real backend with auth.
 
-Slices 1–3 are done, so this is now next. Start with the cheapest rung —
-"restore from file on launch" — because it is most of the safety for none of the
-server. Do Slice 0 first regardless: there is no point syncing a log the app
-can't reliably alert you from or back up.
+Slices 1–3 are done and Slice 0 is nearly closed, so this is next. Start with
+the cheapest rung — **"restore from file on launch"** — because it is most of
+the safety for none of the server: on a fresh install with no data, offer to
+import a backup file before showing an empty split. That plus a working export
+is the whole disaster-recovery story, and neither needs a backend.
 
 ---
 
