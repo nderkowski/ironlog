@@ -642,7 +642,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v8";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v9";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -651,7 +651,7 @@ function defaultState(){
   return {
     version:4,
     settings:{unit:"lb",rest:120,autoRest:true,buzz:true,inc:5,
-              sound:true, notify:false, rpe:false,
+              sound:true, notify:false, rpe:false, autoBackup:true,
               doubleDefault:true,repLow:8,repHigh:12,
               bodyweight:0, deloadUntil:0, deloadSnooze:0,
               bar:45, plates:defaultPlates("lb"),
@@ -1702,6 +1702,18 @@ function todayIdle(){
       '<button class="btn primary block" data-act="tab" data-tab="plan">Build my split</button></div>';
   }
 
+  /* The disaster-recovery moment. A new phone or a cleared browser lands on a
+     stock split with empty days — not on "no routines" — so this keys off
+     having no data anywhere. A backup file is no use if nothing offers to
+     read it back. */
+  var fresh=!S.sessions.length&&!S.routines.some(function(r){ return r.exercises.length; });
+  if(fresh){
+    html+='<div class="card"><div class="eyebrow">Been here before?</div>'+
+      '<div class="tiny muted" style="margin:6px 0 10px">'+
+        'New phone, or cleared your browser? Your exported file goes straight back in.</div>'+
+      '<button class="btn ghost block" data-act="import">Restore from a backup</button></div>';
+  }
+
   var last=S.sessions[0];
   if(last){
     var vol=0,sets=0;
@@ -1879,6 +1891,8 @@ $("#view").addEventListener("click",function(e){
   var tabBtn=t.closest('[data-act="tab"]');
   if(tabBtn){ go(tabBtn.dataset.tab); return; }
   if(t.closest('[data-act="backup"]')){ backupSheet(); return; }
+  /* Also reachable from Today's empty state — the Plan listener never sees it. */
+  if(t.closest('[data-act="import"]')){ doImport(); return; }
   if(t.closest('[data-act="start-deload"]')){
     startDeloadWeek(7); render(); toast("Deload week started"); return;
   }
@@ -2551,8 +2565,22 @@ function commitSession(){
   a.exercises=a.exercises.filter(function(e){ return e.sets.length; });
   S.sessions.unshift(a);
   S.active=null; stopRest();
-  writeNow(); closeSheet(); go("progress");
-  toast("Workout saved");
+  writeNow();
+  /* Still inside the tap on "Save workout", which is the whole trick: a
+     download needs user activation, and finishing a workout is the one moment
+     that reliably has it AND is exactly when the log is worth keeping. No
+     extra tap, no remembering. */
+  var auto=autoBackup();
+  closeSheet(); go("progress");
+  toast(auto?"Workout saved · backup written":"Workout saved");
+}
+/* Returns whether a file was actually written, so we don't claim one was. */
+function autoBackup(){
+  if(!S.settings.autoBackup) return false;
+  try{
+    downloadBackup(payload(),true);
+    return true;
+  }catch(e){ return false; }
 }
 
 /* ============================ PROGRESS ============================ */
@@ -3039,6 +3067,9 @@ function viewPlan(){
     '<div class="field-row"><div class="fl">Rate sets (RPE)'+
       '<div class="fh">Adds an optional tag after you log a set. A hard week then holds the weight instead of adding.</div></div>'+
       '<button class="switch'+(S.settings.rpe?" on":"")+'" data-set="rpe"></button></div>'+
+    '<div class="field-row"><div class="fl">Back up after every workout'+
+      '<div class="fh">Writes a file to your downloads when you tap Save workout. No extra tap, and it is the only backup that can\'t be forgotten.</div></div>'+
+      '<button class="switch'+(S.settings.autoBackup?" on":"")+'" data-set="autoBackup"></button></div>'+
     '<div class="field-row"><div class="fl">Test the alarm with the screen off'+
       '<div class="fh">Runs a 20-second rest and reports whether the phone kept the timer alive</div></div>'+
       '<button class="btn sm ghost" data-act="bgtest">Test</button></div>'+
@@ -3346,9 +3377,10 @@ function backupSheet(){
       'Send yourself a copy anywhere that syncs — Drive, Files, email. Importing it later restores everything exactly.</div>'+
     (lastShareErr?'<div class="banner warn" style="margin-bottom:10px"><div class="bt">Sharing failed last time</div>'+
       '<div class="bd">'+esc(lastShareErr)+' — "Save file" below always works.</div></div>':"")+
-    (file?'<button class="btn primary big block" data-x="share" style="margin-bottom:8px">Send a copy…</button>':
+    (file&&!lastShareErr?'<button class="btn primary big block" data-x="share" style="margin-bottom:8px">Send a copy…</button>':
+      file?'<button class="btn block" data-x="share" style="margin-bottom:8px">Try sharing again</button>':
       '<div class="tiny muted" style="margin-bottom:8px">This browser won\'t share files, so save one instead.</div>')+
-    '<button class="btn '+(file?"":"primary big ")+'block" data-x="dl">Save file to this device</button>'+
+    '<button class="btn '+(file&&!lastShareErr?"":"primary big ")+'block" data-x="dl">Save file to this device</button>'+
     '<button class="btn ghost block" style="margin-top:8px" data-x="copy">Copy as text</button>'+
     (S.settings.lastBackup?'<div class="tiny muted" style="text-align:center;margin-top:12px">Last copy '+relDate(S.settings.lastBackup)+'</div>':""),
     function(el){

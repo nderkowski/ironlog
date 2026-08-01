@@ -20,20 +20,30 @@ Tested on Nick's Android, 1 Aug 2026, against the v7 Pages deploy.
       never frozen. This was the single biggest unknown in the project.
 - [x] **Lock-screen notification.** Fires and displays. The grant path is now
       exercised, not just the refusal.
-- [ ] **Backup share sheet — FAILED, fixed, needs a retest.** "Send a copy…"
-      produced no share sheet and no error. Two causes, both real: the catch
-      swallowed every rejection as "user cancelled", so a broken share and a
-      cancelled one were indistinguishable; and a share that never settles at
-      all looked identical to a dead button. Now: cancelling stays silent,
-      anything else names the error, falls back to saving a file, and says so.
-      A watchdog catches the never-settles case. `.txt` is offered if Android
-      refuses `.json`. **Retest on v8.**
+- [x] **Backup — the share sheet is broken on this device, and that is now
+      handled rather than hidden.** It errors cleanly and falls back to writing
+      a file, confirmed on the phone. Since sharing can't be relied on, backup
+      no longer depends on it: finishing a workout writes a file automatically,
+      riding the tap you already made.
 - [ ] Install to home screen, then a full offline session.
+- [ ] Confirm the auto-backup file actually appears after a real workout, and
+      that restoring it on a wiped browser brings everything back. The round
+      trip passes in Chromium; the device has not done it yet.
 
-The one open question is whether sharing works *at all* on this device. It no
-longer matters much for safety — every failure path now ends with a file in
-Downloads — but "one tap into Drive" was the point, and a manual save the user
-has to remember is a worse backup than one they don't.
+**Still not seamless enough, and this is the live question.** A file in
+Downloads is safe from a cleared browser but not from a lost phone — and it
+relies on Android's own backup or the user moving it. Options, cheapest first:
+
+1. **Nothing more.** Downloads is auto-synced on many Android setups. Cheapest,
+   and unverifiable without checking this specific phone.
+2. **A share target that works.** Find out *why* `navigator.share` fails here
+   (the app now records the error — read it off the backup sheet) and fix or
+   route around it.
+3. **Google Drive appdata, client-side OAuth.** Genuinely seamless: sign in
+   once, every finished session uploads to a private app folder. No backend of
+   ours. Costs a Google Cloud OAuth client, an external script, and a network
+   dependency in an app that currently makes zero network calls — which is a
+   real change to what this thing *is*, not just more code.
 
 ---
 

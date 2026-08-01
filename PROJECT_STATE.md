@@ -73,7 +73,7 @@ S = {
   version, settings, routines[], sessions[], active
 }
 
-settings = { unit, rest, autoRest, buzz, sound, notify, rpe, inc,
+settings = { unit, rest, autoRest, buzz, sound, notify, rpe, autoBackup, inc,
              doubleDefault, repLow, repHigh,
              bodyweight, deloadUntil, deloadSnooze,
              bar, plates[], lastBackup }
@@ -211,6 +211,26 @@ second, so:
 It also records how long the page was genuinely hidden and **refuses to report a
 pass if the screen was never off**, so a foreground run can't be mistaken for a
 real result.
+
+### Backup rides a tap you were already making
+
+Sharing turned out to be genuinely broken on the target device, so the backup
+that matters is the local file — and a backup you have to remember is not a
+backup. `commitSession()` writes one **inside the tap on "Save workout"**.
+
+That placement is the whole trick. A download needs user activation, and
+finishing a workout is the one moment that reliably has it *and* is exactly when
+the log is worth keeping. No extra tap, nothing to remember. `autoBackup()`
+returns whether a file was actually written so the toast never claims one that
+wasn't. The setting is on by default; turning it off is honest about it.
+
+The other half is `fresh` in `viewToday()`: a wiped browser or a new phone lands
+on a **stock split with empty days**, not on "no routines", so the restore offer
+keys off having no sessions *and* no exercises anywhere. The first version of
+this check was wrong and put the button in a branch a fresh install never
+reaches — which would have made it useless in precisely the situation it exists
+for. Verified by wiping localStorage and restoring from a file the app itself
+had just written.
 
 ### Backup must never dead-end
 
@@ -444,7 +464,10 @@ Slice 3:
   keep-alive plus MediaSession is doing its job.
 - The lock-screen notification fires.
 - **The share-sheet backup did not work at all**, and produced no error, which
-  is what led to the failure-path rework below.
+  is what led to the failure-path rework below. On the rebuilt path it errors
+  cleanly and falls back to a file, confirmed on the device. Sharing itself is
+  still broken there, so the local file is the real backup and auto-backup on
+  finish exists because of it.
 
 **Not verified — needs a real phone**
 
