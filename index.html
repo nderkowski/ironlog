@@ -642,6 +642,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
+var BUILD="v7";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -1356,9 +1357,15 @@ var AU=null;
 function audioURLs(){
   if(AU) return AU;
   var i,n=AU_RATE,quiet=new Float32Array(n);
-  /* Inaudible, but deliberately not digital silence — a track of pure zeroes
-     can be optimised away and stops counting as playback. */
-  for(i=0;i<n;i++) quiet[i]=(i%2?1:-1)/32767;
+  /* The keep-alive has to be INAUDIBLE TO YOU but AUDIBLE TO CHROME, and those
+     are different tests. Chrome decides whether a tab is "playing audio" — and
+     therefore whether it may be frozen — from actual signal power. The first
+     version of this used ±1/32767 dither, about -90 dBFS, which Chrome scores
+     as silence: the tab froze anyway and the alarm never fired.
+     A 30 Hz tone at -24 dBFS has real power, but no phone speaker reproduces
+     30 Hz, so nothing comes out. On headphones it may be a faint rumble; that
+     is the deliberate trade for an alarm that actually arrives. */
+  for(i=0;i<n;i++) quiet[i]=Math.sin(2*Math.PI*30*i/n)*0.06;
   var beeps=3,on=.18,off=.14,tot=Math.round(n*beeps*(on+off)),alarm=new Float32Array(tot);
   for(var b=0;b<beeps;b++){
     var st=Math.round(b*(on+off)*n), len=Math.round(on*n);
@@ -1389,7 +1396,27 @@ function playSrc(url,loop){
     if(p&&p.catch) p.catch(function(){});   // autoplay refused; vibration still tries
   }catch(e){}
 }
-function audioStop(){ if(restAudio){ try{ restAudio.loop=false; restAudio.pause(); }catch(e){} } }
+function audioStop(){ if(restAudio){ try{ restAudio.loop=false; restAudio.pause(); }catch(e){} } mediaSession(false); }
+
+/* Declaring a media session promotes the tab to "playing media" on Android,
+   which is a much stronger keep-alive than bare audio playback — and it puts a
+   visible entry in the notification shade, so you can see the timer is armed
+   instead of trusting it. Pausing from the shade skips the rest, because a
+   control that lies about what it does is worse than no control. */
+function mediaSession(on){
+  if(!("mediaSession" in navigator)) return;
+  try{
+    if(!on){ navigator.mediaSession.playbackState="none"; return; }
+    if(window.MediaMetadata)
+      navigator.mediaSession.metadata=new MediaMetadata({
+        title:"Rest timer running", artist:"Iron Log",
+        artwork:[{src:"icon-192.png",sizes:"192x192",type:"image/png"}]
+      });
+    navigator.mediaSession.playbackState="playing";
+    navigator.mediaSession.setActionHandler("pause",function(){ stopRest(); });
+    navigator.mediaSession.setActionHandler("stop",function(){ stopRest(); });
+  }catch(e){}
+}
 /* Only worth keeping the page alive if something is going to happen at zero. */
 function wantsBgAlert(){ return !!(S.settings.sound||S.settings.notify); }
 
@@ -1440,11 +1467,36 @@ function askNotify(cb){
   }catch(e){ cb(false,"Couldn't ask for permission."); }
 }
 
+/* Whether a locked phone keeps this page running is not answerable from a
+   desktop browser, so the app records it. The tick gap is the whole story: a
+   frozen page stops ticking, so a run of 1s gaps means the keep-alive held and
+   any failure is downstream (output routing, volume), while a 20s gap means
+   Chrome froze us and the audio trick did not work. */
+var diag=null;
+function diagStart(sec){ diag={want:sec,t0:Date.now(),ticks:[],fired:0,audio:""}; }
+function diagTick(){ if(diag) diag.ticks.push(Date.now()); }
+function diagReport(){
+  if(!diag) return null;
+  var gaps=[],i;
+  var prev=diag.t0;
+  for(i=0;i<diag.ticks.length;i++){ gaps.push(diag.ticks[i]-prev); prev=diag.ticks[i]; }
+  return {
+    want:diag.want,
+    ticks:diag.ticks.length,
+    expected:diag.want,
+    maxGap:gaps.length?Math.max.apply(null,gaps)/1000:0,
+    fired:diag.fired?(diag.fired-diag.t0)/1000:0,
+    audio:diag.audio,
+    hidden:diag.hidden||0
+  };
+}
+
 var rest={endsAt:0,total:0}, buzzed=false;
 function startRest(sec){
   rest.total=sec; rest.endsAt=Date.now()+sec*1000; buzzed=false;
   clearRestNote();
-  if(wantsBgAlert()) playSrc(audioURLs().quiet,true);
+  diagStart(sec);
+  if(wantsBgAlert()){ playSrc(audioURLs().quiet,true); mediaSession(true); }
   renderHeader();
 }
 function stopRest(){ rest.endsAt=0; buzzed=false; audioStop(); clearRestNote(); renderHeader(); }
@@ -1453,9 +1505,18 @@ function restDone(){
   else audioStop();
   buzz([90,70,90,70,160]);
   notifyRestDone();
+  mediaSession(false);
+  if(diag){
+    diag.fired=Date.now();
+    var a=restAudio;
+    diag.audio=!a?"no element"
+      :(a.error?("error "+a.error.code)
+      :(a.paused?"paused":"playing")+" vol="+a.volume+(a.muted?" MUTED":""));
+  }
 }
 setInterval(function(){
   if(rest.endsAt){
+    diagTick();
     var left=(rest.endsAt-Date.now())/1000;
     if(left<=0&&!buzzed){
       buzzed=true;
@@ -1467,7 +1528,8 @@ setInterval(function(){
   } else if(S.active){ renderHeader(); }
 },1000);
 document.addEventListener("visibilitychange",function(){
-  if(document.hidden) return;
+  if(document.hidden){ if(diag) diag.hid=Date.now(); return; }
+  if(diag&&diag.hid){ diag.hidden=(diag.hidden||0)+(Date.now()-diag.hid)/1000; diag.hid=0; }
   clearRestNote();
   if(rest.endsAt||S.active) renderHeader();
 });
@@ -1975,6 +2037,59 @@ function rpeSheet(ei,si){
         delete st.rpe; save(); closeSheet(); refreshPlates(ei,si);
       };
     });
+}
+
+/* The self-test for the one thing a desktop browser cannot check. */
+function bgTestSheet(){
+  var r=diagReport();
+  var body;
+  if(!r||!r.fired){
+    body='<div class="sub">This starts a 20-second rest. Lock your phone straight away, '+
+      'put it down, and wait for the alarm. Come back here afterwards and this will say what happened.</div>'+
+      '<button class="btn primary block" data-x="go">Start the 20-second test</button>';
+  } else {
+    var frozen=r.maxGap>3;
+    var late=Math.abs(r.fired-r.want)>2;
+    var verdict = frozen
+      ? ["FAILED — the page was frozen","var(--bad)",
+         "Chrome stopped running the timer while the screen was off, so the alarm could not fire. The audio keep-alive did not hold."]
+      : late
+        ? ["PARTIAL — ran late","var(--bad)",
+           "The timer kept running but the alarm fired "+fmt(r.fired)+"s in instead of "+r.want+"s."]
+        : ["PASSED — the timer stayed alive","var(--good)",
+           r.hidden<3
+             ? "But the screen was only off for "+fmt(r.hidden)+"s, so this did not really test a locked phone. Run it again and lock the phone properly."
+             : "The alarm fired on time with the screen off for "+fmt(r.hidden)+"s. If you still heard nothing, it is a sound-output problem, not a timer problem — check the media volume and any connected Bluetooth device."];
+    body='<div class="banner '+(frozen||late?"warn":"calm")+'" style="margin-bottom:12px">'+
+        '<div class="bt" style="color:'+verdict[1]+'">'+esc(verdict[0])+'</div>'+
+        '<div class="bd">'+esc(verdict[2])+'</div></div>'+
+      '<div class="card" style="padding:0;margin-bottom:12px">'+
+        diagRow("Rest length",r.want+"s")+
+        diagRow("Alarm fired at",r.fired?fmt(r.fired)+"s":"never")+
+        diagRow("Timer ticks",r.ticks+" of ~"+r.expected)+
+        diagRow("Longest gap between ticks",fmt(r.maxGap)+"s",r.maxGap>3)+
+        diagRow("Screen off for",fmt(r.hidden)+"s",r.hidden<3)+
+        diagRow("Audio at alarm time",r.audio||"—")+
+        diagRow("Notifications",notifyState())+
+      '</div>'+
+      '<button class="btn primary block" data-x="go">Run it again</button>';
+  }
+  sheet('<h3>Background alarm test</h3>'+body+
+    '<button class="btn ghost block" style="margin-top:8px" data-x="close">Close</button>',
+    function(el){
+      $('[data-x="go"]',el).onclick=function(){
+        closeSheet();
+        if(!S.settings.sound&&!S.settings.notify) S.settings.sound=true;
+        startRest(20);
+        toast("Lock your phone now");
+      };
+      $('[data-x="close"]',el).onclick=closeSheet;
+    });
+}
+function diagRow(label,value,bad){
+  return '<div class="field-row" style="padding:9px 12px;margin:0">'+
+    '<div class="fl">'+esc(label)+'</div>'+
+    '<div class="num tiny"'+(bad?' style="color:var(--bad)"':"")+'>'+esc(String(value))+'</div></div>';
 }
 
 function loadTypeRow(mode,attr){
@@ -2924,6 +3039,9 @@ function viewPlan(){
     '<div class="field-row"><div class="fl">Rate sets (RPE)'+
       '<div class="fh">Adds an optional tag after you log a set. A hard week then holds the weight instead of adding.</div></div>'+
       '<button class="switch'+(S.settings.rpe?" on":"")+'" data-set="rpe"></button></div>'+
+    '<div class="field-row"><div class="fl">Test the alarm with the screen off'+
+      '<div class="fh">Runs a 20-second rest and reports whether the phone kept the timer alive</div></div>'+
+      '<button class="btn sm ghost" data-act="bgtest">Test</button></div>'+
     '<div class="field-row"><div class="fl">Notify when rest ends'+
       '<div class="fh">'+(notifyState()==="denied"
         ? '<span style="color:var(--bad)">Blocked in your browser settings for this site</span>'
@@ -2967,8 +3085,10 @@ function viewPlan(){
     '<button class="btn danger block" data-act="wipe">Erase everything</button>'+
   '</div></div>';
 
+  /* The build marker is here because a whole test round was wasted on a phone
+     running an older deploy. Check this before believing any bug report. */
   html+='<div class="tiny muted" style="text-align:center;padding:6px 0">'+
-    plural(S.sessions.length,"session")+' logged · Iron Log</div>';
+    plural(S.sessions.length,"session")+' logged · Iron Log '+esc(BUILD)+'</div>';
 
   v.innerHTML=html+'</div>';
 }
@@ -3025,6 +3145,7 @@ $("#view").addEventListener("click",function(e){
     });
     return;
   }
+  if(t.closest('[data-act="bgtest"]')){ bgTestSheet(); return; }
   var pAdd=t.closest('[data-act="plate-add"]');
   if(pAdd){ S.settings.plates.push({w:0,n:1}); save(); viewPlan(); return; }
   var pRm=t.closest('[data-act="plate-rm"]');

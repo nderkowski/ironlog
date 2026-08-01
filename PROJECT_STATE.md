@@ -27,8 +27,13 @@ between-sets moment is wrong unless it removes two decisions elsewhere.
 | Live app | https://nderkowski.github.io/ironlog/ — GitHub Pages, deployed from `main` |
 | Repo | `nderkowski/ironlog` |
 
-**The repo is the product.** After editing `index.html`, **bump `CACHE` in
-`sw.js` in the same commit** — otherwise installed phones keep serving the old
+**The repo is the product**, and **GitHub Pages serves `main`** — work on a
+branch is not testable on a phone until it is merged. A whole test round was
+lost to this. `BUILD` in `index.html` is printed at the bottom of the Plan tab
+for exactly that reason: check it on the device before believing any bug report.
+
+After editing `index.html`, **bump `BUILD` and `CACHE` in `sw.js` in the same
+commit** — otherwise installed phones keep serving the old
 copy from cache, and you'll debug a version that isn't running.
 
 > **The Claude artifact is no longer maintained.** It was how the app was
@@ -169,8 +174,17 @@ Details worth keeping:
 - Both WAVs are **synthesised in JS** (`wavURL()`) rather than embedded as
   base64 — it keeps the one-file rule at a few hundred bytes of code instead of
   a few KB of payload.
-- The quiet loop is dithered ±1/32767, not digital silence. A track of pure
-  zeroes can be optimised away and stops counting as playback.
+- **The keep-alive must be inaudible to you but audible to Chrome, and those
+  are different tests.** Chrome scores a tab's audibility from real signal
+  power. The first version used ±1/32767 dither (about -90 dBFS) on the theory
+  that it just had to be "not digital silence" — Chrome scored it as silence,
+  froze the tab anyway, and the alarm never fired. It is now a 30 Hz tone at
+  about -27 dBFS: no phone speaker reproduces 30 Hz, so nothing comes out, but
+  the tab counts as playing media. On headphones it may be a faint rumble.
+- A **MediaSession** is declared for the duration of a rest. On Android that is
+  a stronger keep-alive than bare playback, and it puts the timer in the
+  notification shade so the mechanism is visible rather than trusted. Pausing
+  from the shade skips the rest, because a control that lies is worse than none.
 - If the page gets frozen anyway and thaws late, the alarm is **suppressed past
   90 seconds** rather than shouting at someone already looking at the screen.
 - Notification permission is requested only when the switch is tapped, never on
@@ -179,6 +193,24 @@ Details worth keeping:
 - `navigator.serviceWorker.ready` never resolves when nothing is registered, so
   the notification path tests `.controller` and falls back to `new Notification`.
   This matters: the artifact build has no service worker.
+
+### The background alarm self-test
+
+Plan → "Test the alarm with the screen off" runs a 20-second rest and reports
+what actually happened. It exists because this is the one behaviour a desktop
+browser cannot check, and "I didn't hear anything" is not a bug report you can
+act on.
+
+The tick gap is the whole diagnosis. The rest timer records a timestamp every
+second, so:
+
+- **gaps of ~1s** → the page stayed alive, the keep-alive worked, and any
+  remaining failure is downstream (media volume, Bluetooth routing)
+- **one huge gap** → Chrome froze the page and the audio trick did not hold
+
+It also records how long the page was genuinely hidden and **refuses to report a
+pass if the screen was never off**, so a foreground run can't be mistaken for a
+real result.
 
 ### Plate maths
 

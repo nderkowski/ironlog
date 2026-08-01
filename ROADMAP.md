@@ -18,19 +18,24 @@ desktop browser structurally cannot answer.
 - [ ] The backup share sheet — does `navigator.share({files})` actually reach Drive
 - [ ] Install to home screen from https://nderkowski.github.io/ironlog/, then a
       full offline session
-- [ ] **New, and the important one:** does the rest alarm fire with the screen off
-      and the phone in a pocket? The quiet-audio keep-alive is verified in the
-      foreground, but whether Android Chrome keeps the page alive on a locked
-      screen is the entire question and it can only be answered on the phone.
-      Start a rest, lock, pocket, wait.
+- [ ] **The important one:** does the rest alarm fire with the screen off?
+      First attempt reported no sound, but it was run against a Pages deploy
+      that predated the feature, so it tested nothing. It also found a real bug
+      on the way: the keep-alive track was ~-90 dBFS, which Chrome scores as
+      silence, so the tab would have frozen regardless. Now a 30 Hz tone at
+      -27 dBFS plus a MediaSession. Use Plan → "Test the alarm with the screen
+      off" — it reports tick gaps and refuses to pass if the screen stayed on.
 - [ ] Notification grant path — headless Chromium only exercised the refusal.
 
 If the tap freeze survives, the next suspect is the artifact iframe rather than
 the app, and the self-hosted build should be tested before changing any more code.
 
-If the rest alarm *doesn't* survive a locked screen, the fallback is a
-`showTrigger` notification or accepting that the alarm needs the app foregrounded
-— but don't reach for either until the phone says the current approach failed.
+If the self-test still reports a frozen page, the audio route is exhausted:
+`Notification` timestamp triggers were never shipped in Chrome, and a service
+worker cannot hold a timer. The honest remaining options are a push server
+(which means Slice 4's backend arriving early) or accepting that the alarm
+needs the app in the foreground and saying so in the UI. Do not guess — read
+the tick gaps first.
 
 **If the backup share sheet turns out to be broken, it jumps the queue ahead of
 everything.** A logger with no working backup is one cleared browser away from
@@ -42,8 +47,9 @@ problem wearing a bigger hat.
 
 ## Slice 1 — the gym-floor essentials ✅ *shipped 1 Aug 2026*
 
-**1. Rest timer that survives a locked screen.** A near-silent looping WAV keeps
-the page alive during a rest; at zero the same `<audio>` element swaps to an
+**1. Rest timer that survives a locked screen.** A looping tone — inaudible to
+you, audible to Chrome's tab-audibility check — keeps the page alive during a
+rest; at zero the same `<audio>` element swaps to an
 audible beep, plus vibration and an optional lock-screen notification. Two new
 settings (`sound`, `notify`); permission is asked only on tap and refusal is
 explained in place. See PROJECT_STATE for why it works this way.
