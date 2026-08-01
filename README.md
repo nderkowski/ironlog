@@ -1,2 +1,149 @@
-# ironlog
-Workout tracker and progression 
+# Iron Log
+
+A friction-free lifting logbook. One HTML file, no build step, no accounts, no ads,
+no network calls. Your log lives in your phone's browser storage.
+
+```
+index.html                 the whole app
+manifest.webmanifest       makes it installable
+sw.js                      offline cache
+icon-*.png                 home screen icons
+tools/build-artifact.ps1   regenerates artifact-body.html (only needed for the Claude artifact copy)
+```
+
+---
+
+## Put it online (GitHub Pages)
+
+> **Status: not deployed.** Nothing has been uploaded to GitHub yet, so
+> `https://nderkowski.github.io/ironlog/` does not exist until you do the steps
+> below. They're yours to run — they need your GitHub login.
+
+Ten minutes, once.
+
+1. Go to **github.com/new**. Name the repository `ironlog`. Set it to **Public**
+   (Pages needs public on a free account). Don't add a README. Click
+   **Create repository**.
+2. On the next screen click **uploading an existing file**.
+3. Drag in `index.html`, `manifest.webmanifest`, `sw.js`, and all four `icon-*.png`
+   files. Skip `tools/`, `artifact-body.html`, and the `.md` files — none of them
+   are part of the running app.
+4. Click **Commit changes**.
+5. Go to **Settings → Pages**. Under *Build and deployment*, set **Source** to
+   *Deploy from a branch*, branch **main**, folder **/ (root)**. Click **Save**.
+6. Wait about a minute, then open:
+
+   **https://nderkowski.github.io/ironlog/**
+
+That URL is then yours permanently. Send it to anyone — each person gets their own
+private log on their own phone.
+
+**Careful:** a public repo means anyone who finds it can read the *code*. That's
+fine — there's nothing personal in it. Your training log never leaves your phone
+and is never part of the repo.
+
+**Updating later:** open the file on GitHub, click the pencil icon, paste the new
+contents, commit. Then bump the `CACHE` version in `sw.js` (currently
+`ironlog-v3`) so installed phones fetch the new copy instead of serving the old
+cached one.
+
+### Other hosts
+
+Any static host works, and the files are identical. Drag the folder onto
+[netlify.com/drop](https://app.netlify.com/drop) for an instant URL, or use
+Cloudflare Pages or Vercel. It needs **HTTPS** — installability and offline mode
+both require it. Opening `index.html` straight off your phone's storage works too,
+but you lose install and offline.
+
+---
+
+## Install it on your phone
+
+Open the URL in Chrome → menu (⋮) → **Add to home screen** / **Install app**.
+
+It then launches full screen with no browser chrome, works with no signal, and
+shows up in your app drawer like anything else you've installed.
+
+---
+
+## Moving your existing log over
+
+Your data is tied to the web address it was created on. Moving to a new URL does
+**not** bring it along — you have to carry it across once:
+
+1. On the old page: **Plan → Back up now → Save file to this device**.
+2. On the new page: **Plan → Import**, pick that file, tap **Import**.
+
+Do this before you get attached to the new URL.
+
+---
+
+## Backing up
+
+Nothing leaves your phone unless you send it. **Plan → Back up now** gives you:
+
+- **Send a copy…** — opens the Android share sheet, so you can drop the file
+  straight into Google Drive, Gmail, or anything else that syncs.
+- **Save file to this device** — plain download.
+- **Copy as text** — paste it into a note if that's easier.
+
+The app nags you on the Today screen after 8 sessions or a month without a copy.
+Importing a backup restores everything exactly: split, history, PRs, settings.
+
+---
+
+## How the progression works
+
+Each exercise gets a rep range (default 8–12) and a weight step. Before every
+session the app reads what you actually did last time and prescribes today's
+numbers, with the reason shown on the card:
+
+| What happened last time | What you get today |
+|---|---|
+| Every set hit the top of the range | Weight goes up one step, reps reset to the bottom |
+| Sets landed inside the range | Same weight, one more rep |
+| You fell short of the bottom | Same weight and reps again |
+| The lift has slid for 3 sessions | Weight drops ~10%, rounded to your step — **once**, then it holds until you beat it |
+
+Leave the top of the range empty and that exercise runs straight sets instead:
+hit your target on every set and the weight goes up.
+
+**Warm-ups.** Tap a set's number to flag it a warm-up (it shows **W**), or use
+⋯ → *Add a warm-up set*. Warm-ups carry forward to next session so you don't
+retype them, and they're invisible to volume, records, trends and the
+progression maths — a heavy single before your working sets can't set a fake PR
+or convince the app you're lifting less than you are.
+
+**Bodyweight and assisted lifts.** Set ⋯ → *Load type* to Bodyweight (the number
+is weight you added) or Assisted (the number is help you took). Fill in your
+bodyweight under Plan → Session and pull-ups score properly: they climb by reps
+first, then by added weight, and assisted work progresses by *removing*
+assistance. Each set stores the load it actually meant, so changing your
+bodyweight later never rewrites history.
+
+**Deload weeks.** Start one from the banner or Plan → Progression. For seven days
+everything is prescribed lighter and shorter on purpose, and those sessions are
+excluded from every trend — so a deliberate easy week can't read as a decline and
+trigger further cuts.
+
+The **deload call** works one level up. Per lift, it compares the mean estimated
+1RM of your last 3 sessions against the 3 before (Epley: `w × (1 + reps/30)`), and
+tags each lift CLIMBING, FLAT, or SLIPPING. Once 60% of the lifts in your split
+have stopped climbing, Today and Progress both tell you a deload week is due. It
+stays quiet until a lift has at least 4 sessions of history behind it.
+
+---
+
+## Notes
+
+- **Fixing a mistake:** Progress → tap any session → **Edit**. Change weights and
+  reps, add the set you forgot, delete one you didn't do, move the date, or mark
+  the whole session a deload. Records are recalculated across your entire history
+  on save, so correcting a typo also erases the phantom PR it created.
+- Set the rep range per exercise under **Plan → ⋯ → Rep range**, or change the
+  default for new exercises under **Plan → Progression**.
+- Renaming an exercise renames it everywhere, including past sessions, so its
+  history and chart stay in one piece.
+- Adding an exercise mid-workout keeps it as a one-off. The finish screen asks
+  whether to keep it in that day for good.
+- Clearing your browser's site data deletes the log. That's what the backups are for.
