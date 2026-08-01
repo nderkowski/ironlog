@@ -105,6 +105,57 @@ Recommendation: **the first.** It compounds what already exists and is the
 hardest thing for a competitor to bolt on, because it depends on the engine
 being trustworthy — which took real work to get right.
 
+### The shortlist behind Phase 1
+
+Ranked by *value per unit of work*, and filtered hard: every one of these makes
+the engine smarter or removes a decision at the moment you're holding a bar.
+Anything that only adds a screen has been left out.
+
+**Tier 1 — build these next, in this order.**
+
+1. **Volume landmarks per muscle (MEV / MAV / MRV).** You already count weekly
+   sets. The next step is saying whether that count is below maintenance, in the
+   productive range, or past recovery — and letting next week's set count follow
+   from it. This is the entire loop RP charges for, you are most of the way
+   there, and it turns a report into a decision. *Small, because the data
+   already exists.*
+2. **Automatic warm-up ramps.** You know today's working weight, the bar, and
+   the plates in the user's gym. Generating "45×5, 95×5, 135×3, 185×1" is
+   arithmetic you already do — and warm-ups already carry forward as a concept.
+   Removes typing at exactly the moment attention is lowest. *Very small.*
+3. **Readiness check-in.** One tap before a session: slept badly / sore / normal
+   / great. Modulates the day's prescription the way RPE modulates the next
+   one. RPE handles autoregulation *within* a session; this is the missing half
+   *between* sessions, and it's a single question. *Small, high leverage.*
+4. **Auto-regulated rest.** Rest longer after an RPE 9 set, shorter after a 7.
+   The data is already collected and the timer already exists. *Tiny.*
+
+**Tier 2 — real value, more work.**
+
+5. **Mesocycle planning.** The Phase 1 headline: blocks with planned volume
+   ramps and scheduled deloads, rather than reacting session to session. This is
+   where "logger" fully becomes "coach". Depends on 1 for its volume targets.
+6. **Stall-aware exercise rotation.** The app already knows which lifts have
+   gone flat after a back-off. Suggesting a variation at that point is a small
+   addition to a signal you already compute, and nobody mainstream does it.
+7. **Pain / niggle flagging.** Mark a lift as painful; the engine backs it off,
+   keeps it out of the deload maths, and proposes alternatives that hit the same
+   muscle. Genuinely differentiating, and the muscle tags make the substitution
+   possible. Everyone has felt this need; almost no app serves it.
+
+**Tier 3 — nice, not differentiating.**
+
+8. Strength standards ("your bench is X for your bodyweight").
+9. Session density and duration trends — you already store start and end times.
+10. Bodyweight tracking with a trend line, so the bodyweight-lift maths stops
+    relying on one manually-updated number.
+
+**Deliberately not on the list**, and worth recording so it doesn't get
+relitigated: exercise demo videos, a social feed, an exercise database, food
+and macro tracking, and wearable integrations. Each is a large ongoing
+commitment, each is served better by an existing app, and none of them make the
+progression engine better — which is the only thing here worth paying for.
+
 ### Phase 2 — infrastructure, only now
 
 Accounts, sync, TWA to Play Store, billing. In that order. This is the boring

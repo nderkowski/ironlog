@@ -642,7 +642,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v10";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v11";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -651,7 +651,8 @@ function defaultState(){
   return {
     version:4,
     settings:{unit:"lb",rest:120,autoRest:true,buzz:true,inc:5,
-              sound:true, notify:false, rpe:false, autoBackup:true, shareMode:"",
+              sound:true, notify:false, rpe:false, keepTone:false,
+              autoBackup:true, shareMode:"",
               doubleDefault:true,repLow:8,repHigh:12,
               bodyweight:0, deloadUntil:0, deloadSnooze:0,
               bar:45, plates:defaultPlates("lb"),
@@ -1396,29 +1397,18 @@ function playSrc(url,loop){
     if(p&&p.catch) p.catch(function(){});   // autoplay refused; vibration still tries
   }catch(e){}
 }
-function audioStop(){ if(restAudio){ try{ restAudio.loop=false; restAudio.pause(); }catch(e){} } mediaSession(false); }
-
-/* Declaring a media session promotes the tab to "playing media" on Android,
-   which is a much stronger keep-alive than bare audio playback — and it puts a
-   visible entry in the notification shade, so you can see the timer is armed
-   instead of trusting it. Pausing from the shade skips the rest, because a
-   control that lies about what it does is worse than no control. */
-function mediaSession(on){
-  if(!("mediaSession" in navigator)) return;
-  try{
-    if(!on){ navigator.mediaSession.playbackState="none"; return; }
-    if(window.MediaMetadata)
-      navigator.mediaSession.metadata=new MediaMetadata({
-        title:"Rest timer running", artist:"Iron Log",
-        artwork:[{src:"icon-192.png",sizes:"192x192",type:"image/png"}]
-      });
-    navigator.mediaSession.playbackState="playing";
-    navigator.mediaSession.setActionHandler("pause",function(){ stopRest(); });
-    navigator.mediaSession.setActionHandler("stop",function(){ stopRest(); });
-  }catch(e){}
-}
+function audioStop(){ if(restAudio){ try{ restAudio.loop=false; restAudio.pause(); }catch(e){} } }
 /* Only worth keeping the page alive if something is going to happen at zero. */
 function wantsBgAlert(){ return !!(S.settings.sound||S.settings.notify); }
+
+/* ---- why there is no MediaSession here ----
+   There was one. It made things worse. Declaring a media session tells Android
+   "this is a music player", which is precisely what makes the system duck
+   whatever you are actually listening to — and it put a pointless transport
+   control in the notification shade. Reported from a real gym session: the
+   30 Hz keep-alive was audible through headphones AND Android attenuated the
+   user's music for the whole rest period to prioritise it. A rest timer that
+   fights your music is not a rest timer anyone will keep using. */
 
 function notifyRestDone(){
   if(!S.settings.notify) return;
@@ -1491,12 +1481,17 @@ function diagReport(){
   };
 }
 
-var rest={endsAt:0,total:0}, buzzed=false;
+var rest={endsAt:0,total:0}, buzzed=false, restLate=0;
 function startRest(sec){
-  rest.total=sec; rest.endsAt=Date.now()+sec*1000; buzzed=false;
+  rest.total=sec; rest.endsAt=Date.now()+sec*1000; buzzed=false; restLate=0;
   clearRestNote();
   diagStart(sec);
-  if(wantsBgAlert()){ playSrc(audioURLs().quiet,true); mediaSession(true); }
+  /* The tone is now opt-in. It is the only thing that guarantees Chrome won't
+     freeze the page, but it costs you your music — Android ducks everything
+     else the whole time it plays. Chrome doesn't freeze a backgrounded page
+     immediately, so a normal 2-3 minute rest may well survive without it.
+     Whether it does on YOUR phone is what the self-test answers. */
+  if(wantsBgAlert()&&S.settings.keepTone) playSrc(audioURLs().quiet,true);
   renderHeader();
 }
 function stopRest(){ rest.endsAt=0; buzzed=false; audioStop(); clearRestNote(); renderHeader(); }
@@ -1505,7 +1500,6 @@ function restDone(){
   else audioStop();
   buzz([90,70,90,70,160]);
   notifyRestDone();
-  mediaSession(false);
   if(diag){
     diag.fired=Date.now();
     var a=restAudio;
@@ -1520,8 +1514,12 @@ setInterval(function(){
     var left=(rest.endsAt-Date.now())/1000;
     if(left<=0&&!buzzed){
       buzzed=true;
-      /* If the page was frozen anyway and thawed minutes later, don't shout
-         at someone who is already looking at the screen. */
+      /* Late by more than a few seconds means the phone paused us. Record it:
+         with the keep-alive tone off, a silently-missed alarm is the expected
+         failure and the user deserves to be told rather than left guessing. */
+      if(left<-4) restLate=-left;
+      /* If the page was frozen and thawed minutes later, don't shout at
+         someone who is already looking at the screen. */
       if(left>-90) restDone(); else audioStop();
     }
     renderHeader();
@@ -1532,6 +1530,14 @@ document.addEventListener("visibilitychange",function(){
   if(diag&&diag.hid){ diag.hidden=(diag.hidden||0)+(Date.now()-diag.hid)/1000; diag.hid=0; }
   clearRestNote();
   if(rest.endsAt||S.active) renderHeader();
+  if(restLate>4&&!S.settings.keepTone){
+    var by=Math.round(restLate); restLate=0;
+    toastUndo("Alarm was "+by+"s late — phone paused the app",function(){
+      S.settings.keepTone=true; writeNow();
+      toast("Keep-alive tone on. It will mute your music during rests.");
+    });
+    var t=$(".toast.act button"); if(t) t.textContent="Fix it";
+  } else restLate=0;
 });
 
 /* ============================ sheets ============================ */
@@ -2064,16 +2070,21 @@ function bgTestSheet(){
   } else {
     var frozen=r.maxGap>3;
     var late=Math.abs(r.fired-r.want)>2;
+    var tone=S.settings.keepTone;
     var verdict = frozen
       ? ["FAILED — the page was frozen","var(--bad)",
-         "Chrome stopped running the timer while the screen was off, so the alarm could not fire. The audio keep-alive did not hold."]
+         tone
+          ? "Chrome stopped running the timer even with the keep-alive tone playing. The audio route is exhausted on this phone."
+          : "Chrome paused the timer while the screen was off. Turn on the keep-alive tone under Plan — it will fix this, at the cost of muting your music during rests."]
       : late
         ? ["PARTIAL — ran late","var(--bad)",
            "The timer kept running but the alarm fired "+fmt(r.fired)+"s in instead of "+r.want+"s."]
         : ["PASSED — the timer stayed alive","var(--good)",
            r.hidden<3
              ? "But the screen was only off for "+fmt(r.hidden)+"s, so this did not really test a locked phone. Run it again and lock the phone properly."
-             : "The alarm fired on time with the screen off for "+fmt(r.hidden)+"s. If you still heard nothing, it is a sound-output problem, not a timer problem — check the media volume and any connected Bluetooth device."];
+             : "The alarm fired on time with the screen off for "+fmt(r.hidden)+"s"+
+            (tone?" — with the keep-alive tone on."
+                 :", and with the keep-alive tone OFF. Your phone doesn't need it, so your music stays untouched.")];
     body='<div class="banner '+(frozen||late?"warn":"calm")+'" style="margin-bottom:12px">'+
         '<div class="bt" style="color:'+verdict[1]+'">'+esc(verdict[0])+'</div>'+
         '<div class="bd">'+esc(verdict[2])+'</div></div>'+
@@ -2083,6 +2094,7 @@ function bgTestSheet(){
         diagRow("Timer ticks",r.ticks+" of ~"+r.expected)+
         diagRow("Longest gap between ticks",fmt(r.maxGap)+"s",r.maxGap>3)+
         diagRow("Screen off for",fmt(r.hidden)+"s",r.hidden<3)+
+        diagRow("Keep-alive tone",S.settings.keepTone?"on (mutes your music)":"off")+
         diagRow("Audio at alarm time",r.audio||"—")+
         diagRow("Notifications",notifyState())+
       '</div>'+
@@ -3067,6 +3079,11 @@ function viewPlan(){
     '<div class="field-row"><div class="fl">Rate sets (RPE)'+
       '<div class="fh">Adds an optional tag after you log a set. A hard week then holds the weight instead of adding.</div></div>'+
       '<button class="switch'+(S.settings.rpe?" on":"")+'" data-set="rpe"></button></div>'+
+    '<div class="field-row"><div class="fl">Keep-alive tone during rests'+
+      '<div class="fh">'+(S.settings.keepTone
+        ? '<span style="color:var(--bad)">Guarantees the alarm, but Android mutes your music for the whole rest.</span>'
+        : "Off — your music plays untouched. If an alarm ever arrives late, the app will offer to turn this on.")+'</div></div>'+
+      '<button class="switch'+(S.settings.keepTone?" on":"")+'" data-set="keepTone"></button></div>'+
     '<div class="field-row"><div class="fl">Back up after every workout'+
       '<div class="fh">Writes a file to your downloads when you tap Save workout. No extra tap, and it is the only backup that can\'t be forgotten.</div></div>'+
       '<button class="switch'+(S.settings.autoBackup?" on":"")+'" data-set="autoBackup"></button></div>'+

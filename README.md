@@ -164,9 +164,15 @@ stays quiet until a lift has at least 4 sessions of history behind it.
 
 **Rest timer that reaches you.** The countdown keeps running with the screen off
 and your phone in a pocket, then beeps, vibrates and (optionally) shows a
-lock-screen notification. It does this by playing a tone too low for a phone
-speaker to reproduce, which stops the browser freezing the page — there's a
-self-test under Plan → *Test the alarm with the screen off* if you ever doubt it.
+lock-screen notification. There's a self-test under Plan → *Test the alarm with
+the screen off* if you ever doubt it.
+
+There's a catch worth knowing about. Browsers pause pages in the background, and
+the only way to stop that is to play audio — but any audio loud enough to count
+makes Android mute your music for the whole rest. So the **keep-alive tone is
+off by default** and your music plays untouched. Most phones keep a two-minute
+rest ticking anyway. If an alarm ever does arrive late, the app tells you and
+offers to switch the tone on with one tap.
 
 **Plates.** Give an exercise a bar weight and every set row shows what to load
 per side. Set your actual plate inventory under Plan → Barbell; if a weight isn't

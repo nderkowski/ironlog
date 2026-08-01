@@ -20,6 +20,12 @@ something a desktop browser structurally could not answer.
 - [x] **The rest alarm with the screen off. It works.** Self-test: alarm at
       20.7s of a 20s rest, longest tick gap 1s — the page was never frozen.
       This was the single biggest unknown in the project.
+      **Follow-up from real gym use:** the keep-alive tone was audible on
+      headphones and Android ducked the user's music for the whole rest to
+      prioritise it. Working but unusable. The tone is now opt-in and off by
+      default, the MediaSession is gone, and a late alarm reports itself with a
+      one-tap fix. **Open: does a 2–3 minute rest survive a locked screen with
+      the tone off?** Run the self-test with it off and read the tick gap.
 - [x] **Lock-screen notification.** Fires and displays.
 - [x] **Backup sharing. Fixed, and the cause is known.** Chrome was refusing
       `application/json` as a shareable file type. Not user activation, not a

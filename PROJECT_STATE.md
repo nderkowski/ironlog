@@ -75,8 +75,8 @@ S = {
   version, settings, routines[], sessions[], active
 }
 
-settings = { unit, rest, autoRest, buzz, sound, notify, rpe, autoBackup,
-             shareMode, inc,
+settings = { unit, rest, autoRest, buzz, sound, notify, rpe, keepTone,
+             autoBackup, shareMode, inc,
              doubleDefault, repLow, repHigh,
              bodyweight, deloadUntil, deloadSnooze,
              bar, plates[], lastBackup }
@@ -184,10 +184,31 @@ Details worth keeping:
   froze the tab anyway, and the alarm never fired. It is now a 30 Hz tone at
   about -27 dBFS: no phone speaker reproduces 30 Hz, so nothing comes out, but
   the tab counts as playing media. On headphones it may be a faint rumble.
-- A **MediaSession** is declared for the duration of a rest. On Android that is
-  a stronger keep-alive than bare playback, and it puts the timer in the
-  notification shade so the mechanism is visible rather than trusted. Pausing
-  from the shade skips the rest, because a control that lies is worse than none.
+- **There is deliberately no MediaSession.** There was one, and it made things
+  worse. Declaring a media session tells Android "this is a music player",
+  which is exactly what makes the system duck whatever the user is listening
+  to. Do not add it back.
+- **The keep-alive tone is opt-in and off by default** (`settings.keepTone`).
+  Reported from an actual gym session: the 30 Hz tone was audible through
+  headphones *and* Android attenuated the user's music for the entire rest
+  period to prioritise it. It worked and was unusable, which is not a working
+  feature.
+
+  The catch-22 is real and worth understanding before trying to be clever:
+  audio loud enough for Chrome to count the tab as "playing" is audio loud
+  enough for Android to grant it audio focus, and audio focus is what ducks
+  music. There is no web API to play audio without requesting focus.
+
+  So the app stops assuming it needs the tone. Chrome does not freeze a
+  backgrounded page instantly, and a normal two-to-three minute rest may well
+  survive without any keep-alive at all. Whether it does is device-specific and
+  unknowable from here — which is what the self-test is for, and why the
+  self-test now reports which mode it ran in. A verdict that doesn't name the
+  mode proves nothing.
+
+  When the tone is off and an alarm arrives late, the app says so and offers a
+  one-tap fix rather than failing silently: `restLate` is recorded in the tick
+  and surfaced on the next `visibilitychange`.
 - If the page gets frozen anyway and thaws late, the alarm is **suppressed past
   90 seconds** rather than shouting at someone already looking at the screen.
 - Notification permission is requested only when the switch is tapped, never on
@@ -537,7 +558,13 @@ bite.
    `canShare()` approving a type does not mean `share()` will accept it.
 5. **Chrome scores tab audibility from real signal power.** A keep-alive track at
    -90 dBFS counts as silence and the tab gets frozen anyway. It has to be
-   inaudible to a human but loud to the meter — hence 30 Hz at -27 dBFS.
+   inaudible to a human but loud to the meter — hence 30 Hz at -27 dBFS. But
+   see 5b: solving that created a worse problem.
+5b. **Anything loud enough to keep the tab alive is loud enough to duck the
+   user's music**, because Android grants audio focus on the same signal Chrome
+   measures. There is no way to play audio without requesting focus, and a
+   MediaSession makes it worse rather than better. The tone is therefore
+   opt-in, off by default, and the app degrades loudly instead of silently.
 6. **`data-x` values collide inside a sheet.** `$('[data-x="top"]', el)` returns
    the first match in the whole sheet, so a menu button named `top` silently
    binds its handler to the rep-range input. Grep the sheet before naming one.
