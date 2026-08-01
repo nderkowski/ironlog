@@ -35,11 +35,11 @@ something a desktop browser structurally could not answer.
       Sharing now offers `text/plain` first and the Android share sheet opens.
 - [x] **Auto-backup.** Finishing a workout writes a file with no extra tap.
 
-Still open, low risk:
+Confirmed on the phone too:
 
-- [ x] Install to home screen, then a full offline session end to end.
-- [ x] Confirm on-device that a wiped browser restores from an auto-backup file.
-      The round trip passes in Chromium but the phone has not done it.
+- [x] Install to home screen, and a full offline session end to end.
+- [x] A wiped browser restores from an auto-backup file. The round trip is real,
+      not just green in Chromium.
 
 **Backup is no longer the thing blocking everything.** There are three
 independent paths off the device now — one-tap share, an automatic file per
