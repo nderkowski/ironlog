@@ -48,10 +48,11 @@ private log on their own phone.
 fine — there's nothing personal in it. Your training log never leaves your phone
 and is never part of the repo.
 
-**Updating later:** open the file on GitHub, click the pencil icon, paste the new
-contents, commit. Then bump the `CACHE` version in `sw.js` (currently
-`ironlog-v3`) so installed phones fetch the new copy instead of serving the old
-cached one.
+**Updating later:** push the change, then bump **both** `BUILD` in `index.html`
+and `CACHE` in `sw.js` in the same commit, so installed phones fetch the new copy
+instead of serving the cached old one. The build number prints at the foot of the
+Plan tab — check it on the phone before reporting a bug, because debugging a
+version that isn't running is a very easy afternoon to lose.
 
 ### Other hosts
 
@@ -86,15 +87,29 @@ Do this before you get attached to the new URL.
 
 ## Backing up
 
-Nothing leaves your phone unless you send it. **Plan → Back up now** gives you:
+Nothing leaves your phone unless you send it.
+
+**It backs itself up.** Finishing a workout writes a file to your downloads — no
+extra tap, nothing to remember. That's the backup that actually happens, because
+it rides a button you were already pressing. Turn it off under Plan → Session if
+you'd rather it didn't.
+
+**Plan → Back up now** also gives you:
 
 - **Send a copy…** — opens the Android share sheet, so you can drop the file
-  straight into Google Drive, Gmail, or anything else that syncs.
+  straight into Drive, Gmail, or anything else that syncs.
 - **Save file to this device** — plain download.
 - **Copy as text** — paste it into a note if that's easier.
 
-The app nags you on the Today screen after 8 sessions or a month without a copy.
-Importing a backup restores everything exactly: split, history, PRs, settings.
+If sharing ever fails it says so, names the error, and saves a file anyway — you
+can't end up with nothing. There's a **"Sharing not working? Test it"** link that
+works out which file type your phone will accept and remembers it.
+
+**Getting it back.** A new phone or a cleared browser opens on an empty app with
+a **Restore from a backup** button right there on Today. Importing restores
+everything exactly: split, history, PRs, settings.
+
+The app also nags you on Today after 8 sessions or a month without a copy.
 
 ---
 
@@ -127,6 +142,11 @@ first, then by added weight, and assisted work progresses by *removing*
 assistance. Each set stores the load it actually meant, so changing your
 bodyweight later never rewrites history.
 
+**RPE.** Off by default. Turn it on under Plan → Session and a small tag appears
+on each set *after* you log it — never before, so it can't slow you down. If a
+session averages RPE 9.5 or higher, the next prescription repeats the weight
+instead of adding to it. Leave it off and nothing changes.
+
 **Deload weeks.** Start one from the banner or Plan → Progression. For seven days
 everything is prescribed lighter and shorter on purpose, and those sessions are
 excluded from every trend — so a deliberate easy week can't read as a decline and
@@ -137,6 +157,42 @@ The **deload call** works one level up. Per lift, it compares the mean estimated
 tags each lift CLIMBING, FLAT, or SLIPPING. Once 60% of the lifts in your split
 have stopped climbing, Today and Progress both tell you a deload week is due. It
 stays quiet until a lift has at least 4 sessions of history behind it.
+
+---
+
+## The rest of it
+
+**Rest timer that reaches you.** The countdown keeps running with the screen off
+and your phone in a pocket, then beeps, vibrates and (optionally) shows a
+lock-screen notification. It does this by playing a tone too low for a phone
+speaker to reproduce, which stops the browser freezing the page — there's a
+self-test under Plan → *Test the alarm with the screen off* if you ever doubt it.
+
+**Plates.** Give an exercise a bar weight and every set row shows what to load
+per side. Set your actual plate inventory under Plan → Barbell; if a weight isn't
+achievable with the plates you own, it tells you what you'd actually get.
+
+**Weekly sets per muscle.** Progress shows how many sets each muscle got this
+week, with last week marked on the bar. A set counts 1 toward its main muscle and
+½ toward each helper — counting bench as a full set of triceps is how other
+trackers end up claiming you did 40 a week. Muscles are guessed from the exercise
+name and editable in two taps.
+
+**Records and consistency.** A board of every lift's best set, and a month grid
+of the days you trained.
+
+**Supersets.** ⋯ → *Superset with the one above* pairs two exercises as A1/A2.
+The rest timer then only fires after the second one.
+
+**Planks and carries.** ⋯ → *Measured in* switches an exercise to time or
+distance. An unloaded plank progresses by holding longer rather than being told
+to add weight to a bar it doesn't have.
+
+**Templates.** Plan → *Start from a template* for Push/Pull/Legs, Upper/Lower or
+3-day Full Body, so setup isn't twenty minutes of typing.
+
+**Undo.** Deleting a session, an exercise or a training day gives you ten seconds
+to take it back.
 
 ---
 
