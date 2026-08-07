@@ -77,7 +77,7 @@ S = {
 
 settings = { unit, rest, autoRest, buzz, sound, notify, rpe, keepTone,
              autoBackup, shareMode, inc,
-             doubleDefault, repLow, repHigh,
+             doubleDefault, repLow, repHigh, rangeFixHidden,
              bodyweight, deloadUntil, deloadSnooze,
              bar, plates[], lastBackup }
   plates[] = { w, n }        // n = PAIRS owned, not singles
@@ -130,6 +130,12 @@ Notes that will bite you if you miss them:
 - **`rpe` on a set is always optional and often absent.** The engine rule only
   fires when at least half a session's working sets carry one, so it is
   invisible to anyone not using the feature.
+- **Every plan exercise is built by one of two constructors.** `newPlanEx(name)`
+  builds one from a name — history, then the guessers, then the movement's
+  default range. `planExFromSession(ex)` promotes an exercise you added
+  mid-session. Nothing else may write a plan-exercise literal: the object used
+  to exist in five places and two of them silently dropped `bar`, `metric`,
+  `mg` and `mg2`. Adding a field to the model now means editing these two.
 - **Muscle tags fall back, they don't default.** `mg` (one main muscle) and
   `mg2[]` (helpers) may be absent on any exercise — every session logged before
   the feature existed has none. `tagsOf(ex)` resolves in order: the exercise's
@@ -147,9 +153,12 @@ nowhere until you switch apps and back. It was reported as "the app becomes
 uninteractable."
 
 `toggleSet()` and the ± steppers now mutate state and call `refreshSetRow()` /
-`refreshSummary()`, which touch only the affected nodes. Verified: the input keeps
-DOM identity *and* keyboard focus across a toggle. **Do not reintroduce a full
-re-render on the set-logging path.** Structural changes (adding a set, adding an
+`refreshSummary()`, which touch only the affected nodes. Verified: the input
+keeps **DOM identity** across a toggle and across a ± tap. (Keyboard focus does
+*not* stay on the input — it moves to the button you tapped, which is what a
+real tap does too. The property that matters is that the node the soft keyboard
+is attached to is never replaced.) **Do not reintroduce a full re-render on the
+set-logging path.** Structural changes (adding a set, adding an
 exercise, reordering) may still re-render — they're not in the between-sets hot
 path.
 
@@ -403,6 +412,61 @@ Order of precedence:
 the *number goes down*, so they invert. Getting this backwards silently prescribes
 regression, which is why it has a dedicated test case.
 
+### Where a rep range comes from
+
+`defaultRange(name, metric)` decides what a *new* exercise starts at. A cable
+curl and a deadlift do not want the same range, and everything used to arrive
+at the one global default.
+
+`settings.repLow`/`repHigh` stays the spec for an ordinary compound and the
+other tiers are **derived from it**, so one setting still steers the whole plan
+rather than the app growing three of them:
+
+| class | from 8–12 | examples |
+|---|---|---|
+| heavy | 5–8 (`low−3`, `top−4`) | squat, deadlift, bench, OHP, row, pull-up |
+| compound | 8–12 (unchanged) | leg press, lunge, hip thrust, anything unmatched |
+| isolation | 12–16 (`low+4`, `top+4`) | curl, extension, raise, fly, calf, shrug, pushdown |
+| timed | 30–60s | anything with `metric === 1` |
+
+`movementClass()` is an ordered regex list like `guessMuscles()`, with the same
+first-match-wins rule, **plus one override**: `MOVE_LIGHT` demotes a heavy
+match to compound when the name says dumbbell, machine, cable, smith, band or
+kettlebell — a dumbbell bench press is not a heavy barbell lift.
+
+Timed work is the exception that had to be special-cased rather than derived:
+a plank has nothing to do with a rep count, and template planks were arriving
+as "8–12 seconds", which is not a plank.
+
+**These are defaults, not rules.** The range is two taps away in the exercise's
+own menu, and `repLow`/`repHigh` remains the fallback for anything unmatched.
+
+### The switch that only applied to new exercises
+
+`settings.doubleDefault` has always been a *creation-time* default. Turning it
+on did nothing to the plan you already had, and an exercise with no `repTop`
+falls through `prescribe()` to straight sets — so it adds weight the moment you
+hit the target. On a plan carried forward from v1, where no exercise ever had a
+`repTop`, that meant double progression never ran at all, and the only signal
+was the card reading "3 × 8 target" instead of "3 × 8–12 range". That is not a
+signal; the reported symptom was "it always suggests more weight at 8 reps".
+
+Three things fix that class of bug, and all three matter:
+
+- The card and the Plan row say **"8 straight"**, which names a mode, rather
+  than "8 target", which reads as a number.
+- Both exercise menus state the mode in a sentence (`modeHint()`), and the plan
+  menu offers **one tap out of it**.
+- Plan → Progression counts the exercises still on straight sets and offers to
+  fit ranges to all of them, undoably. Turning the switch on re-offers it,
+  because a switch that silently means "from now on" is the original bug.
+
+`applyRanges()` **keeps each exercise's existing bottom** and only adds the
+reps-first room on top (`repTop = reps + rangeWidth(name)`). Moving the bottom
+would quietly change a programme you are mid-way through; adding a ceiling
+doesn't. It also updates a workout already in progress, which holds its own
+copy of every exercise.
+
 ### `trend(name)` — is this lift moving
 
 Mean best-e1RM (Epley) of the last 3 non-deload sessions vs the 3 before.
@@ -506,6 +570,38 @@ Slice 3:
 - PWA install criteria: service worker activates, manifest has name + standalone
   + 192 + 512 + maskable, and the shell caches for offline
 
+Slice 5 (v13), against a v1-shaped plan whose exercises have no `repTop` field
+at all — the state the reported bug lives in. **The suites are in
+`tools/test/`** (`t20`–`t23`, 88 assertions) and run against
+`npx http-server -p 8117 -s -c-1 .` with `node tools/test/tNN-….mjs`:
+
+- The reported symptom, end to end: a v1 exercise reads "3 × 8 straight" on
+  both the Plan row and the session card, the engine adds weight because that
+  is genuinely the mode the data is in, and taking the offered repair flips the
+  same exercise to "3 × 8–11 range" and "go for 9 this time" at the same load
+- Plan warns with a count and names the exercises, disappears once repaired,
+  comes back on undo, and re-offers itself when `doubleDefault` is switched on
+- `applyRanges()` widths, checked one by one: bench 8 → 8–11 (heavy), squat
+  8 → 8–11, cable curl 10 → 10–14 (isolation), bottoms untouched
+- New-exercise ranges: deadlift 5–8, lateral raise 12–16, **dumbbell** bench
+  press 8–12 (the `MOVE_LIGHT` demotion), leg press 8–12, plank 30–60s as time
+- Item 5: an extra kept from the finish screen now carries `metric`, `mg`,
+  `repTop` and `bar` — it dropped all four
+- Item 6: the session editor's "Add exercise" produces 12–16 with `mg: biceps`
+  for a cable curl instead of a hardcoded `{reps: 8, repTop: 0}`
+- Both exercise menus measured at 320 px and 390 px after gaining a row and a
+  button: no sideways scroll, no nested `.field-row`, no duplicated `data-x`
+- Regressions on everything the constructor change reroutes: PPL still builds
+  3 days / 15 exercises / all tagged / all with a bar where due, all four
+  progression verdicts, assisted inversion, unloaded-plank time progression,
+  a 405 lb warm-up still counting for nothing, and the plate line
+- The set-logging path still doesn't re-render, **with a control**: the weight
+  input keeps DOM identity across a tick and a ± stepper, while "+ Set" — a
+  structural change, which is allowed to re-render — demonstrably replaces it.
+  Note the earlier claim that the input keeps *keyboard focus* is wrong as
+  written: focus moves to the button you tapped, exactly as a real tap does.
+  What matters, and what is asserted, is that the node survives.
+
 **Confirmed on a real phone** (Android, 1 Aug 2026, v7 deploy)
 
 - The tap-freeze is gone.
@@ -591,13 +687,23 @@ bite.
     blew a menu out to 1180px in a 388px viewport. Count your closing tags when
     a function returns markup, and assert `scrollWidth <= clientWidth` on any
     sheet you add rows to.
-13. **Object literals that build a plan exercise exist in four places** —
-    `addToPlan()`, `applyTemplate()`, `exerciseMenu()`'s keep-permanently, and
-    `finishSheet()`'s keep-extras — plus a fifth in the session editor. Every
-    new field on the model has to be added to all of them, and twice now one has
-    been missed. Collapse them into a shared constructor before adding another
-    field.
-14. **Test through the UI, not the functions.** The `data-x` collision, the
+13. **Plan-exercise literals are now banned.** They existed in five places —
+    `addToPlan()`, `applyTemplate()`, `pickExercise()`, `exerciseMenu()`'s
+    keep-permanently, `finishSheet()`'s keep-extras — plus a sixth in the
+    session editor, and three of them had drifted: the finish screen dropped
+    `bar`, `metric`, `link`, `mg` and `mg2`, and the editor hardcoded
+    `{targetReps: 8, reps: 8, repTop: 0}` over every default. All six now go
+    through `newPlanEx()` or `planExFromSession()`. **Add new model fields
+    there and nowhere else**, and don't reintroduce a literal "just for this
+    one case" — that is exactly how the first five happened.
+14. **A setting that only applies at creation time is a bug unless it says so
+    and offers to apply itself.** `doubleDefault` looked like a mode and was a
+    default. Every exercise Nick had predated it, so the headline feature of
+    the engine had never once run on his data, and the app reported this as a
+    slightly different word on a card. If you add another switch that shapes
+    new objects, make the existing ones' state visible and offer the migration
+    in the same screen.
+15. **Test through the UI, not the functions.** The `data-x` collision, the
     112px button and the miswired restore prompt were all invisible to
     unit-style checks and obvious the moment a real click drove them. The menu
     overflow above is the same lesson again: it was found by measuring a

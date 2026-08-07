@@ -16,8 +16,9 @@ Six items. Four are Nick's, from actually training with the app; two I found
 while diagnosing those. Each has been reproduced or explicitly not reproduced —
 don't re-derive that work.
 
-**Item 1 is already fixed and shipped in v12** — it stays here as the record of
-what the bug was. Start at item 2.
+**Items 1, 2, 3, 5 and 6 are fixed and shipped** (1 in v12, the rest in v13).
+They stay here as the record of what the bugs were. **Item 4 is the only one
+left**, and it wants a design conversation before any code.
 
 ### 1. BUG — both exercise menus overflowed sideways ✅ *fixed in v12*
 
@@ -44,44 +45,56 @@ the last field-row before the `.menu` block, so the browser's auto-close was
 harmless. Slice 3 added `metricRow`, `barRow` and `muscleRow` after it and the
 nesting compounded. A latent bug, exposed rather than introduced.
 
-### 2. BUG — "always suggests more weight at 8 reps, never more reps" *(not reproduced — needs Nick's data)*
+### 2. BUG — "always suggests more weight at 8 reps, never more reps" ✅ *fixed in v13*
 
-Double progression is **working** on a stock exercise: a fresh Bench Press at
-8–12, logged 3×8, prescribes *"Same weight — go for 9 this time"*. So the engine
-logic is sound and the bug is conditional on state.
+**Cause: a fourth one, not on the original list.** Nick answered the diagnostic
+question — card reads "8 target", the switch is **on**, and *basically every*
+exercise is affected because they were all created in v1 and carried forward
+untouched.
 
-`prescribe()` only runs double progression when `repTop > reps`. Otherwise it
-falls through to straight sets, which is exactly "add weight when you hit the
-target". So **something is leaving `repTop` at 0 or ≤ `reps`** on the affected
-exercises. Candidates, in order of likelihood:
+`settings.doubleDefault` has only ever been a **creation-time default**.
+Turning it on does nothing to exercises that already exist, and an exercise
+with no `repTop` falls through `prescribe()` to straight sets. So on a plan
+built before rep ranges existed, double progression had never run once — and
+the only thing the app said about it was "3 × 8 target" instead of
+"3 × 8–12 range", which is a word, not a signal.
 
-1. **`settings.doubleDefault` is off.** Confirmed: with it off, a new exercise
-   gets `repTop: 0`. The switch is under Plan → Progression.
-2. **The rep-range top box was cleared.** Emptying it sets `repTop: 0` and
-   silently switches that exercise to straight sets. The only signal is the card
-   reading "3 × 8 target" instead of "3 × 8–12 range" — far too subtle for a
-   change in progression *mode*. Worth surfacing explicitly whichever way the
-   diagnosis lands.
-3. **The session editor's "Add exercise" hardcodes `repTop: 0`** — see item 6.
+The engine was never wrong. It correctly ran the mode the data put it in.
 
-**First diagnostic step:** ask Nick what the exercise card says under the name —
-"8–12 range" or "8 target" — or read `repTop` out of a backup file. That single
-answer distinguishes all three.
+**Reproduced** with a v1-shaped plan (`repTop` absent, `doubleDefault: true`):
+card "3 × 8 target", verdict "Hit all 8s — add 5 lb", prefill 135 → 140.
 
-### 3. FEATURE — rep ranges should suit the movement
+**Fixed** in three parts, because surfacing without a repair would just be a
+better-worded bug:
 
-Everything defaults to 8–12 regardless of exercise. An isolation movement wants
-something like 12–20, and should add load at 16–18 rather than 12.
+- Card and Plan row read **"8 straight"** — a mode, not a number. Both exercise
+  menus state the mode in a sentence, and the plan menu offers one tap out.
+- Plan → Progression counts the exercises still on straight sets, names them,
+  explains why the switch didn't fix them, and offers to fit ranges to all of
+  them. Undoable. Turning the switch on re-offers it.
+- The repair **keeps each exercise's existing bottom** and only adds the
+  reps-first room on top, so a programme mid-flight isn't quietly rewritten.
 
-The muscle tags make this easy: `guessMuscles()` already classifies every
-exercise, and a compound/isolation distinction can be derived from the same
-table (or added as a third field alongside `mg`/`mg2`). Then `addToPlan()` and
-`applyTemplate()` pick the default range from the movement instead of one global
-setting. Keep `repLow`/`repHigh` as the fallback and keep it overridable per
-exercise — this changes the *default*, not the capability.
+Trap 14 in PROJECT_STATE is the general lesson.
 
-Do this **after** item 2 is understood, since both concern where a rep range
-comes from and a fix to one may reshape the other.
+### 3. FEATURE — rep ranges should suit the movement ✅ *shipped in v13*
+
+`defaultRange(name, metric)` classifies the movement and derives the range from
+`repLow`/`repHigh` rather than adding two more settings — heavy lifts sit lower
+and narrower (5–8 from 8–12), isolation higher (12–16), timed holds get 30–60s.
+`movementClass()` is an ordered regex list like `guessMuscles()`, with a
+`MOVE_LIGHT` override so a dumbbell bench press isn't treated as a heavy
+barbell lift. Full table in PROJECT_STATE.
+
+Two notes on what was built versus what was asked:
+
+- The ask was 12–20 for isolation, adding load at 16–18. Those are the same
+  request stated twice: under double progression, load goes up when you hit the
+  **top**, so "add load at 16–18" *is* the top. It shipped as **12–16** — a
+  16-rep ceiling with a 12-rep floor. A 12–20 range would take eight sessions
+  to cross at one rep a time, which is a stall, not a progression.
+- Templates now go through the same constructor, which fixes a latent one:
+  a template Plank used to arrive asking for **8–12 seconds**.
 
 ### 4. FEATURE — A/B week variants inside each training day *(Nick's, and the biggest item here)*
 
@@ -128,25 +141,36 @@ moves to B — so they must not be collapsed into one modulo.
 which item 3 also touches, and the exercise constructor, which item 5 fixes.
 Doing it last means both are already tidy.
 
-### 5. BUG — keeping an extra exercise from the finish screen loses its settings
+**Status (v13): both prerequisites are now done.** The exercise constructor is
+`newPlanEx()` / `planExFromSession()`, so variants inherit one code path rather
+than six. Open questions to settle with Nick before building — see the end of
+the session notes:
 
-`finishSheet()`'s "Keep the extras in Day A?" path builds the routine exercise
-by hand and copies only `name`, `sets`, `reps`, `repTop`, `inc` and `bw`. It
-**drops `bar`, `metric`, `link`, `mg` and `mg2`** — so an exercise promoted this
-way loses its plate maths, its time/distance metric and its muscle tags, and
-silently stops counting toward weekly sets under the right muscle.
+1. Is a variant a *different exercise selection*, or the *same exercises
+   programmed differently* (heavy/volume)? The model above handles the first
+   cleanly; the second means one lift with two rep ranges and two progressions,
+   which `exSessions()`-joins-by-name does **not** currently support.
+2. What happens to a half-finished fortnight when you add a third variant, or
+   delete one? The "derive from history" rule has to answer this.
+3. Does the deload week interact? A deload landing on week B means week B is
+   skipped for a fortnight.
 
-The equivalent path in `exerciseMenu()` carries all of them. **Fix:** make both
-call one shared `planExFromSession(ex)` helper, so the next field added to the
-model can't be forgotten in one of two places. This is the second time this
-class of bug has appeared.
+### 5. BUG — keeping an extra exercise from the finish screen loses its settings ✅ *fixed in v13*
 
-### 6. BUG — the session editor's "Add exercise" ignores every default
+Confirmed and fixed. `finishSheet()`'s keep-extras path dropped `bar`,
+`metric`, `link`, `mg` and `mg2`, so an exercise promoted that way lost its
+plate maths, its time/distance metric and its muscle tags.
 
-`drawEditor()` pushes `{targetReps: 8, reps: 8, repTop: 0, inc: null, bw: 0}`
-with the numbers hardcoded, ignoring `repLow`, `repHigh` and `doubleDefault`,
-and dropping `bar`, `metric` and the muscle tags. Same shared-helper fix as
-item 5.
+### 6. BUG — the session editor's "Add exercise" ignores every default ✅ *fixed in v13*
+
+Confirmed and fixed. `drawEditor()` hardcoded
+`{targetReps: 8, reps: 8, repTop: 0, inc: null, bw: 0}`.
+
+**Both fixed by the same change, which is the real fix:** all six places that
+built a plan exercise by hand now go through `newPlanEx(name)` or
+`planExFromSession(ex)`. There were five according to trap 13; `pickExercise()`
+was a sixth nobody had counted. Adding a field to the model is now a two-file
+edit instead of a six-site scavenger hunt — see trap 13, rewritten.
 
 ---
 
