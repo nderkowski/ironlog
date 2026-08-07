@@ -642,7 +642,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v12";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v13";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -653,7 +653,7 @@ function defaultState(){
     settings:{unit:"lb",rest:120,autoRest:true,buzz:true,inc:5,
               sound:true, notify:false, rpe:false, keepTone:false,
               autoBackup:true, shareMode:"",
-              doubleDefault:true,repLow:8,repHigh:12,
+              doubleDefault:true,repLow:8,repHigh:12,rangeFixHidden:false,
               bodyweight:0, deloadUntil:0, deloadSnooze:0,
               bar:45, plates:defaultPlates("lb"),
               lastBackup:0},
@@ -1062,6 +1062,117 @@ function guessMuscles(name){
   for(var i=0;i<MG_GUESS.length;i++)
     if(MG_GUESS[i][0].test(n)) return {mg:MG_GUESS[i][1], mg2:MG_GUESS[i][2].slice()};
   return {mg:"", mg2:[]};
+}
+
+/* ---- how a movement wants to be programmed ----
+   A cable curl and a deadlift do not want the same rep range, and everything
+   used to arrive at the one global default. Ordered like MG_GUESS: first match
+   wins, so specific patterns come before general ones. */
+var MOVE_CLASS=[
+  [/upright\s*row|leg\s*curl|leg\s*extension|knee\s*extension/i,          "iso"],
+  [/calf|calve|toe\s*press|shrug/i,                                       "iso"],
+  [/raise|\bfly\b|flye|pec\s*deck|rear\s*delt|face\s*pull|reverse\s*(fly|flye|pec)/i,"iso"],
+  [/curl|push.?down|press.?down|kick.?back|skull|pullover|wrist|\bgrip\b/i,"iso"],
+  [/crunch|sit.?up|ab\s*(wheel|roll)|russian\s*twist|woodchop|pallof/i,    "iso"],
+  [/squat|deadlift|dead\s*lift|rdl|romanian|good\s?morning|stiff.?leg/i,  "heavy"],
+  [/bench|chest\s*press|overhead\s*press|\bohp\b|shoulder\s*press|military/i,"heavy"],
+  [/\brow\b|rows|pendlay|pull.?up|chin.?up|\bdips?\b/i,                   "heavy"]
+];
+/* Anything loaded by hand or off a stack is not a heavy barbell lift whatever
+   the movement is called: a dumbbell bench press belongs in the middle tier. */
+var MOVE_LIGHT=/dumbbell|\bdb\b|machine|cable|smith|hammer\s*strength|band|kettlebell|\bkb\b/i;
+
+function movementClass(name){
+  var n=String(name||"");
+  for(var i=0;i<MOVE_CLASS.length;i++){
+    if(!MOVE_CLASS[i][0].test(n)) continue;
+    var c=MOVE_CLASS[i][1];
+    return (c==="heavy"&&MOVE_LIGHT.test(n))?"compound":c;
+  }
+  return "compound";
+}
+
+/* The rep range a new exercise starts at.
+
+   settings.repLow/repHigh stays the spec for an ordinary compound and the
+   other tiers are derived from it, so one setting still steers the whole plan
+   rather than the app growing three of them. Timed work is the exception: a
+   plank measured in seconds has nothing to do with a rep count, and arriving
+   as "8–12 seconds" was nonsense.
+
+   Every one of these is a default, not a rule — the range is two taps away in
+   the exercise's own menu. */
+function defaultRange(name,met){
+  var s=S.settings;
+  var low=Math.max(1,num(s.repLow)||8);
+  var top=Math.max(low+1,num(s.repHigh)||12);
+  if(num(met)===1){ low=30; top=60; }
+  else{
+    var c=movementClass(name);
+    if(c==="heavy"){ low=Math.max(1,low-3); top=Math.max(low+1,top-4); }
+    else if(c==="iso"){ low=low+4; top=top+4; }
+  }
+  if(!s.doubleDefault) top=0;
+  return {low:low, top:top, cls:num(met)===1?"time":movementClass(name)};
+}
+/* How much reps-first room a range gives. Used when fitting a range onto an
+   exercise that already has a bottom you train at, where moving that bottom
+   would quietly change the programme. */
+function rangeWidth(name,met){
+  var r=defaultRange(name,met);
+  return Math.max(1,(r.top||r.low+4)-r.low);
+}
+
+/* Which of the two progressions an exercise is actually on, in words. The only
+   signal used to be "range" versus "target" on the card, which is not a signal
+   — an exercise silently running straight sets looks exactly like one that is
+   climbing reps. */
+function modeHint(ex){
+  var met=metricOf(ex), n=metricNoun(met);
+  var lo=Math.max(1,num(ex.reps)), tp=num(ex.repTop)||0;
+  if(tp>lo)
+    return "Climbing "+n+" from "+lo+" to "+tp+" before the weight goes up.";
+  return "Straight sets — the weight goes up as soon as you hit "+lo+" "+n+
+         " on every set. Fill the second box to climb "+n+" first.";
+}
+
+/* Every plan exercise is built here. This object literal used to be written
+   out in five places and two of them quietly dropped bar, metric and the
+   muscle tags — so an exercise promoted from a session lost its plate maths
+   and stopped counting toward the right muscle. One constructor means the next
+   field added to the model can't be forgotten in one of them. */
+function newPlanEx(name){
+  var last=lastPerf(name), mgN=tagsOf({name:name});
+  var met=last?metricOf(last):guessMetric(name);
+  var rng=defaultRange(name,met);
+  /* With double progression off there is no range to sit in, so the single
+     target follows what you last did rather than a setting. */
+  var low=rng.top?rng.low:(last?num(last.sets[0].r)||rng.low:rng.low);
+  return {
+    id:uid(), name:name,
+    sets:last?last.sets.length:3,
+    reps:Math.max(1,low), repTop:rng.top,
+    inc:null,
+    bw:last?bwMode(last):0,
+    bar:(last&&last.bar!==undefined)?barOf(last):guessBar(name),
+    metric:met,
+    link:false,
+    mg:mgN.mg, mg2:(mgN.mg2||[]).slice()
+  };
+}
+
+/* Promoting an exercise you added mid-session into the plan. Carries every
+   field the session copy holds, which is the half that kept getting missed. */
+function planExFromSession(ex){
+  return {
+    id:uid(), name:ex.name,
+    sets:Math.max(1,working(ex.sets).length),
+    reps:Math.max(1,num(ex.reps)||num(ex.targetReps)||8),
+    repTop:num(ex.repTop)||0,
+    inc:ex.inc||null,
+    bw:bwMode(ex), bar:barOf(ex), metric:metricOf(ex), link:!!ex.link,
+    mg:ex.mg||"", mg2:(ex.mg2||[]).slice()
+  };
 }
 
 /* Tags live on the exercise, but history logged before this feature has none —
@@ -1789,7 +1900,10 @@ function exerciseCard(ex,ei){
     '<div class="ex-head"><div class="t">'+
       '<div class="ex-name">'+(gtag?'<span class="gtag">'+esc(gtag)+'</span>':"")+esc(ex.name)+'</div>'+
       '<div class="ex-meta">'+
-        '<span>'+nWork+' × '+esc(range)+(ex.repTop>ex.reps?" range":" target")+'</span>'+
+        /* "target" and "range" were too alike to read as different modes of
+           progression, which is exactly how an exercise stuck on straight sets
+           went unnoticed for weeks. "straight" names what it does. */
+        '<span>'+nWork+' × '+esc(range)+(ex.repTop>ex.reps?" range":" straight")+'</span>'+
         (met?'<span class="chip tag">'+(met===1?"TIME":"DISTANCE")+'</span>':"")+
         (mode===1?'<span class="chip tag">BODYWEIGHT</span>':mode===2?'<span class="chip tag">ASSISTED</span>':"")+
         (ex.supplemental?'<span class="chip tag">EXTRA</span>':"")+
@@ -2166,15 +2280,10 @@ function applyTemplate(t){
   S.routines=t.days.map(function(d,i){
     return {
       id:uid(), key:String.fromCharCode(65+i), name:d[0],
-      exercises:d[1].map(function(n){
-        var g=guessMuscles(n);
-        return {id:uid(), name:n,
-                sets:3,
-                reps:S.settings.repLow||8,
-                repTop:S.settings.repHigh||12,
-                inc:null, bw:0, bar:guessBar(n), metric:guessMetric(n),
-                mg:g.mg, mg2:g.mg2};
-      })
+      /* Templates build ordinary exercises through the same constructor as
+         anything you type by hand, so a template plank gets a hold range in
+         seconds and a template curl gets an isolation range. */
+      exercises:d[1].map(function(n){ return newPlanEx(n); })
     };
   });
   writeNow();
@@ -2349,7 +2458,8 @@ function exerciseMenu(ei){
       ' today · tap a set number to flag it a warm-up</div>'+
     '<div class="field-row"><div class="fl">Name</div>'+
       '<input class="txt" style="max-width:210px" data-x="name" value="'+esc(ex.name)+'"></div>'+
-    '<div class="field-row"><div class="fl">'+esc(rangeLabel(metricOf(ex)))+'<div class="fh">Leave the second box empty for straight sets</div></div>'+
+    '<div class="field-row"><div class="fl">'+esc(rangeLabel(metricOf(ex)))+
+      '<div class="fh">'+esc(modeHint(ex))+'</div></div>'+
       '<div class="row" style="gap:6px">'+
         '<input class="txt tiny-n" inputmode="numeric" type="number" data-x="low" value="'+esc(ex.reps)+'">'+
         '<span class="muted tiny">to</span>'+
@@ -2427,9 +2537,7 @@ function exerciseMenu(ei){
       if(keep) keep.onclick=function(){
         var r=S.routines.find(function(x){ return x.id===S.active.routineId; });
         if(!r) return;
-        var ne={id:uid(),name:ex.name,sets:working(ex.sets).length,reps:num(ex.reps)||8,
-                repTop:ex.repTop||0,inc:ex.inc||null,bw:bwMode(ex),bar:barOf(ex),metric:metricOf(ex),link:!!ex.link,
-                mg:ex.mg||"",mg2:(ex.mg2||[]).slice()};
+        var ne=planExFromSession(ex);
         r.exercises.push(ne); ex.planId=ne.id; ex.supplemental=false;
         save(); closeSheet(); viewToday(); refreshSummary(); toast("Added to "+r.name);
       };
@@ -2491,17 +2599,7 @@ function pickExercise(target,onPick){
         closeSheet();
         if(onPick){ onPick(name); return; }
         if(target==="plan"){ addToPlan(name); return; }
-        var last=lastPerf(name), mgN=tagsOf({name:name});
-        S.active.exercises.push(makeSessionEx({
-          name:name,
-          sets:last?last.sets.length:3,
-          reps:S.settings.doubleDefault?S.settings.repLow:(last?num(last.sets[0].r):8),
-          repTop:S.settings.doubleDefault?S.settings.repHigh:0,
-          inc:null, bw:last?last.bw:0,
-          bar:last&&last.bar!==undefined?barOf(last):guessBar(name),
-          metric:last?metricOf(last):0,
-          mg:mgN.mg, mg2:mgN.mg2
-        },null));
+        S.active.exercises.push(makeSessionEx(newPlanEx(name),null));
         save(); viewToday(); refreshSummary();
         window.scrollTo(0,document.body.scrollHeight);
       });
@@ -2559,10 +2657,9 @@ function finishSheet(){
       if(e.target.closest('[data-x="back"]')){ closeSheet(); return; }
       if(e.target.closest('[data-x="save"]')){
         var r=S.routines.find(function(x){ return x.id===a.routineId; });
-        if(r) extras.forEach(function(ex,i){ if(keeps[i]){
-          r.exercises.push({id:uid(),name:ex.name,sets:working(ex.sets).length,reps:num(ex.reps)||8,
-                            repTop:ex.repTop||0,inc:ex.inc||null,bw:bwMode(ex)});
-        }});
+        /* Same constructor as the ⋯ menu's "add permanently". Building it by
+           hand here is what dropped bar, metric and the muscle tags. */
+        if(r) extras.forEach(function(ex,i){ if(keeps[i]) r.exercises.push(planExFromSession(ex)); });
         commitSession();
       }
     });
@@ -2968,9 +3065,16 @@ function drawEditor(){
     });
     $('[data-x="addex"]',el).onclick=function(){
       pickExercise(null,function(name){
-        draft.exercises.push({id:uid(),planId:null,name:name,targetReps:8,reps:8,repTop:0,
-                              inc:null,bw:0,supplemental:true,note:"",
-                              sets:[{w:"",r:"8",done:true}]});
+        /* Was five hardcoded numbers that ignored every default and dropped
+           bar, metric and the muscle tags. The plan constructor is the same
+           source of truth the rest of the app adds an exercise from. */
+        var pe=newPlanEx(name);
+        draft.exercises.push({id:uid(),planId:null,name:name,
+                              targetReps:pe.reps,reps:pe.reps,repTop:pe.repTop,
+                              inc:pe.inc,bw:pe.bw,bar:pe.bar,metric:pe.metric,
+                              mg:pe.mg,mg2:pe.mg2.slice(),
+                              supplemental:true,note:"",
+                              sets:[{w:"",r:String(pe.reps),done:true}]});
         drawEditor();
       });
     };
@@ -3007,6 +3111,50 @@ function commitEdit(){
 /* ============================ PLAN ============================ */
 var editingRoutine=null;
 
+/* Exercises that add weight the moment you hit the target, in a plan whose
+   stated default is double progression. Almost always because they predate the
+   feature: the switch has only ever set a default for *new* exercises, so a
+   plan carried forward from an older version never got a range and nothing
+   ever said so. */
+function straightSetLifts(){
+  var out=[];
+  S.routines.forEach(function(r){ r.exercises.forEach(function(e){
+    if(!(num(e.repTop)>num(e.reps))) out.push({r:r,e:e});
+  });});
+  return out;
+}
+function rangeTiersHint(){
+  if(!S.settings.doubleDefault) return "The rep target new exercises start at";
+  var h=defaultRange("Barbell Bench Press",0), i=defaultRange("Cable Curl",0);
+  return "For compounds. Heavy lifts start at "+h.low+"–"+h.top+
+         ", isolation at "+i.low+"–"+i.top+", timed holds at 30–60s.";
+}
+/* Fit a range onto exercises that have none. The bottom is left exactly where
+   it is — it is what you already train at, and moving it would silently change
+   the programme — so only the reps-first room on top is added. */
+function applyRanges(){
+  var undo=[], n=0;
+  function fit(e){
+    undo.push({e:e, repTop:e.repTop});
+    e.repTop=Math.max(1,num(e.reps))+rangeWidth(e.name,metricOf(e));
+  }
+  straightSetLifts().forEach(function(p){ fit(p.e); n++; });
+  /* A workout already in progress holds its own copy of every exercise, and
+     would otherwise keep showing the old mode until it was finished. */
+  if(S.active) S.active.exercises.forEach(function(x){
+    if(num(x.repTop)>num(x.reps)) return;
+    var known=S.routines.some(function(r){ return r.exercises.some(function(e){
+      return normName(e.name)===normName(x.name); }); });
+    if(known) fit(x);
+  });
+  writeNow(); render();
+  toastUndo(plural(n,"exercise")+" now climb reps first",function(){
+    undo.forEach(function(u){ u.e.repTop=u.repTop; });
+    writeNow(); render();
+    toast("Rep ranges put back");
+  });
+}
+
 function viewPlan(){
   var v=$("#view");
   var html='<div class="eyebrow">Your split</div><h1 class="view-title">Plan</h1><div class="stack">';
@@ -3020,7 +3168,7 @@ function viewPlan(){
         '<button class="kebab" data-act="day-menu" data-ri="'+ri+'" aria-label="Day options">⋯</button>'+
       '</div>';
     r.exercises.forEach(function(e,ei){
-      var range=e.repTop>e.reps?(e.reps+"–"+e.repTop):String(e.reps);
+      var range=e.repTop>e.reps?(e.reps+"–"+e.repTop):(e.reps+" straight");
       var mode=bwMode(e);
       html+='<div class="pex">'+
         '<span class="pxn">'+(groupTag(r.exercises,ei)?'<span class="gtag">'+esc(groupTag(r.exercises,ei))+'</span>':"")+esc(e.name)+(mode?' <span class="chip tag">'+(mode===1?"BW":"ASST")+'</span>':"")+
@@ -3040,10 +3188,29 @@ function viewPlan(){
     '<button class="btn ghost" style="flex:1" data-act="tpl">Start from a template</button>'+
   '</div>';
 
-  html+='<hr class="sep"><div class="eyebrow" style="margin-bottom:8px">Progression</div><div class="card">'+
-    '<div class="field-row"><div class="fl">Double progression by default<div class="fh">New exercises climb by reps first, then weight</div></div>'+
+  html+='<hr class="sep"><div class="eyebrow" style="margin-bottom:8px">Progression</div><div class="card">';
+
+  /* The switch below has only ever applied to exercises made *after* it was
+     turned on, so a plan built before rep ranges existed keeps adding weight
+     the moment you hit the target — and nothing said so. This offers the fix
+     for the exercises already in the plan. */
+  var ss=S.settings.doubleDefault?straightSetLifts():[];
+  if(ss.length&&!S.settings.rangeFixHidden){
+    var shown=ss.slice(0,3).map(function(p){ return p.e.name; }).join(", ");
+    html+='<div class="banner warn" style="margin:0 0 10px">'+
+      '<div class="bt">'+plural(ss.length,"exercise")+' still on straight sets</div>'+
+      '<div class="bd">'+esc(shown)+(ss.length>3?" and "+(ss.length-3)+" more":"")+
+        ' add weight as soon as you hit the target, instead of climbing reps first.'+
+        ' The switch below only ever applied to new exercises, so anything in your'+
+        ' plan from before it never got a range.</div>'+
+      '<div class="acts"><button class="btn sm primary" data-act="fix-ranges">Give them rep ranges</button>'+
+      '<button class="btn sm ghost" data-act="hide-fix">Leave them</button></div></div>';
+  }
+
+  html+='<div class="field-row"><div class="fl">Double progression by default<div class="fh">New exercises climb by reps first, then weight</div></div>'+
       '<button class="switch'+(S.settings.doubleDefault?" on":"")+'" data-set="doubleDefault"></button></div>'+
-    '<div class="field-row"><div class="fl">Default rep range</div>'+
+    '<div class="field-row"><div class="fl">Default rep range'+
+      '<div class="fh">'+esc(rangeTiersHint())+'</div></div>'+
       '<div class="row" style="gap:6px">'+
         '<input class="txt tiny-n" inputmode="numeric" type="number" data-set="repLow" value="'+esc(S.settings.repLow)+'">'+
         '<span class="muted tiny">to</span>'+
@@ -3204,12 +3371,18 @@ $("#view").addEventListener("click",function(e){
     save(); viewPlan(); toast("Back to the standard "+unit()+" set"); return;
   }
 
+  if(t.closest('[data-act="fix-ranges"]')){ applyRanges(); return; }
+  if(t.closest('[data-act="hide-fix"]')){ S.settings.rangeFixHidden=true; save(); viewPlan(); return; }
+
   var sw=t.closest('[data-set]');
   if(sw&&sw.classList.contains("switch")){
     var k2=sw.dataset.set; S.settings[k2]=!S.settings[k2];
     sw.classList.toggle("on",S.settings[k2]); save();
     if(k2==="sound"&&S.settings[k2]) playSrc(audioURLs().alarm,false);   // proves it works
     if(k2==="sound"&&!S.settings[k2]&&!S.settings.notify) audioStop();
+    /* Turning it on has to mean something for the plan you already have, not
+       just for whatever you add next — so re-offer the repair. */
+    if(k2==="doubleDefault"){ S.settings.rangeFixHidden=false; save(); viewPlan(); }
     return;
   }
   var pw=t.closest("[data-pw],[data-pn]");
@@ -3250,17 +3423,7 @@ $("#view").addEventListener("input",function(e){
 function addToPlan(name){
   var r=S.routines[editingRoutine];
   if(!r) return;
-  var last=lastPerf(name), mgN=tagsOf({name:name});
-  r.exercises.push({
-    id:uid(), name:name,
-    sets:last?last.sets.length:3,
-    reps:S.settings.doubleDefault?S.settings.repLow:(last?num(last.sets[0].r):8),
-    repTop:S.settings.doubleDefault?S.settings.repHigh:0,
-    inc:null, bw:last?last.bw:0,
-    bar:last&&last.bar!==undefined?barOf(last):guessBar(name),
-    metric:last?metricOf(last):0,
-    mg:mgN.mg, mg2:mgN.mg2
-  });
+  r.exercises.push(newPlanEx(name));
   save(); viewPlan();
 }
 
@@ -3301,12 +3464,18 @@ function planExMenu(ri,ei){
       '<input class="txt" style="max-width:210px" data-x="name" value="'+esc(ex.name)+'"></div>'+
     '<div class="field-row"><div class="fl">Sets</div>'+
       '<input class="txt small" inputmode="numeric" type="number" data-x="sets" value="'+ex.sets+'"></div>'+
-    '<div class="field-row"><div class="fl">'+esc(rangeLabel(metricOf(ex)))+'<div class="fh">Empty second box = straight sets, add weight when you hit the target</div></div>'+
+    '<div class="field-row"><div class="fl">'+esc(rangeLabel(metricOf(ex)))+
+      '<div class="fh">'+esc(modeHint(ex))+'</div></div>'+
       '<div class="row" style="gap:6px">'+
         '<input class="txt tiny-n" inputmode="numeric" type="number" data-x="low" value="'+esc(ex.reps)+'">'+
         '<span class="muted tiny">to</span>'+
         '<input class="txt tiny-n" inputmode="numeric" type="number" data-x="top" value="'+(ex.repTop||"")+'">'+
       '</div></div>'+
+    /* One tap out of straight sets, because the fix was otherwise "know that
+       the empty second box is a progression mode and type a number in it". */
+    (num(ex.repTop)>num(ex.reps)?"":
+      '<button class="btn sm block" style="margin:0 0 8px" data-x="userange">Climb reps to '+
+        esc(num(ex.reps)+rangeWidth(ex.name,metricOf(ex)))+' first</button>')+
     '<div class="field-row"><div class="fl">Weight step<div class="fh">Blank uses the default ('+esc(S.settings.inc)+')</div></div>'+
       '<input class="txt small" inputmode="decimal" type="number" step="any" data-x="inc" value="'+(ex.inc||"")+'"></div>'+
     loadTypeRow(bwMode(ex),"pbw")+
@@ -3327,6 +3496,14 @@ function planExMenu(ri,ei){
       $('[data-x="low"]',el).oninput=function(){ ex.reps=Math.max(1,num(this.value)); save(); };
       $('[data-x="top"]',el).oninput=function(){ ex.repTop=num(this.value)||0; save(); };
       $('[data-x="inc"]',el).oninput=function(){ ex.inc=num(this.value)||null; save(); };
+      var ur=$('[data-x="userange"]',el);
+      if(ur) ur.onclick=function(){
+        /* Keep the bottom you already train at and add the reps-first room on
+           top — moving the bottom would quietly change the programme. */
+        ex.repTop=Math.max(1,num(ex.reps))+rangeWidth(ex.name,metricOf(ex));
+        save(); closeSheet(); viewPlan(); planExMenu(ri,ei);
+        toast(ex.name+" now climbs to "+ex.repTop+" first");
+      };
       $$('[data-pbw]',el).forEach(function(b){
         b.onclick=function(){ ex.bw=num(b.dataset.pbw); save(); closeSheet(); viewPlan(); planExMenu(ri,ei); };
       });
