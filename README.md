@@ -13,6 +13,7 @@ tools/build-artifact.ps1   regenerates artifact-body.html (retired; kept for ref
 PROJECT_STATE.md           how it works, why, and the traps to avoid
 ROADMAP.md                 what is built and what is next
 PRODUCT.md                 what it would take to sell it
+NEXT_SESSION.md            paste-in prompt to pick this up in a new chat
 ```
 
 ---
