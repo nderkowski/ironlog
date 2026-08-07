@@ -642,7 +642,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v11";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v12";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -2121,7 +2121,7 @@ function diagRow(label,value,bad){
 function loadTypeRow(mode,attr){
   return '<div class="field-row"><div class="fl">Load type<div class="fh">'+
       (mode===1?"The number is weight added to you":mode===2?"The number is assistance taken off":"The number is the weight you lift")+
-    '</div></div>'+
+    '</div></div></div>'+
     '<div class="seg" style="margin:0 0 4px">'+
       '<button data-'+attr+'="0"'+(mode===0?' class="on"':"")+'>Weighted</button>'+
       '<button data-'+attr+'="1"'+(mode===1?' class="on"':"")+'>Bodyweight</button>'+
@@ -2255,7 +2255,7 @@ function metricRow(met,attr){
       (met===1?"Sets are held for a number of seconds"
        :met===2?"Sets cover a distance — in whatever unit you already use"
        :"Sets are counted in reps")+
-    '</div></div>'+
+    '</div></div></div>'+
     '<div class="seg" style="margin:0 0 4px">'+
       '<button data-'+attr+'="0"'+(met===0?' class="on"':"")+'>Reps</button>'+
       '<button data-'+attr+'="1"'+(met===1?' class="on"':"")+'>Time</button>'+

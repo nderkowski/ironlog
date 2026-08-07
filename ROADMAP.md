@@ -12,15 +12,18 @@ Ship in slices; each slice should leave the app fully usable.
 
 ## Next session starts here — from a few days of real use
 
-Five items. The first three are Nick's, from actually training with the app; the
-last two I found while diagnosing them. Each has been reproduced or explicitly
-not reproduced — don't re-derive that work.
+Six items. Four are Nick's, from actually training with the app; two I found
+while diagnosing those. Each has been reproduced or explicitly not reproduced —
+don't re-derive that work.
 
-### 1. BUG — both exercise menus overflow sideways *(confirmed, diagnosed, small fix)*
+**Item 1 is already fixed and shipped in v12** — it stays here as the record of
+what the bug was. Start at item 2.
 
-Reported on the Plan page; it affects the Today menu identically. The sheet
-measures **1180px wide inside a 388px viewport**, so the options need a
-horizontal scroll and the labels don't line up.
+### 1. BUG — both exercise menus overflowed sideways ✅ *fixed in v12*
+
+Reported on the Plan page; it affected the Today menu identically. The sheet
+measured **1180px wide inside a 388px viewport**, so the options needed a
+horizontal scroll and the labels didn't line up.
 
 **Cause, confirmed by DOM inspection:** `loadTypeRow()` and `metricRow()` each
 open `<div class="field-row">` and never close it. Their trailing `</div></div>`
@@ -28,11 +31,13 @@ closes `.fh` and `.fl` only. So `loadTypeRow` leaves a `.field-row` open,
 `metricRow` nests inside it and leaves another open, `barRow` nests inside both,
 and `barRow`'s own closing tag then shuts the wrong element. The Barbell row ends
 up **three `.field-row` flex containers deep**, and `.field-row` is
-`display:flex` with no wrapping, so the width compounds.
+`display:flex` with no wrapping, so the width compounded.
 
-**Fix:** add one `</div>` to close `.field-row` in both `loadTypeRow()` and
-`metricRow()`, then assert `sheet.scrollWidth <= sheet.clientWidth` for both
-menus so it can't come back.
+**Fixed** by closing `.field-row` in both `loadTypeRow()` and `metricRow()`.
+The sheet went from 1180px to 388px and the Barbell row from three field-rows
+deep to one. `t14.mjs` now asserts, at 320px and 390px, that neither menu
+scrolls sideways, that no `.field-row` is nested inside another, and that every
+row fits — so this cannot come back quietly.
 
 **Why it appeared now:** `loadTypeRow` was always unbalanced, but it used to be
 the last field-row before the `.menu` block, so the browser's auto-close was
@@ -57,7 +62,7 @@ exercises. Candidates, in order of likelihood:
    reading "3 × 8 target" instead of "3 × 8–12 range" — far too subtle for a
    change in progression *mode*. Worth surfacing explicitly whichever way the
    diagnosis lands.
-3. **The session editor's "Add exercise" hardcodes `repTop: 0`** — see item 5.
+3. **The session editor's "Add exercise" hardcodes `repTop: 0`** — see item 6.
 
 **First diagnostic step:** ask Nick what the exercise card says under the name —
 "8–12 range" or "8 target" — or read `repTop` out of a backup file. That single
@@ -78,7 +83,52 @@ exercise — this changes the *default*, not the capability.
 Do this **after** item 2 is understood, since both concern where a rep range
 comes from and a fix to one may reshape the other.
 
-### 4. BUG — keeping an extra exercise from the finish screen loses its settings
+### 4. FEATURE — A/B week variants inside each training day *(Nick's, and the biggest item here)*
+
+Wanted: Day A, B and C each get a **week-A and a week-B version**, so the split
+alternates fortnightly — different exercise selection, or heavy/volume weeks,
+inside the same day letter.
+
+This is the largest item here and the only one that changes the data model, so
+design it before typing.
+
+**Model.** A routine gains variants rather than the app gaining a second axis of
+routines:
+
+```
+routine = { id, key, name, variants: [ {label, exercises[]}, … ] }
+```
+
+A single-variant routine is the existing behaviour, so migration is
+`variants: [{label:"", exercises: r.exercises}]` and every read goes through a
+`variantOf(routine, n)` helper. **Do not** add a parallel `altExercises` field —
+that is the five-places-to-update problem in trap 13 all over again.
+
+**Which variant is next** must be derived from history, like everything else in
+this app — no stored counter. `session` gains `variantIx`, and `nextRoutine()`
+finds the last session for that routine and flips. Two rotations now interact:
+which *day* is next, and which *week* that day is on. They are independent —
+finishing Day A week 1 should advance Day A to week 2 while the day rotation
+moves to B — so they must not be collapsed into one modulo.
+
+**Things that will bite:**
+
+- `exSessions()` joins by exercise **name**, so a lift appearing in both variants
+  correctly shares one history and one progression. That is the right behaviour
+  and it already works. A lift in only one variant sees its sessions two weeks
+  apart, which makes `trend()` slower to speak — worth a note in the UI rather
+  than a maths change.
+- `deloadCheck()` reads `trackedLifts()` from routines; it must span all variants
+  or it will judge the block on half the lifts.
+- The plan editor needs a variant switcher that does not double the screen. A
+  segmented control at the top of each day card is probably enough.
+- Templates should stay single-variant. Do not double every template.
+
+**Sequencing:** do this *after* items 1–3 and 5. It touches the plan editor,
+which item 3 also touches, and the exercise constructor, which item 5 fixes.
+Doing it last means both are already tidy.
+
+### 5. BUG — keeping an extra exercise from the finish screen loses its settings
 
 `finishSheet()`'s "Keep the extras in Day A?" path builds the routine exercise
 by hand and copies only `name`, `sets`, `reps`, `repTop`, `inc` and `bw`. It
@@ -91,12 +141,12 @@ call one shared `planExFromSession(ex)` helper, so the next field added to the
 model can't be forgotten in one of two places. This is the second time this
 class of bug has appeared.
 
-### 5. BUG — the session editor's "Add exercise" ignores every default
+### 6. BUG — the session editor's "Add exercise" ignores every default
 
 `drawEditor()` pushes `{targetReps: 8, reps: 8, repTop: 0, inc: null, bw: 0}`
 with the numbers hardcoded, ignoring `repLow`, `repHigh` and `doubleDefault`,
 and dropping `bar`, `metric` and the muscle tags. Same shared-helper fix as
-item 4.
+item 5.
 
 ---
 
