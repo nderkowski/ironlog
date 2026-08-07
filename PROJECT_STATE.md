@@ -584,9 +584,24 @@ bite.
     useless in exactly the situation it exists for.
 11. **Volume is undefined for time and distance.** Use `exVolume(e)` so the
     metric can't be forgotten at a call site.
-12. **Test through the UI, not the functions.** The `data-x` collision, the
+12. **HTML built from template strings has no compiler, and unbalanced tags
+    fail silently and compound.** `loadTypeRow()` left a `.field-row` open for
+    months with no visible effect, because it happened to be the last row in its
+    sheet. Adding three more rows after it nested them inside each other and
+    blew a menu out to 1180px in a 388px viewport. Count your closing tags when
+    a function returns markup, and assert `scrollWidth <= clientWidth` on any
+    sheet you add rows to.
+13. **Object literals that build a plan exercise exist in four places** —
+    `addToPlan()`, `applyTemplate()`, `exerciseMenu()`'s keep-permanently, and
+    `finishSheet()`'s keep-extras — plus a fifth in the session editor. Every
+    new field on the model has to be added to all of them, and twice now one has
+    been missed. Collapse them into a shared constructor before adding another
+    field.
+14. **Test through the UI, not the functions.** The `data-x` collision, the
     112px button and the miswired restore prompt were all invisible to
-    unit-style checks and obvious the moment a real click drove them.
+    unit-style checks and obvious the moment a real click drove them. The menu
+    overflow above is the same lesson again: it was found by measuring a
+    rendered sheet, not by reading the code.
 
 ## Settled decisions
 

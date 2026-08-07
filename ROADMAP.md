@@ -10,6 +10,96 @@ Ship in slices; each slice should leave the app fully usable.
 
 ---
 
+## Next session starts here — from a few days of real use
+
+Five items. The first three are Nick's, from actually training with the app; the
+last two I found while diagnosing them. Each has been reproduced or explicitly
+not reproduced — don't re-derive that work.
+
+### 1. BUG — both exercise menus overflow sideways *(confirmed, diagnosed, small fix)*
+
+Reported on the Plan page; it affects the Today menu identically. The sheet
+measures **1180px wide inside a 388px viewport**, so the options need a
+horizontal scroll and the labels don't line up.
+
+**Cause, confirmed by DOM inspection:** `loadTypeRow()` and `metricRow()` each
+open `<div class="field-row">` and never close it. Their trailing `</div></div>`
+closes `.fh` and `.fl` only. So `loadTypeRow` leaves a `.field-row` open,
+`metricRow` nests inside it and leaves another open, `barRow` nests inside both,
+and `barRow`'s own closing tag then shuts the wrong element. The Barbell row ends
+up **three `.field-row` flex containers deep**, and `.field-row` is
+`display:flex` with no wrapping, so the width compounds.
+
+**Fix:** add one `</div>` to close `.field-row` in both `loadTypeRow()` and
+`metricRow()`, then assert `sheet.scrollWidth <= sheet.clientWidth` for both
+menus so it can't come back.
+
+**Why it appeared now:** `loadTypeRow` was always unbalanced, but it used to be
+the last field-row before the `.menu` block, so the browser's auto-close was
+harmless. Slice 3 added `metricRow`, `barRow` and `muscleRow` after it and the
+nesting compounded. A latent bug, exposed rather than introduced.
+
+### 2. BUG — "always suggests more weight at 8 reps, never more reps" *(not reproduced — needs Nick's data)*
+
+Double progression is **working** on a stock exercise: a fresh Bench Press at
+8–12, logged 3×8, prescribes *"Same weight — go for 9 this time"*. So the engine
+logic is sound and the bug is conditional on state.
+
+`prescribe()` only runs double progression when `repTop > reps`. Otherwise it
+falls through to straight sets, which is exactly "add weight when you hit the
+target". So **something is leaving `repTop` at 0 or ≤ `reps`** on the affected
+exercises. Candidates, in order of likelihood:
+
+1. **`settings.doubleDefault` is off.** Confirmed: with it off, a new exercise
+   gets `repTop: 0`. The switch is under Plan → Progression.
+2. **The rep-range top box was cleared.** Emptying it sets `repTop: 0` and
+   silently switches that exercise to straight sets. The only signal is the card
+   reading "3 × 8 target" instead of "3 × 8–12 range" — far too subtle for a
+   change in progression *mode*. Worth surfacing explicitly whichever way the
+   diagnosis lands.
+3. **The session editor's "Add exercise" hardcodes `repTop: 0`** — see item 5.
+
+**First diagnostic step:** ask Nick what the exercise card says under the name —
+"8–12 range" or "8 target" — or read `repTop` out of a backup file. That single
+answer distinguishes all three.
+
+### 3. FEATURE — rep ranges should suit the movement
+
+Everything defaults to 8–12 regardless of exercise. An isolation movement wants
+something like 12–20, and should add load at 16–18 rather than 12.
+
+The muscle tags make this easy: `guessMuscles()` already classifies every
+exercise, and a compound/isolation distinction can be derived from the same
+table (or added as a third field alongside `mg`/`mg2`). Then `addToPlan()` and
+`applyTemplate()` pick the default range from the movement instead of one global
+setting. Keep `repLow`/`repHigh` as the fallback and keep it overridable per
+exercise — this changes the *default*, not the capability.
+
+Do this **after** item 2 is understood, since both concern where a rep range
+comes from and a fix to one may reshape the other.
+
+### 4. BUG — keeping an extra exercise from the finish screen loses its settings
+
+`finishSheet()`'s "Keep the extras in Day A?" path builds the routine exercise
+by hand and copies only `name`, `sets`, `reps`, `repTop`, `inc` and `bw`. It
+**drops `bar`, `metric`, `link`, `mg` and `mg2`** — so an exercise promoted this
+way loses its plate maths, its time/distance metric and its muscle tags, and
+silently stops counting toward weekly sets under the right muscle.
+
+The equivalent path in `exerciseMenu()` carries all of them. **Fix:** make both
+call one shared `planExFromSession(ex)` helper, so the next field added to the
+model can't be forgotten in one of two places. This is the second time this
+class of bug has appeared.
+
+### 5. BUG — the session editor's "Add exercise" ignores every default
+
+`drawEditor()` pushes `{targetReps: 8, reps: 8, repTop: 0, inc: null, bw: 0}`
+with the numbers hardcoded, ignoring `repLow`, `repHigh` and `doubleDefault`,
+and dropping `bar`, `metric` and the muscle tags. Same shared-helper fix as
+item 4.
+
+---
+
 ## Slice 0 — confirm on a real phone ✅ *closed 1 Aug 2026*
 
 Tested on Nick's Android against the v7–v10 Pages deploys. Everything here was
