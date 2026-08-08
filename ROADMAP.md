@@ -39,7 +39,14 @@ the engine — shipped as v19–v21:
 | **v20** | Renaming onto an existing lift merged two histories silently, with ghost PRs, a duplicated plan row and no undo — it now asks, and the "keep them separate" answer is item 12 below. The session editor re-resolved old bodyweight loads against *today's* bodyweight. A state missing its `sessions` key rendered a permanent blank page |
 | **v21** | The lift sheet's two banners described maths that no longer existed; `deloadCheck()` counted flawless wide-range lifts as stalled, and said nothing at all about what it was watching |
 
-The suites are in `tools/test/` — ten of them now, `t20`–`t29`. Run them all
+Slice B, the gym-floor items, followed:
+
+| | |
+|---|---|
+| **v22** | A one-tap warm-up ramp built from loads the plates can actually make; the rest you actually took recorded on each set; and "Day A · usually 55m" on the Today card |
+| **v23** | The rep drop-off hold — reps falling 3+ across a session at one weight now repeats the weight instead of adding, the way an RPE 9.5 does. Gated on measuring the real log first: 40% of logged sets differ from the prefill, so the reps are a report rather than an artifact |
+
+The suites are in `tools/test/` — eleven of them now, `t20`–`t30`. Run them all
 before and after any change and read the summary lines; assertion counts are
 deliberately not written down here, because they go stale and did.
 
@@ -421,6 +428,17 @@ Not bugs, but they should be revisited and are honest limits of the current mode
   visible in the Plan row and overridable in two taps — but a wrong guess is
   silent until you look. Consider surfacing "N exercises still on a guess"
   in Plan.
+- **`prescribe()` reads the first set's weight; everything else reads the best
+  set.** So an exercise whose working sets differ in weight is prescribed from
+  its *lightest*. Found in v23 against real data: a Leg Press logged
+  130/150/170 was prescribed 135 the following session, and the trend chip
+  stayed healthy throughout because trends score the top set. Nick's read is
+  that the ascending sets are a comeback ramp which is already fading, and the
+  data agrees — 10 of 14 lifts have converged to flat sets — so nothing was
+  changed. What will not fade is backing *off* mid-exercise: 20/10/10 on a
+  lateral raise still anchors on the 20. If this is ever fixed, the candidate
+  is the most-frequent weight with a tie-break to the heaviest, which handles
+  both the ramp and the back-off; it needs the `t28` closed loop to validate.
 - **Bodyweight is a single current value.** `session.bw` snapshots it per session
   going forward, but sessions logged before that field existed have none, and
   there's no bodyweight history. If bodyweight tracking gets built, backfill it.

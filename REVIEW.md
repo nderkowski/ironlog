@@ -442,11 +442,20 @@ Reported because the prompt asked for seams to be probed; these all held:
 
 ### 1.13 Suspected, unverified
 
-- **Prefill-anchoring in the rep data.** One-tap logging means a set logged
-  without editing records the *prescribed* reps. I could not measure how
-  often that happens (no real log in the repo), but every engine feature
-  reading rep patterns — including the drop-off idea in §2.4 — depends on
-  this rate being low. Worth measuring before building anything on it (§2.4).
+- ~~**Prefill-anchoring in the rep data.**~~ ✅ *measured in v23 — see §3
+  item 10. 40% of working sets are edited, so the concern does not bite.*
+
+  **But the measurement surfaced a bigger one the review did not look for:
+  prefill-anchoring in the WEIGHT.** `prescribe()` reads `sets[0].w`, while
+  every other part of the engine reads the *best* set — so an exercise whose
+  sets differ in weight is prescribed from its lightest. On the real log that
+  under-prescribed a Leg Press by about 30 lb for three weeks (130/150/170
+  logged, 135 prescribed and taken) while its trend chip stayed healthy,
+  because the trend scores the top set. Nick's reading — a comeback ramp that
+  is already fading — is supported by the data: 10 of his 14 lifts have
+  converged to flat working sets. So no engine change was made, deliberately.
+  The case that will *not* fade is backing **off** mid-exercise: a 20/10/10
+  lateral raise still anchors on the 20 and keeps prescribing it. Left open.
 - **`refreshSummary()` recomputes volume from current bodyweight**
   (`index.html:2319`) rather than stored `load`, so changing bodyweight
   mid-session would make the header volume disagree with what gets committed.
@@ -658,7 +667,7 @@ priority rule. Costs are judged against the one-tap rule and the option rule
 Nothing here touches the data model. Every item is mechanical from its §1
 write-up.
 
-### Slice B — the gym floor
+### ~~Slice B — the gym floor~~  ✅ *shipped as v22–v23*
 
 7. **Auto warm-up ramp.** Earns its place: it deletes typing and mental
    arithmetic at the moment attention is lowest, and every input exists
@@ -680,6 +689,22 @@ write-up.
     and should be run during this slice. If the measurement passes, the rule
     is ~15 lines in `prescribe()` beside the RPE rule, with the card
     why-line as its visibility.
+
+    > **Measured, v23.** Nick's export, 7 sessions / 124 logged working sets,
+    > every one carrying a recorded prescription. **40% differ from the
+    > prefill**, and the edit rate climbs with set number (29% / 44% / 46%).
+    > The gate passes — the rep data is a report, not an artifact, which also
+    > retroactively validates the existing rep-based signals as §2.4 hoped.
+    > Two things the review didn't anticipate, both worth recording:
+    > **47 of the 50 edits are upward**, not downward — he beats the
+    > prescription far more often than he falls short, so the censoring in
+    > §2.4.2 runs the other way in practice. And the drop-off shape itself is
+    > *rare*: at a constant weight, reps fell ≥3 in only 3 of 29
+    > exercise-sessions, one of which `minR` already handled. Shipped, because
+    > it is small and right when it fires, but the honest yield is **one
+    > changed prescription in thirteen lifts**. Do not build anything larger
+    > on this signal without measuring again on someone who trains closer to
+    > failure.
 
 ### Slice C — data-model items (each needs the design conversation first)
 

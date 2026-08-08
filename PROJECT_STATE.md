@@ -6,7 +6,7 @@ non-obvious parts, and what has actually been verified. Pair it with
 for the commercial question. **[Traps](#traps--read-before-changing-anything)
 is the section to read before touching anything.**
 
-*Last updated: 8 Aug 2026 (v21) — built with Claude Opus 5.*
+*Last updated: 8 Aug 2026 (v23) — built with Claude Opus 5.*
 
 ---
 
@@ -92,7 +92,7 @@ session  = { id, ts, endTs, routineId, key, name, variantId, variantName,
   exercise (logged) = { id, planId, name, targetReps, reps, repTop, inc, bw, bar,
                         metric, link, mg, mg2[], supplemental, why, kind,
                         lastW, lastR, sets[] }
-    set = { w, r, done, warm, pr, load, ts, rpe }
+    set = { w, r, done, warm, pr, load, ts, rest, rpe }
 ```
 
 Notes that will bite you if you miss them:
@@ -137,6 +137,12 @@ Notes that will bite you if you miss them:
 - **`rpe` on a set is always optional and often absent.** The engine rule only
   fires when at least half a session's working sets carry one, so it is
   invisible to anyone not using the feature.
+- **`rest` is the gap in seconds before that set was ticked**, written at
+  toggle time from the `ts` each set already carried. Additive and often
+  absent — every set logged before v22 has none — so anything reading it must
+  treat absent as unknown rather than as zero. Nothing reads it yet: it exists
+  because it can only be captured as it happens, and it is what will one day
+  let a signal tell a bad session from a rushed one.
 - **A training day holds week variants, and one variant is the old behaviour.**
   That equivalence is what makes the migration a one-liner and what keeps a
   single-week day looking exactly as it always did — no switcher, no chip, no
@@ -327,6 +333,27 @@ it is opened. `shareableFile()` also probes `canShare` with `.json` first and
 falls back to `.txt`, because Android's allowlist for shareable types is not
 something to guess at.
 
+### The warm-up ramp
+
+One tap in the in-session ⋯ menu inserts the empty bar, 60% and 80% of today's
+working weight as warm-up sets. It is **not automatic**, and that is the design
+rather than laziness: how much warm-up a lift needs depends on where it sits in
+the session — the first exercise wants three sets, the fourth wants none — so
+automating it would be wrong most of the time.
+
+- Every load is snapped to something you can actually build, via
+  `platesFor().got`, so it never asks for 137 lb on a bar that makes 135. With
+  no bar set it rounds to the weight step instead.
+- **Loaded work only**, the same rule the plate line follows: there is nothing
+  to ramp on a bodyweight or assisted lift.
+- It **replaces** carried-forward warm-ups rather than stacking on them, leaves
+  anything already logged alone, and undoes for ten seconds.
+- The button's subtitle is the ramp itself, so the option rule holds: its state
+  is visible exactly where its effect lands.
+- Warm sets are invisible to every calculation, so a ramp cannot move the
+  prescription — asserted, because warm-ups carry forward and that is where
+  this would go wrong.
+
 ### Plate maths
 
 `platesFor(target, bar)` works from `(target − bar) / 2` and goes greedy from the
@@ -356,6 +383,34 @@ labels them A1/A2 and returns "" for a group of one, so nothing is marked unless
 it's actually paired. `lastInGroup()` is what the rest timer consults —
 autoRest fires after the last exercise of a group and not between its parts,
 which is the entire point of supersetting.
+
+**The rep drop-off hold.** The RPE rule's twin for the default case where RPE
+is off. If reps fell 3 or more from the first working set to the last *at one
+weight*, the next prescription repeats instead of adding — same action as an
+RPE 9.5, derived from data already logged, zero taps, and the card's why-line
+is its entire visibility ("Reps fell 12→8 last time").
+
+Four gates, and each one is load-bearing:
+
+- **at or above the bottom of the range only.** Below it `minR` already runs
+  the weight back, and a second rule there would only ever agree with the
+  first while producing a vaguer message.
+- **one weight across the sets.** A fall that follows a weight change is
+  arithmetic, not fatigue.
+- **three working sets.** Two is not a shape.
+- **double progression only.** Straight sets have no hold slot between "run it
+  back" and "add load".
+
+It is one-sided by construction — reps are capped at the prescription, so this
+can say "harder than it looked" and never "easier". That is why it lives in the
+hold slot and must not be extended into "add more than one rep".
+
+**Measured before it was built** (v23), against Nick's real export: 40% of
+logged working sets have reps differing from the prefill, so the rep data is a
+report rather than an artifact of one-tap logging. The honest yield is small —
+the drop-off shape appeared in 3 of 29 exercise-sessions and the rule changes
+one prescription in thirteen lifts. Re-measure before building anything larger
+on this signal.
 
 **RPE.** Off by default. The chip only appears on a set that is already logged,
 because rating a set you haven't done is meaningless and an extra required
@@ -921,6 +976,27 @@ reproduction is what became the assertion:
 - **Deload check**: three heavy 8–20 lifts trained flawlessly for 34 sessions
   used to produce "Time to deload". They are now excluded as too wide to judge,
   and Progress says what it is watching instead of going silent
+
+Slice B (v22–v23), the gym floor — `t30`, driven through the session card and
+the ⋯ menu:
+
+- The ramp on a 225 lb squat over a 45 bar reads 45×5, 135×5, 180×3; on a 185
+  bench it snaps to 45 / 110 / 145 — every load buildable from the seeded
+  inventory, none heavier than the working weight
+- A dumbbell lift with no bar ramps on the weight step; a bodyweight lift is
+  offered no ramp at all
+- A carried-forward warm-up is replaced rather than stacked on, undo takes the
+  ramp back off, and **the working prescription is unchanged by ramping** —
+  the regression that matters, since warm sets carry forward
+- The ⋯ menu measured at 320 px with the ramp row present
+- `set.rest` records the real gap in seconds on the second set of an exercise
+  and is absent on the first
+- "usually 55m" appears at three finished sessions and not before; a session
+  left running nine hours and one ended after 30 seconds are both excluded
+- The drop-off hold fires on 12/12/8, does not fire on 12/11/10, on a flat
+  session, below the range bottom, across a weight change, on straight sets,
+  on two sets, or on a warm-up that would otherwise look like a collapsing
+  top set
 
 **Confirmed on a real phone** (Android, 1 Aug 2026, v7 deploy)
 
