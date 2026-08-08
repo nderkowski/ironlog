@@ -1,7 +1,7 @@
 /* The two exercise menus, after item 2 added a row and a button to both.
    Trap 12: HTML from template strings fails silently, so measure the rendered
    sheet rather than reading the markup. */
-import { launch, boot, getState, ok, eq, has, report } from './harness.mjs';
+import { launch, boot, getState, planWeek, ok, eq, has, report } from './harness.mjs';
 
 const state = {
   version: 4,
@@ -47,7 +47,7 @@ await page.setViewportSize({ width: 390, height: 844 });
 await page.click('[data-x="userange"]');
 await page.waitForTimeout(200);
 let st = await getState(page);
-eq(st.routines[0].exercises[0].repTop, 11, 'the one-tap fix writes the range');
+eq(planWeek(st)[0].repTop, 11, 'the one-tap fix writes the range');
 hint = await page.textContent('.sheet .field-row .fh >> nth=0');
 has(hint, 'Climbing reps from 8 to 11', 'and the hint flips to describe the new mode');
 ok(!(await page.$('[data-x="userange"]')), 'the button is gone once there is a range');

@@ -45,6 +45,15 @@ export async function getState(page) {
   return JSON.parse(await page.evaluate(() => localStorage.getItem('ironlog.v1')));
 }
 
+/* Every plan exercise across every day and every week variant. */
+export function planExercises(state) {
+  return (state.routines || []).flatMap(r => (r.variants || []).flatMap(v => v.exercises));
+}
+/* The exercises of one day's week, by day index and variant index. */
+export function planWeek(state, ri = 0, vi = 0) {
+  return state.routines[ri].variants[vi].exercises;
+}
+
 /* A session of `name`, `n` sets at weight w x reps r, `daysAgo` back. */
 export function sess(key, name, w, r, n, daysAgo, extra) {
   const ts = Date.now() - daysAgo * 86400000;

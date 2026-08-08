@@ -4,7 +4,7 @@
    3 — rep ranges suit the movement.
    5 — keeping an extra from the finish screen must not drop its settings.
    6 — the session editor's "Add exercise" must not ignore every default. */
-import { launch, boot, getState, ok, eq, has, report } from './harness.mjs';
+import { launch, boot, getState, planExercises, planWeek, ok, eq, has, report } from './harness.mjs';
 
 const SETTINGS = { unit:'lb', rest:120, autoRest:true, buzz:true, inc:5, sound:false,
   notify:false, rpe:false, keepTone:false, autoBackup:false, shareMode:'',
@@ -42,7 +42,25 @@ await page.click('[data-tab="plan"]');
 await page.waitForSelector('.pex');
 
 const rows = await page.$$eval('.pex .pxs', els => els.map(e => e.textContent));
-has(rows[0], '3×8 straight', 'plan row names the mode instead of just "3×8"');
+has(rows[0], 'Chest · 3×8', 'the plan row carries the muscle guess and the prescription');
+
+/* The plan row is a width budget: the meta is rigid so the sets×reps can never
+   be the thing that truncates, which only works while the meta stays short.
+   Adding to it silently starves the exercise name — that already happened
+   once. Both halves must survive at 320px. */
+for (const w of [320, 390]) {
+  await page.setViewportSize({ width: w, height: 844 });
+  const row = await page.evaluate(() => {
+    const n = document.querySelector('.pex .pxn'), s = document.querySelector('.pex .pxs');
+    const pex = document.querySelector('.pex');
+    return { name: n.clientWidth, metaCut: s.scrollWidth - s.clientWidth,
+             over: pex.scrollWidth - pex.clientWidth };
+  });
+  ok(row.over <= 0, 'the plan row does not overflow at ' + w + 'px  [' + row.over + ']');
+  ok(row.metaCut <= 0, 'and the sets×reps is never the half that truncates at ' + w + 'px  [' + row.metaCut + ']');
+  ok(row.name >= 40, 'and the exercise name keeps a readable floor at ' + w + 'px  [' + row.name + 'px]');
+}
+await page.setViewportSize({ width: 390, height: 844 });
 
 const banner = await page.textContent('.banner.warn');
 has(banner, '4 exercises still on straight sets', 'Plan warns how many exercises never got a range');
@@ -61,7 +79,7 @@ await page.setViewportSize({ width: 390, height: 844 });
 await page.click('[data-act="fix-ranges"]');
 await page.waitForSelector('.toast.act');
 let st = await getState(page);
-const byName = n => st.routines.flatMap(r => r.exercises).find(e => e.name === n);
+const byName = n => planExercises(st).find(e => e.name === n);
 eq(byName('Bench Press').repTop, 11, 'Bench Press 8 -> 8-11 (bench is a heavy lift, width 3)');
 eq(byName('Bench Press').reps, 8, 'the bottom of the range is left exactly where it was');
 eq(byName('Back Squat').repTop, 11, 'Back Squat 8 -> 8-11 (heavy width 3)');
@@ -71,7 +89,7 @@ ok(!(await page.$('.banner.warn')), 'the warning is gone once the plan is repair
 /* undo */
 await page.click('.toast.act button');
 st = await getState(page);
-eq(st.routines[0].exercises[0].repTop, undefined, 'undo puts every range back');
+eq(planWeek(st)[0].repTop, undefined, 'undo puts every range back');
 ok(!!(await page.$('.banner.warn')), 'and the warning comes back with them');
 
 /* re-apply, then check the engine actually changed its mind */
@@ -109,7 +127,7 @@ async function addPlan(name) {
 for (const n of ['Deadlift', 'Lateral Raise', 'Dumbbell Bench Press', 'Leg Press', 'Plank']) await addPlan(n);
 await page.waitForTimeout(250);        // save() is debounced 120ms
 st = await getState(page);
-const plan = st.routines[0].exercises;
+const plan = planWeek(st);
 const range = n => { const e = plan.find(x => x.name === n); return e.reps + '-' + e.repTop; };
 eq(range('Deadlift'), '5-8', 'a heavy barbell lift starts at 5-8');
 eq(range('Lateral Raise'), '12-16', 'an isolation movement starts at 12-16');
@@ -136,7 +154,7 @@ await page.click('[data-keep="0"]');
 await page.click('[data-x="save"]');
 await page.waitForSelector('.card', { timeout: 5000 });
 st = await getState(page);
-const kept = st.routines[0].exercises.find(e => e.name === 'Plank');
+const kept = planWeek(st).find(e => e.name === 'Plank');
 ok(!!kept, 'the extra was kept in the plan');
 eq(kept.metric, 1, 'FIXED: keeping from the finish screen carries the metric');
 eq(kept.mg, 'core', 'FIXED: and the muscle tag');
