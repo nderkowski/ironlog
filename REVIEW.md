@@ -38,7 +38,7 @@ The short version:
 Ordered by the roadmap's own rule: trust first, per-session friction second,
 feature-request territory last.
 
-### 1.1 The back-off death spiral — `prescribe()` cuts 10% repeatedly and can bury a progressing lifter  ⚠ P1, the most important finding
+### ~~1.1 The back-off death spiral — `prescribe()` cuts 10% repeatedly and can bury a progressing lifter~~  ✅ *fixed in v19*
 
 **Symptom.** After any event that flips a lift's trend to "down" — one sick
 day, or (see below) nothing more than a normally-executed load step — the app
@@ -148,6 +148,28 @@ load-bearing one:
    The genuine-decline case still gets its one cut and lands 5 lb above the
    true 8RM instead of 40 lb below it.
 
+   **Two corrections from implementing this, both found by the closed-loop
+   suite the review asked for:**
+
+   - *The same guard is inverted-wrong on assisted work, and the review didn't
+     catch it.* `peak` was `Math.max` of the recent window for every load
+     direction, but on assisted work the best session is the one with the
+     **least** help. So the guard asked "is today's number bigger than the
+     biggest recent number" when it should have asked "bigger than the
+     smallest", and it fired almost never. Closed-loop with the window fix but
+     not this one, a strengthening lifter with one bad day is walked from 50 lb
+     of assistance **up to 105** — the identical spiral, mirrored. `peak` now
+     follows the load direction the way `harder()`/`easier()` already do.
+   - *"One cut" is the wrong invariant to assert; the right one is spacing.*
+     The review's genuine-decline scenario gives 1 cut because its lifter
+     stops declining. Run a lifter who keeps losing strength for 30 sessions
+     and the fixed engine cuts twice — correctly: by session 28 he can only
+     manage 6/5/4 at the post-cut weight, so his true 8RM really has fallen
+     another 10%, and the second cut is if anything overdue. What distinguishes
+     the fix from the bug is that cuts can never come closer together than the
+     window the verdict is computed from (the spiral cut every 4 sessions).
+     `t28` asserts the gap, not the count.
+
 3. **Add the missing test**: a `t28` that runs the engine closed-loop — seed
    nothing, loop *prescribe → simulate a fatigued-but-progressing lifter →
    log → repeat* 40 times through the UI or storage, and assert the weight
@@ -156,7 +178,7 @@ load-bearing one:
    the loop, not just the signal* — prescriptions are inputs to the next
    session, and no current test closes that loop.
 
-### 1.2 Renaming a lift onto an existing name merges two histories silently, leaves ghost PRs, and duplicates the plan entry  ⚠ P1
+### ~~1.2 Renaming a lift onto an existing name merges two histories silently, leaves ghost PRs, and duplicates the plan entry~~  ✅ *fixed in v20*
 
 **Symptom.** Rename "Curl" to "Barbell Curl" while a lift by that name already
 exists: no warning, no undo, the two histories are permanently fused, sets
@@ -190,7 +212,7 @@ Merge histories? This can't be undone." — with a whole-`S` snapshot undo like
 `writeNow()` instead of `save()`, and drop exact-duplicate plan rows within
 the same variant. Mechanical; ~20 lines.
 
-### 1.3 Editing an old session rewrites bodyweight/assisted loads with today's bodyweight  ⚠ P1
+### ~~1.3 Editing an old session rewrites bodyweight/assisted loads with today's bodyweight~~  ✅ *fixed in v20*
 
 **Symptom.** Open a months-old session containing a bodyweight or assisted
 lift, change *anything* — the note, the date — and save. Every set's stored
@@ -222,7 +244,7 @@ set (`load − w` for mode 1, `load + w` for mode 2) before falling back to
 `S.settings.bodyweight`. Also then backfill `d.bw` so the session is
 self-describing from then on.
 
-### 1.4 A state without `sessions` bricks the app to a blank page  ⚠ P1 (robustness; low likelihood)
+### ~~1.4 A state without `sessions` bricks the app to a blank page~~  ✅ *fixed in v20*
 
 **Symptom.** If `ironlog.v1` ever contains a state whose `sessions` key is
 missing (or not an array), the app renders nothing at all — blank `#view`,
@@ -250,7 +272,7 @@ door doesn't check the whole shape.
 `if(s.active&&!Array.isArray(s.active.exercises)) s.active=null;` — and while
 there, default `exercises`/`sets` arrays per session for the same reason.
 
-### 1.5 `deloadCheck()`'s `≤ 0` threshold miscounts wide-range heavy lifts as stalled  — P1-edge
+### ~~1.5 `deloadCheck()`'s `≤ 0` threshold miscounts wide-range heavy lifts as stalled~~  ✅ *fixed in v21*
 
 **Symptom.** A lift on a wide rep range at a heavy load can be counted toward
 "time to deload" while progressing flawlessly.
@@ -282,7 +304,7 @@ is computable, `expected = 100·3·step/(cycle·e1RM)`, so count "stalled" as
 `deloadCheck()` and say so in the sheet, matching the existing honesty about
 wide ranges reading slower.
 
-### 1.6 The lift sheet's "Trending down" banner describes an algorithm deleted in v16 — P2 (trust copy)
+### ~~1.6 The lift sheet's "Trending down" banner describes an algorithm deleted in v16~~  ✅ *fixed in v21*
 
 **Symptom.** Open a slipping lift's chart: "Three sessions below the three
 before. The app has already dropped your next prescription 10% — take it,
@@ -299,7 +321,7 @@ over the last M"), and state what the *next* prescription actually is by
 calling `prescribe()` — the plan-menu subtitle already does exactly this
 (`index.html:3981`).
 
-### 1.7 The "Holding flat" banner tells you to set a rep range you already have — P3
+### ~~1.7 The "Holding flat" banner tells you to set a rep range you already have~~  ✅ *fixed in v21*
 
 `index.html:3229–3231` shows "Set a rep range on this lift so it climbs by
 reps before it climbs by weight" for every flat lift. **Verified**: a lift
@@ -351,11 +373,15 @@ so":
 
 1. **`PROJECT_STATE.md` "Back-off fires once and then holds"** (Verified
    working list) — false; see §1.1. The guard holds for exactly 3 sessions.
+   ✅ *both the code and the claim corrected in v19.*
 2. **`PROJECT_STATE.md` "flawless never drops below +0.35%"** (deloadCheck
    section) — false at wide ranges / heavy loads; measured −0.13% at 8–20
    @315, +0.02 at @225 (§1.5). True at the default tiers.
+   ✅ *corrected in v21, with the per-cycle table that replaces it.*
 3. **Suite counts**: "t20–t23, 88 assertions" — they are 94 (8+43+19+24).
-   "t27, 45 assertions" — it is 48. The 287 total is right.
+   "t27, 45 assertions" — it is 48. The 287 total is right. ✅ *confirmed
+   against a clean run, and in v21 the per-suite counts are removed from the
+   docs rather than corrected — see §4.*
 4. **The Epley correction in `ROADMAP.md` is confirmed** — I rebuilt the
    table independently against a standard %1RM reference: mean |error|
    1.09 pp (Epley), 1.19 (Wathen), 2.09 (Brzycki), 3.79 (Mayhew), 4.18
@@ -364,9 +390,24 @@ so":
    edges Epley (1.55 pp). Not worth a swap — the difference is under a pound
    on a curl — but worth recording since v13 made 12–16 the isolation
    default. "Do not swap the formula" stands.
+
+   > **Partly corrected, v21.** Re-derived against two standard tables
+   > (Landers, and an NSCA-style one). The 12–16 nuance **holds** — Wathen
+   > 1.33/0.86 pp vs Epley 1.85/1.25. The *overall* ordering does **not**:
+   > Wathen came out marginally ahead across 1–20 on both of my tables
+   > (1.65 vs 1.82, 1.64 vs 1.72), where the review had Epley ahead. Which one
+   > leads depends on which reference table you pick, which is the real
+   > finding: the two are within ~0.2 pp of each other and everything else is
+   > far behind. The conclusion is unchanged but its reason is now honest —
+   > not "Epley is measurably best" but "these two are indistinguishable at
+   > this app's stakes, and the whole history is already scored in Epley".
+   > Absolute error levels differ from the review's throughout, so it used a
+   > third reference table it doesn't name; worth naming next time, since the
+   > table is doing as much work as the formula.
 5. **The keep-alive tone level**: the doc says "about −27 dBFS", the code
    comment says −24. Amplitude 0.06 is −24.4 dBFS peak, −27.4 RMS. Both are
-   "right"; pick one convention.
+   "right"; pick one convention. ✅ *v21 quotes peak in both places and records
+   both figures once.*
 
 ### 1.12 Verified working — checked and healthy
 

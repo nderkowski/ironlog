@@ -197,9 +197,12 @@ Details worth keeping:
   are different tests.** Chrome scores a tab's audibility from real signal
   power. The first version used ±1/32767 dither (about -90 dBFS) on the theory
   that it just had to be "not digital silence" — Chrome scored it as silence,
-  froze the tab anyway, and the alarm never fired. It is now a 30 Hz tone at
-  about -27 dBFS: no phone speaker reproduces 30 Hz, so nothing comes out, but
-  the tab counts as playing media. On headphones it may be a faint rumble.
+  froze the tab anyway, and the alarm never fired. It is now a 30 Hz sine at
+  amplitude 0.06 — **-24.4 dBFS peak, -27.4 dBFS RMS**. (The doc used to say
+  "about -27" and the code comment "-24"; both were right about different
+  conventions, which is worse than either. Peak is the number quoted from here
+  on.) No phone speaker reproduces 30 Hz, so nothing comes out, but the tab
+  counts as playing media. On headphones it may be a faint rumble.
 - **There is deliberately no MediaSession.** There was one, and it made things
   worse. Declaring a media session tells Android "this is a music player",
   which is exactly what makes the system duck whatever the user is listening
@@ -641,8 +644,29 @@ slope still depends slightly on cycle phase: across every plausible range and
 load, a flawless run dips as low as **−0.37%** at its worst phase, while a
 genuine stall reads exactly **0.00%**. Those overlap, so *no threshold on the
 short window can separate "progressing slowly" from "not progressing at all"*.
-Over two cycles the phase washes out — flawless never drops below **+0.35%**,
-a stall is still 0.00% — and `pct <= 0` splits them cleanly.
+Over two cycles the phase mostly washes out, and `pct <= 0` splits them —
+but **only up to a rep range about eight sessions wide**. Measured on flawless
+runs at 185 / 225 / 315 / 405, worst phase:
+
+| cycle (`repTop − reps + 1`) | worst flawless long-window slope |
+|---|---|
+| 7 (e.g. 8–14) | +0.27% |
+| 8 (8–15) | +0.15% |
+| 9 (8–16) | +0.02% |
+| 10 (8–17) | −0.05% |
+| 13 (8–20) | −0.18% |
+
+A stall is exactly 0.00%, so from cycle 9 the two classes touch and no
+threshold separates them at all — the step is a shrinking fraction of the load
+while the cycle stretches. `deloadCheck()` therefore **skips any lift wider
+than cycle 8** and says so in the status line. Every default tier (5–8, 8–12,
+12–16) is far inside that; only a hand-widened range is affected.
+
+> An earlier version of this section claimed "flawless never drops below
+> +0.35%" without qualification. That is true at the default tiers and false at
+> wide ones — three heavy 8–20 lifts trained perfectly for 34 sessions read
+> −0.13 / −0.21 / −0.27 and produced a flat "Time to deload". Corrected in v21;
+> `t26` asserts that exact seed.
 
 That is also why it no longer keys off the `"up"` *label*: the flat band
 includes real but slow progress, and counting that as stalled is exactly how a
@@ -675,7 +699,11 @@ functions directly. That's how the `data-x="top"` collision below was caught.
   nothing and sets no record; working-set numbering renumbers around them
 - Deload week: light-and-short prescriptions, session tagged, and the trend held
   at +7.9% instead of being dragged down
-- Back-off fires once and then holds
+- Back-off fires once per genuine decline episode and then holds while the reps
+  climb back. **This was claimed here before it was true**: the guard looked at
+  3 sessions while the verdict it guards is a slope over ~9, so it expired
+  first and the app cut 10% again every four sessions — 190 lb down to 115 for
+  a lifter getting stronger. Fixed and closed-loop asserted in v19 (`t28`)
 - Session editing: a 210 → 2100 typo blew the trend to +339.5%, and correcting it
   restored both the PR and the +7.9% trend exactly
 - Editor add/remove set, add warm-up, remove exercise, change date, re-sort
@@ -741,8 +769,11 @@ Slice 3:
 
 Slice 5 (v13), against a v1-shaped plan whose exercises have no `repTop` field
 at all — the state the reported bug lives in. **The suites are in
-`tools/test/`** (`t20`–`t23`, 88 assertions) and run against
-`npx http-server -p 8117 -s -c-1 .` with `node tools/test/tNN-….mjs`:
+`tools/test/`** (`t20`–`t23`) and run against
+`npx http-server -p 8117 -s -c-1 .` with `node tools/test/tNN-….mjs`. Per-suite
+assertion counts are deliberately not written down here — they went stale the
+moment a suite grew, and two of the five doc errors the v18 review found were
+exactly that. Run them and read the summary line:
 
 - The reported symptom, end to end: a v1 exercise reads "3 × 8 straight" on
   both the Plan row and the session card, the engine adds weight because that
@@ -771,7 +802,7 @@ at all — the state the reported bug lives in. **The suites are in
   written: focus moves to the button you tapped, exactly as a real tap does.
   What matters, and what is asserted, is that the node survives.
 
-Slice 6 (v14), week variants — `t24`, 68 assertions:
+Slice 6 (v14), week variants — `t24`:
 
 - Migration: a v4 state becomes a single-variant v5 day, keeps its exercises,
   loses `r.exercises`, and a single-variant day renders with no switcher and no
@@ -792,7 +823,7 @@ Slice 6 (v14), week variants — `t24`, 68 assertions:
   clean** — which is the shape every auto-backup already on the phone has
 - Plan with a switcher measured at 320 px and 390 px, no sideways scroll
 
-Slice 7 (v15), switching units — `t25`, 40 assertions:
+Slice 7 (v15), switching units — `t25`:
 
 - An empty log switches silently and picks up the kg bar, plate set and step
 - With history it asks, shows the actual arithmetic (225 lb → 102.1 kg), and
@@ -805,7 +836,7 @@ Slice 7 (v15), switching units — `t25`, 40 assertions:
 - A round trip lands within 0.1 of where it started
 - The sheet measured at 320 px and 390 px
 
-Slice 8 (v16), the trend signal — `t26`, 37 assertions, all driven by seeding a
+Slice 8 (v16), the trend signal — `t26`, driven by seeding a
 textbook double-progression history and reading the verdict off the card:
 
 - Four ranges that used to read "down" on a flawless run — 8–12 @185, 8–12
@@ -819,7 +850,7 @@ textbook double-progression history and reading the verdict off the card:
   sessions, on a 3-lift plan: never fires on flawless progress — and still
   fires on a plan that has genuinely stopped
 
-Slice 9 (v17), Settings as its own screen — `t27`, 45 assertions:
+Slice 9 (v17), Settings as its own screen — `t27`:
 
 - The gear opens it, the back arrow returns to Plan, any tab tap leaves, and
   the bottom bar stays three tabs with Plan lit while it is open
@@ -887,7 +918,7 @@ bite.
    `canShare()` approving a type does not mean `share()` will accept it.
 5. **Chrome scores tab audibility from real signal power.** A keep-alive track at
    -90 dBFS counts as silence and the tab gets frozen anyway. It has to be
-   inaudible to a human but loud to the meter — hence 30 Hz at -27 dBFS. But
+   inaudible to a human but loud to the meter — hence 30 Hz at -24 dBFS peak. But
    see 5b: solving that created a worse problem.
 5b. **Anything loud enough to keep the tab alive is loud enough to duck the
    user's music**, because Android grants audio focus on the same signal Chrome
@@ -954,6 +985,20 @@ bite.
     flawless run and cut the weight. If you add another trend, stall, PR-pace
     or readiness signal, simulate a perfect run through it *first* and check it
     never reports a decline. `tools/test/t26-trend.mjs` does exactly that.
+17b. **A prescription is an input to the next session — simulate the loop, not
+   just the signal.** Trap 17 got `trend()` right and stopped there. The bug
+   that survived was in `prescribe()`'s *reaction* to it: the back-off guard
+   looked back 3 sessions while the verdict it guards is a slope over ~9, so
+   three obedient sessions at the cut weight expired the guard while the slope
+   still saw the pre-cut scores, and it cut another 10%. Every four sessions,
+   for ever. Holding also pinned reps to the bottom of the range, which
+   suppressed exactly the rising e1RM that would have cleared the verdict — the
+   app was censoring the evidence that would have stopped it. Closed-loop, a
+   lifter whose true 1RM rose 250→295 was prescribed 115 lb. **Any window a
+   guard uses must be at least the window of the signal it guards**, and
+   anything that changes what gets logged has to be simulated by feeding its
+   own output back in for 40+ sessions, which is what `t28` does. One-verdict
+   tests cannot see this class of bug at all.
 18. **A view that borrows another view's event listeners inherits its guard.**
     The `#view` click and input listeners early-return unless `TAB` is the one
     they were written for. Moving rows to a new screen without widening those

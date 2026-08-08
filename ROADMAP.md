@@ -356,9 +356,23 @@ Not bugs, but they should be revisited and are honest limits of the current mode
   has the **lowest** mean error of the common formulas (1.09 pp; Wathen 1.19,
   Brzycki 2.09, Mayhew 3.79, Lombardi 4.18) and is essentially exact at 10, 12
   and 20 reps. The belief comes from noticing Epley and Brzycki diverge above
-  10 — but it is Brzycki that collapses up there (−12.8 pp at 20 reps). Epley's
-  only structural flaw is at 1 rep, and `e1rm()` already special-cases it.
-  **Do not swap the formula.**
+  10 — but it is Brzycki that collapses up there (−9.8 pp at 20 reps against
+  the Landers table). Epley's only structural flaw is at 1 rep, and `e1rm()`
+  already special-cases it. **Do not swap the formula.**
+
+  *Re-checked in v21 against two standard %1RM tables, because the v18 review
+  raised a nuance.* The nuance holds: over the isolation band specifically
+  (12–16 reps, the v13 default), **Wathen is closer than Epley** — 1.33 pp vs
+  1.85 pp on Landers, 0.86 vs 1.25 on the NSCA-style table. What does *not*
+  survive independent checking is the claim that Epley wins overall: which of
+  the two leads across 1–20 depends on which reference table you pick (Wathen
+  edged it on both of mine, Epley on the review's). They are within ~0.2 pp of
+  each other and everything else is far behind — Brzycki 2.7, Mayhew 4.8,
+  Lombardi 7.1. The gap between Epley and Wathen is a fraction of a pound on a
+  curl, so the conclusion is unchanged and the reason is now the honest one:
+  **not "Epley is measurably best", but "the two candidates are
+  indistinguishable at this app's stakes, and swapping costs a history that is
+  all scored in Epley."**
 
   Chasing this did find a real bug, one level up: `trend()` was reading the
   phase of the double-progression sawtooth and reporting "down" on a flawless
