@@ -174,6 +174,63 @@ await boot(page, base({ id:'p1', name:'Bench Press', sets:3, reps:8, repTop:12 }
 card = await page.textContent('#view');
 has(card, 'usually 55m', 'a forgotten finish and a mis-tap are both left out');
 
+/* ---------- 10. the rep drop-off hold rule ---------- */
+/* Gated on a measurement against the real log: 40% of logged working sets have
+   reps that differ from the prescription, and 47 of 50 of those edits are
+   upward — so the reps are a report, not an artifact of the prefill, and a
+   fall across a session means something. */
+async function whyFor(name, sets, planOver) {
+  const ts = Date.now() - 3 * 86400000;
+  const st = base(Object.assign({ id:'p1', name, sets:3, reps:8, repTop:12 }, planOver || {}),
+    [ { id:'s1', ts, endTs:ts + 3300000, routineId:'r1', key:'A', name:'Day A', variantId:'v1',
+        exercises:[ Object.assign({ id:'e1', planId:'p1', name, reps:8, repTop:12,
+          sets:sets.map(x => ({ w:String(x[0]), r:String(x[1]), done:true, load:x[0],
+                                warm:!!x[2] })) }, planOver || {}) ] } ]);
+  await boot(page, st);
+  await page.click('[data-act="start"][data-id="r1"]');
+  await page.waitForSelector('.card.ex');
+  const why = (await page.textContent('.card.ex .why')).replace(/\s+/g, ' ').trim();
+  const w = await page.inputValue('.card.ex .set input[data-f="w"]');
+  const r = await page.inputValue('.card.ex .set input[data-f="r"]');
+  await page.click('[data-act="discard"]');
+  await page.click('[data-x="ok"]');
+  return { why, w, r };
+}
+
+let v = await whyFor('Bench Press', [[185,12],[185,10],[185,8]]);
+has(v.why, 'Reps fell 12→8', 'a steep fall across the session holds the weight');
+eq(v.w, '185', 'and the load does not move');
+eq(v.r, '8', 'asking for what the worst set managed, not more');
+
+v = await whyFor('Bench Press', [[185,12],[185,11],[185,10]]);
+has(v.why, 'go for 11', 'a two-rep fall is ordinary fatigue and still progresses');
+
+v = await whyFor('Bench Press', [[185,12],[185,12],[185,12]]);
+has(v.why, 'Hit 12s on every set', 'a flat session at the top still adds load');
+
+/* Below the bottom of the range minR already runs it back — the drop-off rule
+   must not shadow a message that is more specific. */
+v = await whyFor('Bench Press', [[185,10],[185,8],[185,4]]);
+has(v.why, 'Fell short of 8', 'short of the range bottom still says so');
+
+/* A drop that follows a weight change is arithmetic, not fatigue. */
+v = await whyFor('Bench Press', [[185,12],[205,10],[225,8]]);
+ok(!/Reps fell/.test(v.why), 'a fall across changing weights is not read as fatigue  [' + v.why + ']');
+
+/* Straight sets have no hold slot between "run it back" and "add load", and
+   the rule is scoped to the range case deliberately. */
+v = await whyFor('Bench Press', [[185,12],[185,10],[185,8]], { repTop:0 });
+ok(!/Reps fell/.test(v.why), 'straight sets are unaffected  [' + v.why + ']');
+
+/* Two working sets is not a shape. */
+v = await whyFor('Bench Press', [[185,12],[185,8]]);
+ok(!/Reps fell/.test(v.why), 'two sets are not enough to read a fall  [' + v.why + ']');
+
+/* Warm-ups are invisible here as everywhere else — a 95x15 warm-up must not
+   look like the top of a collapsing session. */
+v = await whyFor('Bench Press', [[95,15,true],[185,10],[185,10],[185,10]]);
+ok(!/Reps fell/.test(v.why), 'a warm-up does not create a phantom drop  [' + v.why + ']');
+
 ok(errors.length === 0, 'no page errors  ' + errors.join(' | '));
 report('t30 gym floor');
 await browser.close();

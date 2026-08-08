@@ -675,7 +675,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v22";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v23";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -1687,6 +1687,26 @@ function harderPhrase(step,mode){
 /* "12s" for twelve reps, "60s" for sixty seconds — both read naturally.
    Distance has no such suffix. */
 function amtText(v,m){ return m===2?String(v):(v+"s"); }
+/* How far the reps fell across a session's working sets, first to last, and
+   only when every one of them was at the same weight — a drop that follows a
+   weight change is arithmetic, not fatigue. Returns 0 when there is nothing to
+   read: fewer than three sets, mixed weights, or reps that held. */
+function dropSets(sets){
+  var w=working(sets||[]).filter(function(s){ return s.done!==false&&num(s.r)>0; });
+  if(w.length<3) return null;
+  var wt=num(w[0].w);
+  for(var i=1;i<w.length;i++) if(num(w[i].w)!==wt) return null;
+  return w;
+}
+function repFall(sets){
+  var w=dropSets(sets);
+  if(!w) return 0;
+  return num(w[0].r)-num(w[w.length-1].r);
+}
+function repFallText(sets){
+  var w=dropSets(sets);
+  return w?num(w[0].r)+"→"+num(w[w.length-1].r):"";
+}
 function rpeMean(sets){
   var v=(sets||[]).filter(function(s){ return num(s.rpe)>0; });
   if(!v.length||v.length*2<sets.length) return 0;
@@ -1755,6 +1775,25 @@ function prescribe(name,ex){
   if(rp>=9.5)
     return {w:w,r:Math.max(low,minR),sets:nsets,
             why:"Averaged RPE "+fmt(rp)+" last time — repeat it before adding",kind:"hold"};
+
+  /* The RPE rule's silent twin, for anyone who leaves RPE off — which is the
+     default. Reps falling steeply across a session at one weight is the same
+     evidence a 9.5 is: you were close to failure. Under a standard fatigue
+     model a drop of 3+ from first to last working set means RIR<=1 with
+     near-certainty, while a flat triple at target is RIR>=2 about 90% of the
+     time. It costs no taps, because the reps are already logged.
+
+     Deliberately narrow. It only reads the *shape* at or above the bottom of
+     the range — below that `minR` already runs the weight back, and the two
+     rules would only ever agree. It needs one weight across the sets, since a
+     drop that follows a weight change is not fatigue. And it can only ever say
+     "harder than it looked", never easier: the reps are capped at the
+     prescription, so the signal is one-sided and belongs in the hold slot
+     only. */
+  var fall=repFall(last.sets);
+  if(fall>=3&&minR>=low&&top>low)
+    return {w:w,r:Math.max(low,minR),sets:nsets,
+            why:"Reps fell "+repFallText(last.sets)+" last time — repeat it before adding",kind:"hold"};
 
   /* A plank or an unloaded carry has nothing to add weight to, so the metric
      itself is the progression axis and the range top is a floor, not a cap. */
