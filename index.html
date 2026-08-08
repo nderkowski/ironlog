@@ -669,7 +669,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v16";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v17";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -825,7 +825,10 @@ var ICON={
   check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
   today:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/></svg>',
   prog:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5.5-6 4 3.5L21 6"/><path d="M21 11V6h-5"/></svg>',
-  plan:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 12h16M4 18h7"/><circle cx="18.5" cy="6" r="1.6"/><circle cx="14.5" cy="18" r="1.6"/></svg>'
+  plan:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 12h16M4 18h7"/><circle cx="18.5" cy="6" r="1.6"/><circle cx="14.5" cy="18" r="1.6"/></svg>',
+  /* A cog, not a sunburst: short rays around a circle read as a brightness
+     control, which is what the first attempt looked like. */
+  gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.1"/><path d="M19.4 14.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1.03z"/></svg>'
 };
 
 /* ============================ load model ============================
@@ -1200,7 +1203,7 @@ function setUnit(to,convert){
   S.settings.bar=defaultBar(to);
   S.settings.plates=defaultPlates(to);
   recomputePRs();
-  writeNow(); viewPlan();
+  writeNow(); viewPrefs();
   toastUndo(convert?("Log converted to "+to):("Now labelled "+to),function(){
     S=before; recomputePRs(); writeNow(); render();
     toast("Units put back");
@@ -1208,9 +1211,12 @@ function setUnit(to,convert){
 }
 
 function unitSheet(from,to){
+  var n=S.sessions.length;
   sheet('<h3>Switch to '+esc(to)+'?</h3>'+
-    '<div class="sub">You have '+plural(S.sessions.length,"session")+' logged in '+esc(from)+
-      '. The app can\'t tell which of these you mean, so it won\'t guess.</div>'+
+    '<div class="sub">'+(n
+      ? "You have "+plural(n,"session")+" logged in "+esc(from)+"."
+      : "Your plan is set up in "+esc(from)+".")+
+      ' The app can\'t tell which of these you mean, so it won\'t guess.</div>'+
     '<div class="menu">'+
       '<button data-x="conv"><b>Convert my log to '+esc(to)+'</b>'+
         '<span class="h">every weight ×'+(to==="kg"?"0.45":"2.2")+'</span></button>'+
@@ -1231,7 +1237,7 @@ function unitSheet(from,to){
       }
       $('[data-x="conv"]',el).onclick=function(){ go(true); };
       $('[data-x="label"]',el).onclick=function(){ go(false); };
-      $('[data-x="cancel"]',el).onclick=function(){ closeSheet(); viewPlan(); };
+      $('[data-x="cancel"]',el).onclick=function(){ closeSheet(); viewPrefs(); };
     });
 }
 function barOf(ex){ var b=num(ex&&ex.bar); return b>0?b:0; }
@@ -1958,10 +1964,14 @@ var TAB="today";
 /* PLANVAR resets with the tab, like the calendar's month, so Plan always opens
    on the week you are actually about to train. */
 function go(t){ TAB=t; calOffset=0; PLANVAR={}; closeSheet(); render(); window.scrollTo(0,0); }
+/* Settings is deliberately NOT a fourth tab. The bottom bar is the gym-floor
+   surface and a settings tab would be dead weight in every session; it opens
+   from the header instead, and any tab tap leaves it. */
 function renderTabs(){
   var tabs=[["today","Today",ICON.today],["progress","Progress",ICON.prog],["plan","Plan",ICON.plan]];
+  var on=(TAB==="settings")?"plan":TAB;
   $("#tabs").innerHTML=tabs.map(function(t){
-    return '<button class="t'+(TAB===t[0]?" on":"")+'" data-tab="'+t[0]+'">'+t[2]+'<span>'+t[1]+'</span></button>';
+    return '<button class="t'+(on===t[0]?" on":"")+'" data-tab="'+t[0]+'">'+t[2]+'<span>'+t[1]+'</span></button>';
   }).join("");
 }
 $("#tabs").addEventListener("click",function(e){
@@ -1971,6 +1981,9 @@ $("#tabs").addEventListener("click",function(e){
 /* ============================ header ============================ */
 function renderHeader(){
   var h=$("#hdr-right"), out="";
+  out+=(TAB==="settings")
+    ? '<button class="iconbtn" data-act="settings-back" aria-label="Back to Plan">\u2190</button>'
+    : '<button class="iconbtn" data-act="settings" aria-label="Settings">'+ICON.gear+'</button>';
   if(rest.endsAt){
     var left=(rest.endsAt-Date.now())/1000;
     out+='<button class="rest'+(left<=0?" over":"")+'" data-act="rest-tap">'+
@@ -1980,7 +1993,9 @@ function renderHeader(){
   h.innerHTML=out;
 }
 $("#hdr-right").addEventListener("click",function(e){
-  if(e.target.closest('[data-act="rest-tap"]')) restMenu();
+  if(e.target.closest('[data-act="rest-tap"]')){ restMenu(); return; }
+  if(e.target.closest('[data-act="settings"]')){ go("settings"); return; }
+  if(e.target.closest('[data-act="settings-back"]')) go("plan");
 });
 function restMenu(){
   sheet('<h3>Rest timer</h3><div class="sub">Auto-starts after each set.</div>'+
@@ -3502,6 +3517,110 @@ function applyRanges(){
   });
 }
 
+/* ---- settings ----
+   These lived at the foot of the Plan tab, below the split, where the list you
+   scrolled past to reach them had nothing to do with them. Progression stayed
+   behind with the split it shapes; everything else is here. */
+function settingsSummary(){
+  var bits=[unit(), S.settings.rest+"s rest"];
+  if(S.settings.sound) bits.push("alarm on");
+  if(S.settings.autoBackup) bits.push("auto-backup");
+  return bits.join(" · ");
+}
+/* These rows live on the Settings screen but a few are still reachable from
+   Plan, so anything that re-renders after changing one has to route rather
+   than assume. */
+function viewPrefs(){ if(TAB==="settings") viewSettings(); else viewPlan(); }
+function viewSettings(){
+  var v=$("#view");
+  /* "This device" rather than a restatement of the brand: settings and the log
+     are both keyed to this origin on this phone, which is worth saying where
+     someone is about to change one. */
+  var html='<div class="eyebrow">This device</div><h1 class="view-title">Settings</h1><div class="stack">';
+  html+='<div class="eyebrow">Session</div><div class="card">'+
+    '<div class="field-row"><div class="fl">Units</div>'+
+      '<select class="txt" style="width:96px" data-set="unit">'+
+        '<option value="lb"'+(unit()==="lb"?" selected":"")+'>lb</option>'+
+        '<option value="kg"'+(unit()==="kg"?" selected":"")+'>kg</option></select></div>'+
+    '<div class="field-row"><div class="fl">Your bodyweight<div class="fh">Used to score pull-ups, dips and assisted work</div></div>'+
+      '<input class="txt small" inputmode="decimal" type="number" step="any" data-set="bodyweight" value="'+(S.settings.bodyweight||"")+'"></div>'+
+    '<div class="field-row"><div class="fl">Rest timer<div class="fh">Seconds after each logged set</div></div>'+
+      '<input class="txt small" inputmode="numeric" type="number" data-set="rest" value="'+esc(S.settings.rest)+'"></div>'+
+    '<div class="field-row"><div class="fl">Start rest automatically</div>'+
+      '<button class="switch'+(S.settings.autoRest?" on":"")+'" data-set="autoRest"></button></div>'+
+    '<div class="field-row"><div class="fl">Vibrate<div class="fh">On logging a set and when rest ends</div></div>'+
+      '<button class="switch'+(S.settings.buzz?" on":"")+'" data-set="buzz"></button></div>'+
+    '<div class="field-row"><div class="fl">Alarm when rest ends'+
+      '<div class="fh">Beeps out loud, and keeps the timer running with the screen off</div></div>'+
+      '<button class="switch'+(S.settings.sound?" on":"")+'" data-set="sound"></button></div>'+
+    '<div class="field-row"><div class="fl">Rate sets (RPE)'+
+      '<div class="fh">Adds an optional tag after you log a set. A hard week then holds the weight instead of adding.</div></div>'+
+      '<button class="switch'+(S.settings.rpe?" on":"")+'" data-set="rpe"></button></div>'+
+    '<div class="field-row"><div class="fl">Keep-alive tone during rests'+
+      '<div class="fh">'+(S.settings.keepTone
+        ? '<span style="color:var(--bad)">Guarantees the alarm, but Android mutes your music for the whole rest.</span>'
+        : "Off — your music plays untouched. If an alarm ever arrives late, the app will offer to turn this on.")+'</div></div>'+
+      '<button class="switch'+(S.settings.keepTone?" on":"")+'" data-set="keepTone"></button></div>'+
+    '<div class="field-row"><div class="fl">Back up after every workout'+
+      '<div class="fh">Writes a file to your downloads when you tap Save workout. No extra tap, and it is the only backup that can\'t be forgotten.</div></div>'+
+      '<button class="switch'+(S.settings.autoBackup?" on":"")+'" data-set="autoBackup"></button></div>'+
+    '<div class="field-row"><div class="fl">Test the alarm with the screen off'+
+      '<div class="fh">Runs a 20-second rest and reports whether the phone kept the timer alive</div></div>'+
+      '<button class="btn sm ghost" data-act="bgtest">Test</button></div>'+
+    '<div class="field-row"><div class="fl">Notify when rest ends'+
+      '<div class="fh">'+(notifyState()==="denied"
+        ? '<span style="color:var(--bad)">Blocked in your browser settings for this site</span>'
+        : notifyState()==="none"
+          ? "This browser can't show notifications"
+          : "Shows up on the lock screen. Needs permission.")+'</div></div>'+
+      '<button class="switch'+(S.settings.notify?" on":"")+'" data-act="toggle-notify"></button></div>'+
+  '</div>';
+
+  html+='<div class="eyebrow" style="margin:6px 0 0">Barbell</div><div class="card">'+
+    '<div class="field-row"><div class="fl">Bar weight<div class="fh">Used for new barbell exercises. Set it per exercise in its ⋯ menu.</div></div>'+
+      '<input class="txt small" inputmode="decimal" type="number" step="any" data-set="bar" value="'+esc(S.settings.bar||"")+'"></div>'+
+    '<div class="field-row" style="display:block">'+
+      '<div class="fl">Plates you own<div class="fh">Counted in pairs — one for each side.</div></div>'+
+      '<div class="plate-ed">'+
+        (S.settings.plates||[]).map(function(p,i){
+          return '<div class="pr-row">'+
+            '<input class="txt" inputmode="decimal" type="number" step="any" data-pw="'+i+'" value="'+esc(p.w)+'">'+
+            '<span class="x">'+esc(unit())+' ×</span>'+
+            '<input class="txt" style="width:60px" inputmode="numeric" type="number" data-pn="'+i+'" value="'+esc(p.n)+'">'+
+            '<span class="x">pairs</span><span class="sp"></span>'+
+            '<button class="rm" data-act="plate-rm" data-i="'+i+'" aria-label="Remove this plate">✕</button>'+
+          '</div>';
+        }).join("")+
+      '</div>'+
+      '<div class="row" style="gap:8px;margin-top:8px">'+
+        '<button class="btn sm ghost" style="flex:1" data-act="plate-add">+ Add a size</button>'+
+        '<button class="btn sm ghost" style="flex:1" data-act="plate-reset">Reset to '+esc(unit())+'</button>'+
+      '</div>'+
+    '</div>'+
+  '</div>';
+
+  html+='<div class="eyebrow" style="margin:6px 0 0">Data</div><div class="card"><div class="stack">'+
+    '<div class="tiny muted">Your log lives in this browser on this device. Nothing is uploaded anywhere, which also means nothing is backed up until you send a copy out.'+
+    (S.settings.lastBackup?' Last copy '+relDate(S.settings.lastBackup)+'.':' No copy yet.')+'</div>'+
+    '<button class="btn primary block" data-act="backup">Back up now</button>'+
+    '<div class="row" style="gap:8px">'+
+      '<button class="btn" style="flex:1" data-act="export">Export file</button>'+
+      '<button class="btn" style="flex:1" data-act="import">Import</button>'+
+    '</div>'+
+    '<button class="btn danger block" data-act="wipe">Erase everything</button>'+
+  '</div></div>';
+
+
+  html+='<div class="eyebrow" style="margin:6px 0 0">About</div><div class="card">'+
+    '<div class="field-row"><div class="fl">Version<div class="fh">Also printed at the foot of the Plan tab — check it on the device before believing any bug report</div></div>'+
+      '<span class="chip mono">'+esc(BUILD)+'</span></div>'+
+    '<div class="field-row"><div class="fl">Logged<div class="fh">Everything lives in this browser, on this device</div></div>'+
+      '<span class="chip mono">'+plural(S.sessions.length,"session")+'</span></div>'+
+  '</div>';
+
+  v.innerHTML=html+'</div>';
+}
+
 function viewPlan(){
   var v=$("#view");
   var html='<div class="eyebrow">Your split</div><h1 class="view-title">Plan</h1><div class="stack">';
@@ -3600,79 +3719,14 @@ function viewPlan(){
         : '<button class="btn sm" data-act="start-deload">Start</button>')+'</div>'+
   '</div>';
 
-  html+='<div class="eyebrow" style="margin:6px 0 0">Session</div><div class="card">'+
-    '<div class="field-row"><div class="fl">Units</div>'+
-      '<select class="txt" style="width:96px" data-set="unit">'+
-        '<option value="lb"'+(unit()==="lb"?" selected":"")+'>lb</option>'+
-        '<option value="kg"'+(unit()==="kg"?" selected":"")+'>kg</option></select></div>'+
-    '<div class="field-row"><div class="fl">Your bodyweight<div class="fh">Used to score pull-ups, dips and assisted work</div></div>'+
-      '<input class="txt small" inputmode="decimal" type="number" step="any" data-set="bodyweight" value="'+(S.settings.bodyweight||"")+'"></div>'+
-    '<div class="field-row"><div class="fl">Rest timer<div class="fh">Seconds after each logged set</div></div>'+
-      '<input class="txt small" inputmode="numeric" type="number" data-set="rest" value="'+esc(S.settings.rest)+'"></div>'+
-    '<div class="field-row"><div class="fl">Start rest automatically</div>'+
-      '<button class="switch'+(S.settings.autoRest?" on":"")+'" data-set="autoRest"></button></div>'+
-    '<div class="field-row"><div class="fl">Vibrate<div class="fh">On logging a set and when rest ends</div></div>'+
-      '<button class="switch'+(S.settings.buzz?" on":"")+'" data-set="buzz"></button></div>'+
-    '<div class="field-row"><div class="fl">Alarm when rest ends'+
-      '<div class="fh">Beeps out loud, and keeps the timer running with the screen off</div></div>'+
-      '<button class="switch'+(S.settings.sound?" on":"")+'" data-set="sound"></button></div>'+
-    '<div class="field-row"><div class="fl">Rate sets (RPE)'+
-      '<div class="fh">Adds an optional tag after you log a set. A hard week then holds the weight instead of adding.</div></div>'+
-      '<button class="switch'+(S.settings.rpe?" on":"")+'" data-set="rpe"></button></div>'+
-    '<div class="field-row"><div class="fl">Keep-alive tone during rests'+
-      '<div class="fh">'+(S.settings.keepTone
-        ? '<span style="color:var(--bad)">Guarantees the alarm, but Android mutes your music for the whole rest.</span>'
-        : "Off — your music plays untouched. If an alarm ever arrives late, the app will offer to turn this on.")+'</div></div>'+
-      '<button class="switch'+(S.settings.keepTone?" on":"")+'" data-set="keepTone"></button></div>'+
-    '<div class="field-row"><div class="fl">Back up after every workout'+
-      '<div class="fh">Writes a file to your downloads when you tap Save workout. No extra tap, and it is the only backup that can\'t be forgotten.</div></div>'+
-      '<button class="switch'+(S.settings.autoBackup?" on":"")+'" data-set="autoBackup"></button></div>'+
-    '<div class="field-row"><div class="fl">Test the alarm with the screen off'+
-      '<div class="fh">Runs a 20-second rest and reports whether the phone kept the timer alive</div></div>'+
-      '<button class="btn sm ghost" data-act="bgtest">Test</button></div>'+
-    '<div class="field-row"><div class="fl">Notify when rest ends'+
-      '<div class="fh">'+(notifyState()==="denied"
-        ? '<span style="color:var(--bad)">Blocked in your browser settings for this site</span>'
-        : notifyState()==="none"
-          ? "This browser can't show notifications"
-          : "Shows up on the lock screen. Needs permission.")+'</div></div>'+
-      '<button class="switch'+(S.settings.notify?" on":"")+'" data-act="toggle-notify"></button></div>'+
-  '</div>';
-
-  html+='<div class="eyebrow" style="margin:6px 0 0">Barbell</div><div class="card">'+
-    '<div class="field-row"><div class="fl">Bar weight<div class="fh">Used for new barbell exercises. Set it per exercise in its ⋯ menu.</div></div>'+
-      '<input class="txt small" inputmode="decimal" type="number" step="any" data-set="bar" value="'+esc(S.settings.bar||"")+'"></div>'+
-    '<div class="field-row" style="display:block">'+
-      '<div class="fl">Plates you own<div class="fh">Counted in pairs — one for each side.</div></div>'+
-      '<div class="plate-ed">'+
-        (S.settings.plates||[]).map(function(p,i){
-          return '<div class="pr-row">'+
-            '<input class="txt" inputmode="decimal" type="number" step="any" data-pw="'+i+'" value="'+esc(p.w)+'">'+
-            '<span class="x">'+esc(unit())+' ×</span>'+
-            '<input class="txt" style="width:60px" inputmode="numeric" type="number" data-pn="'+i+'" value="'+esc(p.n)+'">'+
-            '<span class="x">pairs</span><span class="sp"></span>'+
-            '<button class="rm" data-act="plate-rm" data-i="'+i+'" aria-label="Remove this plate">✕</button>'+
-          '</div>';
-        }).join("")+
-      '</div>'+
-      '<div class="row" style="gap:8px;margin-top:8px">'+
-        '<button class="btn sm ghost" style="flex:1" data-act="plate-add">+ Add a size</button>'+
-        '<button class="btn sm ghost" style="flex:1" data-act="plate-reset">Reset to '+esc(unit())+'</button>'+
-      '</div>'+
-    '</div>'+
-  '</div>';
-
-  html+='<div class="eyebrow" style="margin:6px 0 0">Data</div><div class="card"><div class="stack">'+
-    '<div class="tiny muted">Your log lives in this browser on this device. Nothing is uploaded anywhere, which also means nothing is backed up until you send a copy out.'+
-    (S.settings.lastBackup?' Last copy '+relDate(S.settings.lastBackup)+'.':' No copy yet.')+'</div>'+
-    '<button class="btn primary block" data-act="backup">Back up now</button>'+
-    '<div class="row" style="gap:8px">'+
-      '<button class="btn" style="flex:1" data-act="export">Export file</button>'+
-      '<button class="btn" style="flex:1" data-act="import">Import</button>'+
-    '</div>'+
-    '<button class="btn danger block" data-act="wipe">Erase everything</button>'+
-  '</div></div>';
-
+  /* Progression stays here: rep ranges and the deload window shape the split
+     they sit under, and separating cause from effect is what made the
+     doubleDefault bug invisible. Everything else moved behind the gear. */
+  html+='<button class="card" style="width:100%;text-align:left;margin:6px 0 0" data-act="settings">'+
+    '<div class="row" style="align-items:center"><div>'+
+      '<div class="ex-name" style="font-size:15px">Settings</div>'+
+      '<div class="ex-meta"><span>'+esc(settingsSummary())+'</span></div></div>'+
+    '<div style="flex:1"></div><span class="muted" style="font-size:20px">\u203A</span></div></button>';
   /* The build marker is here because a whole test round was wasted on a phone
      running an older deploy. Check this before believing any bug report. */
   html+='<div class="tiny muted" style="text-align:center;padding:6px 0">'+
@@ -3697,9 +3751,13 @@ $("#view").addEventListener("click",function(e){
     var sb=e.target.closest("[data-sess]");
     if(sb){ sessionSheet(sb.dataset.sess); return; }
   }
-  if(TAB!=="plan") return;
+  /* The settings rows moved to their own screen but kept their handlers, so
+     this listener has to answer for both. Miss this and every switch in
+     Settings silently does nothing. */
+  if(TAB!=="plan"&&TAB!=="settings") return;
 
   var t=e.target;
+  if(t.closest('[data-act="settings"]')){ go("settings"); return; }
   var dm=t.closest('[data-act="day-menu"]');
   if(dm){ dayMenu(+dm.dataset.ri); return; }
   if(t.closest('[data-act="tpl"]')){ templateSheet(); return; }
@@ -3730,22 +3788,22 @@ $("#view").addEventListener("click",function(e){
   /* Notifications need a grant, so this switch can't be a plain toggle: it
      only goes on if the browser actually says yes. */
   if(t.closest('[data-act="toggle-notify"]')){
-    if(S.settings.notify){ S.settings.notify=false; writeNow(); viewPlan(); return; }
+    if(S.settings.notify){ S.settings.notify=false; writeNow(); viewPrefs(); return; }
     askNotify(function(ok,why){
-      S.settings.notify=ok; writeNow(); viewPlan();
+      S.settings.notify=ok; writeNow(); viewPrefs();
       toast(ok?"Rest alerts will show on your lock screen":(why||"Notifications weren't allowed."));
     });
     return;
   }
   if(t.closest('[data-act="bgtest"]')){ bgTestSheet(); return; }
   var pAdd=t.closest('[data-act="plate-add"]');
-  if(pAdd){ S.settings.plates.push({w:0,n:1}); save(); viewPlan(); return; }
+  if(pAdd){ S.settings.plates.push({w:0,n:1}); save(); viewPrefs(); return; }
   var pRm=t.closest('[data-act="plate-rm"]');
-  if(pRm){ S.settings.plates.splice(+pRm.dataset.i,1); save(); viewPlan(); return; }
+  if(pRm){ S.settings.plates.splice(+pRm.dataset.i,1); save(); viewPrefs(); return; }
   if(t.closest('[data-act="plate-reset"]')){
     S.settings.plates=defaultPlates(unit());
     S.settings.bar=defaultBar(unit());
-    save(); viewPlan(); toast("Back to the standard "+unit()+" set"); return;
+    save(); viewPrefs(); toast("Back to the standard "+unit()+" set"); return;
   }
 
   if(t.closest('[data-act="fix-ranges"]')){ applyRanges(); return; }
@@ -3785,7 +3843,7 @@ $("#view").addEventListener("change",function(e){
       S.settings.unit=to;
       S.settings.bar=defaultBar(to); S.settings.plates=defaultPlates(to);
       S.settings.inc=defaultInc(to);
-      writeNow(); viewPlan(); return;
+      writeNow(); viewPrefs(); return;
     }
     unitSheet(S.settings.unit,to);
     return;
@@ -3800,7 +3858,7 @@ $("#view").addEventListener("change",function(e){
 /* Plate rows update on input rather than change, so editing the inventory
    never re-renders the list out from under the field you're typing in. */
 $("#view").addEventListener("input",function(e){
-  if(TAB!=="plan") return;
+  if(TAB!=="plan"&&TAB!=="settings") return;
   var el=e.target, p;
   if(el.dataset.pw!==undefined){
     p=S.settings.plates[+el.dataset.pw];
@@ -4229,6 +4287,7 @@ function render(){
   renderTabs(); renderHeader();
   if(TAB==="today"){ viewToday(); refreshSummary(); }
   else if(TAB==="progress") viewProgress();
+  else if(TAB==="settings") viewSettings();
   else viewPlan();
 }
 

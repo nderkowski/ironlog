@@ -1,7 +1,7 @@
 /* Switching lb <-> kg. Previously the switch relabelled and nothing else, so a
    225 lb squat became a "225 kg" squat and the bar and plates were stranded in
    the old unit. Both readings of the switch are legitimate, so the app asks. */
-import { launch, boot, getState, planExercises, ok, eq, has, report } from './harness.mjs';
+import { launch, boot, getState, planExercises, openSettings, ok, eq, has, report } from './harness.mjs';
 
 const SET = { unit:'lb', rest:120, autoRest:false, buzz:false, inc:5, sound:false, notify:false,
   rpe:false, keepTone:false, autoBackup:false, shareMode:'', doubleDefault:true,
@@ -31,7 +31,7 @@ const { browser, page, errors } = await launch();
 await boot(page, { version:5, settings:Object.assign({}, SET),
   routines:[{ id:'r1', key:'A', name:'Day A', variants:[{ id:'v1', label:'', exercises:[] }] }],
   sessions:[], active:null });
-await page.click('[data-tab="plan"]');
+await openSettings(page);
 await page.selectOption('[data-set="unit"]', 'kg');
 await page.waitForTimeout(250);
 let st = await getState(page);
@@ -42,7 +42,7 @@ eq(st.settings.inc, 2.5, 'and a kg-sized weight step');
 
 /* ---------------------------------------------- with data, it asks first */
 await boot(page, state());
-await page.click('[data-tab="plan"]');
+await openSettings(page);
 await page.selectOption('[data-set="unit"]', 'kg');
 await page.waitForSelector('.sheet');
 const sheetText = await page.textContent('.sheet');
@@ -97,7 +97,7 @@ has(await page.textContent('.card.ex .callout'), '102.1', 'the card shows the co
 
 /* ------------------------------------------------------------------ undo */
 await boot(page, state());
-await page.click('[data-tab="plan"]');
+await openSettings(page);
 await page.selectOption('[data-set="unit"]', 'kg');
 await page.waitForSelector('[data-x="conv"]');
 await page.click('[data-x="conv"]');
@@ -112,7 +112,7 @@ eq(planExercises(st)[0].bar, 45, 'and the per-exercise overrides');
 
 /* ------------------------------------------------------------- relabelling */
 await boot(page, state());
-await page.click('[data-tab="plan"]');
+await openSettings(page);
 await page.selectOption('[data-set="unit"]', 'kg');
 await page.waitForSelector('[data-x="label"]');
 await page.click('[data-x="label"]');
@@ -125,7 +125,7 @@ eq(st.settings.plates[0].w, 25, 'and the plates');
 
 /* ------------------------------------------------------------ round trip */
 await boot(page, state());
-await page.click('[data-tab="plan"]');
+await openSettings(page);
 await page.selectOption('[data-set="unit"]', 'kg');
 await page.waitForSelector('[data-x="conv"]');
 await page.click('[data-x="conv"]');
@@ -147,7 +147,7 @@ await page.evaluate(() => {
   localStorage.setItem('ironlog.v1', JSON.stringify(s));
 });
 await page.reload();
-await page.click('[data-tab="plan"]');
+await openSettings(page);
 await page.selectOption('[data-set="unit"]', 'kg');
 await page.waitForSelector('[data-x="conv"]');
 await page.click('[data-x="conv"]');

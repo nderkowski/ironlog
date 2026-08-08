@@ -466,6 +466,29 @@ written back to storage once on boot (`MIGRATED`), deferred until after the DOM
 exists because `writeNow()` can toast — so the next backup file is already v5
 rather than something the importer has to migrate again.
 
+### Settings is a screen, not a tab
+
+Session, Barbell and Data used to sit at the foot of the Plan tab, below the
+split, where the list you scrolled past to reach them had nothing to do with
+them. They now live in `viewSettings()`, reached from a gear in the header.
+
+- **Not a fourth tab.** The bottom bar is the gym-floor surface and a settings
+  tab would be dead weight in every session. `renderTabs()` keeps Plan
+  highlighted while Settings is open, so the bar still says where you are, and
+  any tab tap leaves.
+- **Progression stayed on Plan.** Rep ranges and the deload window shape the
+  split they sit under, and separating cause from effect is precisely what made
+  the `doubleDefault` bug invisible for weeks.
+- **The rows kept their handlers**, which live behind `if(TAB!=="plan") return;`
+  on the two `#view` listeners. Both now accept `"settings"` as well. Miss that
+  and every switch on the new screen silently does nothing — there is a suite
+  that toggles all five and asserts the state actually changed.
+- Anything that re-renders after changing a preference calls **`viewPrefs()`**,
+  which routes by tab, because a few of these rows are reachable from either
+  screen. Calling `viewPlan()` directly throws you off Settings mid-edit.
+- **`BUILD` still prints at the foot of the Plan tab.** It is also in Settings →
+  About, but the Plan one is the documented place and the one in muscle memory.
+
 ### Undo
 
 `toastUndo(msg, fn)` holds the removed object in a closure for 10 seconds — no
@@ -791,6 +814,19 @@ textbook double-progression history and reading the verdict off the card:
   sessions, on a 3-lift plan: never fires on flawless progress — and still
   fires on a plan that has genuinely stopped
 
+Slice 9 (v17), Settings as its own screen — `t27`, 45 assertions:
+
+- The gear opens it, the back arrow returns to Plan, any tab tap leaves, and
+  the bottom bar stays three tabs with Plan lit while it is open
+- Progression and the build marker are still on Plan; Session, Barbell and Data
+  are not
+- **All five switches toggled and the stored state checked** — the guard bug
+  would have left every one of them inert while looking fine
+- Number fields save; the plate inventory saves *and* keeps DOM identity while
+  typing; add / reset re-render Settings rather than throwing you back to Plan
+- The unit sheet opens from here and cancelling returns here
+- Measured at 320 px and 390 px: no sideways scroll, no nested `.field-row`
+
 **Confirmed on a real phone** (Android, 1 Aug 2026, v7 deploy)
 
 - The tap-freeze is gone.
@@ -910,7 +946,12 @@ bite.
     flawless run and cut the weight. If you add another trend, stall, PR-pace
     or readiness signal, simulate a perfect run through it *first* and check it
     never reports a decline. `tools/test/t26-trend.mjs` does exactly that.
-18. **Test through the UI, not the functions.** The `data-x` collision, the
+18. **A view that borrows another view's event listeners inherits its guard.**
+    The `#view` click and input listeners early-return unless `TAB` is the one
+    they were written for. Moving rows to a new screen without widening those
+    guards leaves every control rendered, styled and completely inert. Toggle
+    one of everything on any screen you add.
+19. **Test through the UI, not the functions.** The `data-x` collision, the
     112px button and the miswired restore prompt were all invisible to
     unit-style checks and obvious the moment a real click drove them. The menu
     overflow above is the same lesson again: it was found by measuring a
