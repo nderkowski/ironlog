@@ -486,6 +486,11 @@ them. They now live in `viewSettings()`, reached from a gear in the header.
 - Anything that re-renders after changing a preference calls **`viewPrefs()`**,
   which routes by tab, because a few of these rows are reachable from either
   screen. Calling `viewPlan()` directly throws you off Settings mid-edit.
+- **The gear is the only way in, so it is sized and inked for it.** An inline
+  SVG with no rule fills its `.iconbtn` edge to edge — the text-labelled icon
+  buttons (`↑`, `⋯`) have natural padding and hid that omission for months. It
+  is now inset to 20px inside the 32px target and uses `--ink-2` rather than
+  the most muted ink.
 - **`BUILD` still prints at the foot of the Plan tab.** It is also in Settings →
   About, but the Plan one is the documented place and the one in muscle memory.
 
@@ -826,6 +831,9 @@ Slice 9 (v17), Settings as its own screen — `t27`, 45 assertions:
   typing; add / reset re-render Settings rather than throwing you back to Plan
 - The unit sheet opens from here and cancelling returns here
 - Measured at 320 px and 390 px: no sideways scroll, no nested `.field-row`
+- The gear itself: a full-size tap target, an icon inset rather than filling it,
+  and readable ink — the first version rendered edge to edge and looked like a
+  smudge
 
 **Confirmed on a real phone** (Android, 1 Aug 2026, v7 deploy)
 

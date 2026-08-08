@@ -21,6 +21,20 @@ await boot(page, state);
 
 /* ---- getting there and back ---- */
 ok(!!(await page.$('[data-act="settings"]')), 'the gear is in the header from Today');
+/* An inline SVG with no sizing rule fills its button edge to edge, which read
+   as a smudge rather than a cog — and this is the only way into Settings. */
+const gear = await page.evaluate(() => {
+  const b = document.querySelector('header.top [data-act="settings"]');
+  const svg = b.querySelector('svg');
+  const br = b.getBoundingClientRect(), sr = svg.getBoundingClientRect();
+  return { btn: Math.round(br.width), icon: Math.round(sr.width),
+           colour: getComputedStyle(b).color };
+});
+ok(gear.btn >= 32, 'the gear has a tappable target  [' + gear.btn + 'px]');
+ok(gear.icon > 0 && gear.icon <= gear.btn - 8,
+  'and the icon is inset rather than filling it  [' + gear.icon + ' in ' + gear.btn + ']');
+ok(gear.colour !== 'rgb(135, 143, 152)',
+  'and sits on readable ink, not the most muted one  [' + gear.colour + ']');
 const tabs = await page.$$eval('#tabs button', els => els.map(e => e.textContent.trim()));
 eq(tabs.length, 3, 'the bottom bar is still three tabs, not four  [' + tabs.join(',') + ']');
 

@@ -486,6 +486,12 @@ table.hist tr.dl td{opacity:.6}
   display:flex;align-items:center;justify-content:center;font-size:15px;flex:0 0 auto;
 }
 .iconbtn:active{background:var(--panel-2)}
+/* Without this an inline SVG fills the whole 32px button edge to edge — the
+   text-labelled .iconbtns (↑, ⋯) have natural padding and hid the omission. */
+.iconbtn svg{width:20px;height:20px;display:block}
+/* The header gear is the only way into Settings, so it gets the readable ink
+   rather than the most muted one. */
+header.top .iconbtn{color:var(--ink-2)}
 
 .field-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
 .field-row:first-child{border-top:none}
@@ -669,7 +675,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v17";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v18";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
