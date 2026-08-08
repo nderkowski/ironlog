@@ -180,6 +180,82 @@ await page.waitForSelector('.plift');
 const chip = await page.textContent('.plift .chip');
 ok(chip.trim().startsWith('+'), 'the Progress trend chip is positive too  [' + chip.trim() + ']');
 
+/* ---- the lift sheet's banners must describe the maths that actually ran ----
+   Both were left behind by the v16 rewrite: "three sessions below the three
+   before" is the algorithm that was deleted, and "the app has already dropped
+   your next prescription 10%" is often simply false — it may be a hold. */
+st = state('Back Squat', 8, 12, 225, 5, 10);
+st.sessions = declining('Back Squat', 10);
+await boot(page, st);
+await page.click('[data-tab="progress"]');
+await page.waitForSelector('.plift');
+await page.click('.plift >> nth=0');
+await page.waitForSelector('.sheet .banner');
+let banner = (await page.textContent('.sheet .banner')).replace(/\s+/g, ' ').trim();
+ok(!/three sessions below the three before/i.test(banner),
+  'the down banner no longer describes the deleted 3-vs-3 algorithm  [' + banner + ']');
+ok(/per three sessions/.test(banner), 'it describes the slope it actually measured  [' + banner + ']');
+ok(!/already dropped your next prescription 10%/i.test(banner),
+  'and does not assert a 10% cut it may not be making');
+/* On this seed the engine holds rather than cutting — the banner has to say
+   whichever it is, by asking prescribe(). */
+has(banner, 'Next time:', 'it states the next prescription rather than guessing it');
+ok(/already backed off|back off to/i.test(banner),
+  'and the next prescription it names is the one the card gives  [' + banner + ']');
+await page.click('[data-x="close"]').catch(() => page.keyboard.press('Escape'));
+
+/* A flat lift that already HAS a rep range must not be told to set one. */
+st = state('Barbell Row', 8, 15, 135, 5, 12);
+await boot(page, st);
+await page.click('[data-tab="progress"]');
+await page.waitForSelector('.plift');
+await page.click('.plift >> nth=0');
+await page.waitForSelector('.sheet');
+banner = await page.textContent('.sheet .banner').catch(() => '');
+if (/Holding flat/.test(banner)) {
+  ok(!/Set a rep range/i.test(banner),
+    'a flat lift that already has a range is not told to set one  [' + banner + ']');
+  has(banner, 'can still be progress', 'it gives the honest wide-range note instead');
+} else {
+  ok(true, 'the 8-15 lift reads climbing here, so the flat banner does not apply');
+  ok(true, '(skipped)');
+}
+await page.click('[data-x="close"]').catch(() => page.keyboard.press('Escape'));
+
+/* ---- deloadCheck must not judge a range too wide to judge (REVIEW 1.5) ----
+   At 8-20 a flawless run's long-window slope crosses zero, so `pct <= 0`
+   cannot tell it from a stall. Measured worst-phase flawless slopes: cycle 8
+   +0.15%, cycle 9 +0.02%, cycle 10 -0.05%; a stall is exactly 0.00.
+
+   The seed is exact rather than illustrative: three heavy lifts on 8-20 at
+   session 34 read -0.13, -0.21 and -0.27 while every rep is being hit, which
+   is 3 of 3 "stalled" and a flat "Time to deload" on a perfect block. Change
+   the loads or the session count and the phase moves off the crossing. */
+const wide = { version:5, settings:Object.assign({}, SET),
+  routines:[ { id:'r1', key:'A', name:'Day A', variants:[ { id:'v1', label:'', exercises:[
+    { id:'p1', name:'Bench Press',    sets:3, reps:8, repTop:20, mg:'chest' },
+    { id:'p2', name:'Back Squat',     sets:3, reps:8, repTop:20, mg:'quads' },
+    { id:'p3', name:'Deadlift',       sets:3, reps:8, repTop:20, mg:'back' } ] } ] } ],
+  sessions:[], active:null };
+{
+  const a = flawless('Bench Press', 8, 20, 315, 5, 34);
+  const b = flawless('Back Squat', 8, 20, 365, 5, 34);
+  const c = flawless('Deadlift', 8, 20, 405, 5, 34);
+  wide.sessions = a.map((s, i) => Object.assign({}, s, { id:'w' + i,
+    exercises:[ s.exercises[0], b[i].exercises[0], c[i].exercises[0] ] }));
+}
+await boot(page, wide);
+let view = await page.textContent('#view');
+ok(!view.includes('Deload worth considering'),
+  'a flawless plan on 8-20 ranges is not told to deload');
+await page.click('[data-tab="progress"]');
+await page.waitForSelector('.plift');
+view = await page.textContent('#view');
+ok(!/Time to deload|Keep an eye on this/.test(view), 'and Progress does not nag either');
+/* ...and it says so, rather than going quiet about a check that is running. */
+has(view, 'Deload check: watching', 'the Progress tab says what the deload check is watching');
+has(view, 'too wide to judge', 'and names the ranges it had to skip');
+
 ok(errors.length === 0, 'no page errors  ' + errors.join(' | '));
 report('t26 trend');
 await browser.close();

@@ -675,7 +675,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v20";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v21";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -1119,6 +1119,14 @@ function trend(name){ return trendAt(name,trendWin(name)); }
    lift doing lately". The long one is right here, where the answer starts
    nagging you to take a week off. */
 function trendLong(name){ return trendAt(name,Math.max(10,2*cycleOf(name)+3)); }
+/* The plan's own entry for a lift, whichever day or week it lives in. What
+   prescribe() needs to answer "and what happens next time" anywhere the name
+   is all you have. */
+function planExByName(name){
+  var k=normName(name), found=null;
+  eachPlanEx(function(e){ if(!found&&normName(e.name)===k) found=e; });
+  return found;
+}
 /* Spans every variant: judging the block on half the plan because the other
    week's lifts weren't counted would make deloadCheck() nonsense. */
 function trackedLifts(){
@@ -1128,24 +1136,39 @@ function trackedLifts(){
   });
   return out;
 }
-function deloadCheck(){
-  if(inDeloadWeek()) return null;
-  if(Date.now()<(S.settings.deloadSnooze||0)) return null;
-  var judged=[], stalled=[];
+/* Past this width the long window stops washing the cycle phase out, and no
+   threshold can separate "progressing slowly" from "not progressing". Measured
+   on flawless runs at 185/225/315/405, worst phase: cycle 7 reads +0.27%,
+   cycle 8 +0.15%, cycle 9 +0.02%, cycle 10 −0.05%. A stall reads exactly 0.00,
+   so from cycle 9 the two classes touch. Every default tier (5–8, 8–12, 12–16)
+   is far inside this; it only bites a range widened by hand. */
+var DELOAD_MAX_CYCLE=8;
+/* Everything deloadCheck() looked at and what it concluded, so the Progress
+   tab can say what it is watching instead of going silent. */
+function deloadStatus(){
+  var judged=[], stalled=[], waiting=0, wide=[];
   trackedLifts().forEach(function(n){
+    if(cycleOf(n)>DELOAD_MAX_CYCLE){ wide.push(n); return; }
     var t=trendLong(n);
     /* Six sessions before this gets an opinion. Below that the long horizon
        collapses to the short one and the phase problem comes back. */
-    if(t.state==="new"||t.n<6) return;
+    if(t.state==="new"||t.n<6){ waiting++; return; }
     judged.push(n);
     /* Not the "up" label — that band includes real but slow progress, and
        counting it as stalled is how a working plan gets told to deload. */
     if(t.pct<=0) stalled.push({name:n,t:t});
   });
-  if(judged.length<3) return null;
-  var ratio=stalled.length/judged.length;
-  if(ratio>=0.6) return {level:"high",stalled:stalled,judged:judged.length};
-  if(ratio>=0.4) return {level:"watch",stalled:stalled,judged:judged.length};
+  return {judged:judged,stalled:stalled,waiting:waiting,wide:wide,
+          tracked:judged.length+waiting+wide.length};
+}
+function deloadCheck(){
+  if(inDeloadWeek()) return null;
+  if(Date.now()<(S.settings.deloadSnooze||0)) return null;
+  var st=deloadStatus();
+  if(st.judged.length<3) return null;
+  var ratio=st.stalled.length/st.judged.length;
+  if(ratio>=0.6) return {level:"high",stalled:st.stalled,judged:st.judged.length};
+  if(ratio>=0.4) return {level:"watch",stalled:st.stalled,judged:st.judged.length};
   return null;
 }
 
@@ -3163,6 +3186,20 @@ function viewProgress(){
       (d.level==="high"?'<div class="acts"><button class="btn sm primary" data-act="start-deload">Start deload week</button>'+
         '<button class="btn sm ghost" data-act="snooze-deload">Not now</button></div>':"")+
     '</div>';
+  } else if(!inDeloadWeek()){
+    /* Silence is indistinguishable from "nothing to report", and this check
+       needs six sessions of a lift before it has an opinion — a fortnightly
+       week-variant lift can take a quarter of a year to qualify. Say what is
+       being watched rather than saying nothing (trap 14's lesson, applied to
+       a feature with no switch at all). */
+    var ds=deloadStatus();
+    if(ds.tracked){
+      html+='<div class="tiny muted" style="margin:-4px 0 12px">Deload check: watching '+
+        ds.judged.length+' of '+plural(ds.tracked,"tracked lift")+
+        (ds.waiting?', '+ds.waiting+' still short of 6 sessions':"")+
+        (ds.wide.length?', '+plural(ds.wide.length,"rep range")+' too wide to judge':"")+
+        (Date.now()<(S.settings.deloadSnooze||0)?' · snoozed':"")+'.</div>';
+    }
   }
 
   html+='<div class="statgrid" style="margin-bottom:12px">'+
@@ -3339,12 +3376,27 @@ function liftSheet(name){
         (t.state==="new"?"needs "+(4-t.n)+" more":(t.pct>=0?"+":"")+t.pct.toFixed(1)+"% trend")+'</span></div>'+
       '<canvas id="bigchart" style="width:100%;height:130px;display:block;margin-top:8px"></canvas></div>';
   }
+  /* Both of these used to describe things that weren't true. "Three sessions
+     below the three before" is the algorithm v16 deleted, and "the app has
+     already dropped your next prescription 10%" was often wrong — the next
+     prescription may be a hold. Say what the maths actually measured, and ask
+     prescribe() what happens next rather than asserting it. */
+  var pe=planExByName(name);
   if(t.state==="down"){
+    var nxt=pe?prescribe(name,pe):null;
     html+='<div class="banner warn" style="margin-bottom:12px"><div class="bt">Trending down</div>'+
-      '<div class="bd">Three sessions below the three before. The app has already dropped your next prescription 10% — take it, then build back.</div></div>';
+      '<div class="bd">Falling about '+Math.abs(t.pct).toFixed(1)+'% per three sessions across the last '+
+      plural(Math.min(t.n,trendWin(name)),"session")+'.'+
+      (nxt&&nxt.why?' Next time: '+esc(nxt.why.toLowerCase())+'.':"")+'</div></div>';
   } else if(t.state==="flat"){
     html+='<div class="banner info" style="margin-bottom:12px"><div class="bt">Holding flat</div>'+
-      '<div class="bd">Set a rep range on this lift so it climbs by reps before it climbs by weight.</div></div>';
+      /* Telling someone to set a rep range they already have is noise, and a
+         wide range legitimately reads flat — the Plan tab says so out loud, so
+         this should too rather than implying something is wrong. */
+      '<div class="bd">'+(cycleOf(name)>1
+        ? "A range this wide gains its weight step slowly, so flat here can still be progress."
+        : "Set a rep range on this lift so it climbs by reps before it climbs by weight.")+
+      '</div></div>';
   }
   html+='<div class="scrollx"><table class="hist"><thead><tr>'+
     '<th>Date</th><th>Sets</th><th>Top</th><th>'+(met?"Score":"Est 1RM")+'</th><th>Vol</th></tr></thead><tbody>';
