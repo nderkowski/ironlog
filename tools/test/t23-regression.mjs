@@ -1,7 +1,7 @@
 /* Regression cover for the paths items 2/3/5/6 rerouted: every plan exercise
    is now built by one constructor, so templates, the plan picker and the
    in-session picker all changed shape underneath. */
-import { launch, boot, getState, ok, eq, has, report } from './harness.mjs';
+import { launch, boot, getState, planExercises, ok, eq, has, report } from './harness.mjs';
 
 const SET = { unit:'lb', rest:120, autoRest:false, buzz:false, inc:5, sound:false, notify:false,
   rpe:false, keepTone:false, autoBackup:false, shareMode:'', doubleDefault:true,
@@ -36,7 +36,7 @@ if (conf) await conf.click();
 await page.waitForTimeout(250);
 let st = await getState(page);
 eq(st.routines.length, 3, 'PPL still builds 3 days');
-const all = st.routines.flatMap(r => r.exercises);
+const all = planExercises(st);
 eq(all.length, 15, 'and 15 exercises');
 eq(all.filter(e => !e.mg).length, 0, 'every one arrives muscle-tagged');
 ok(all.some(e => e.bar === 45), 'barbell lifts still get a bar');

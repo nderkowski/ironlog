@@ -82,11 +82,13 @@ settings = { unit, rest, autoRest, buzz, sound, notify, rpe, keepTone,
              bar, plates[], lastBackup }
   plates[] = { w, n }        // n = PAIRS owned, not singles
 
-routine  = { id, key, name, exercises[] }
+routine  = { id, key, name, variants[] }
+  variant = { id, label, exercises[] }
   exercise (plan) = { id, name, sets, reps, repTop, inc, bw, bar, metric,
                       link, mg, mg2[] }
 
-session  = { id, ts, endTs, routineId, key, name, note, bw, deload, exercises[] }
+session  = { id, ts, endTs, routineId, key, name, variantId, variantName,
+             note, bw, deload, exercises[] }
   exercise (logged) = { id, planId, name, targetReps, reps, repTop, inc, bw, bar,
                         metric, link, mg, mg2[], supplemental, why, kind,
                         lastW, lastR, sets[] }
@@ -130,6 +132,11 @@ Notes that will bite you if you miss them:
 - **`rpe` on a set is always optional and often absent.** The engine rule only
   fires when at least half a session's working sets carry one, so it is
   invisible to anyone not using the feature.
+- **A training day holds week variants, and one variant is the old behaviour.**
+  That equivalence is what makes the migration a one-liner and what keeps a
+  single-week day looking exactly as it always did — no switcher, no chip, no
+  label. Read a day's exercises through `planExOf(r, ix)` and never
+  `r.exercises`, which `normalize()` deletes outright so the two can't drift.
 - **Every plan exercise is built by one of two constructors.** `newPlanEx(name)`
   builds one from a name — history, then the guessers, then the movement's
   default range. `planExFromSession(ex)` promotes an exercise you added
@@ -375,6 +382,57 @@ this week is bigger — the case you most want to see. Faint marks sit at 10 and
 pattern in the wrong place silently re-tags existing lifts, since untagged
 history resolves through the guess.
 
+### Week variants — two rotations that must not become one
+
+A day can hold more than one week's version of itself, so a split alternates
+fortnightly with a different exercise selection each time round. It is one
+axis, not two: **`routine.variants[]`**, never a parallel `altExercises` field.
+
+**Two rotations run at once and they are independent.**
+
+- `nextRoutine()` — which *day* is next. Reads the last session that had a
+  routine and steps to the next day. Untouched by variants.
+- `nextVariantIx(r)` — which *week* that day is on. Reads the last session **of
+  that routine** and flips.
+
+Finishing Day A week 1 must advance Day A to week 2 *while* the day rotation
+moves on to B. Collapsing them into one modulo would tie the fortnight to the
+number of training days, which is wrong the first time you skip a session.
+Both are derived from history: there is no stored counter, as everywhere else.
+
+**Details that carry weight:**
+
+- A session stores `variantId` **and** `variantName`. The id drives the
+  rotation; the name is a snapshot for history, exactly like `key` and `name`
+  already are. Renaming a week later doesn't rewrite what past sessions say
+  they were, and deleting one doesn't orphan them — an unresolvable
+  `variantId` restarts the rotation at the first week rather than throwing.
+- **A deload session consumes its slot.** A deload week is a real week and the
+  fortnight keeps ticking through it.
+- **Everything that asks "what am I training" spans all variants**, through
+  `eachPlanEx()`: muscle tags, `trackedLifts()` (so `deloadCheck()` doesn't
+  judge the block on half the plan), the exercise picker, renames, and the
+  straight-sets repair. Only the Plan tab's *display* is per-variant.
+- **A lift in both weeks shares one history and one progression**, because
+  `exSessions()` joins by name. That is the right behaviour and it needed no
+  code. A lift in only one week is trained fortnightly, so `trend()` takes
+  about twice as long to speak — the Plan card says so out loud rather than the
+  maths being quietly changed.
+- **Every day and every week is one tap from Today.** Offering only each day's
+  *next* week left the other one unreachable whenever that day wasn't up next,
+  which turns a skipped fortnight into a plan edit. A one-week day is still a
+  single button.
+- **Templates stay single-variant.** Doubling every template would be noise.
+
+### `normalize()` is the only door into the state
+
+Storage, a backup file and a paste all go through it, so an old export can't
+land half-migrated. It is also where `r.exercises` becomes
+`r.variants[0].exercises` and the old field is deleted. The migration is
+written back to storage once on boot (`MIGRATED`), deferred until after the DOM
+exists because `writeNow()` can toast — so the next backup file is already v5
+rather than something the importer has to migrate again.
+
 ### Undo
 
 `toastUndo(msg, fn)` holds the removed object in a closure for 10 seconds — no
@@ -602,6 +660,27 @@ at all — the state the reported bug lives in. **The suites are in
   written: focus moves to the button you tapped, exactly as a real tap does.
   What matters, and what is asserted, is that the node survives.
 
+Slice 6 (v14), week variants — `t24`, 68 assertions:
+
+- Migration: a v4 state becomes a single-variant v5 day, keeps its exercises,
+  loses `r.exercises`, and a single-variant day renders with no switcher and no
+  chip — indistinguishable from the old app
+- Adding a week from a copy or empty, renaming it to anything, removing it, and
+  undo on the add and the remove
+- Editing one week leaves the other alone, including fresh exercise ids on a
+  copy so the two don't share objects
+- **The two rotations, driven through three real sessions:** finishing Push
+  week 1 moves the *day* rotation to Pull while Push independently advances to
+  week 2; training Pull doesn't disturb it; Push then flips back to week 1
+- A deload session records its week and consumes its slot
+- Sessions pointing at a deleted variant don't break either rotation
+- Cross-variant reads: the straight-sets warning and its repair reach into
+  week 2, the picker knows lifts that live only in the other week, a lift in
+  both weeks carries one history
+- Export→import round trip with variants, **and a v4 backup file importing
+  clean** — which is the shape every auto-backup already on the phone has
+- Plan with a switcher measured at 320 px and 390 px, no sideways scroll
+
 **Confirmed on a real phone** (Android, 1 Aug 2026, v7 deploy)
 
 - The tap-freeze is gone.
@@ -703,7 +782,18 @@ bite.
     slightly different word on a card. If you add another switch that shapes
     new objects, make the existing ones' state visible and offer the migration
     in the same screen.
-15. **Test through the UI, not the functions.** The `data-x` collision, the
+15. **Read a day's exercises through `planExOf(r, ix)`, and put every new
+    entry point through `normalize()`.** `r.exercises` no longer exists; a day
+    holds `variants[]`. Anything that asks what lifts are in the whole plan
+    uses `eachPlanEx()` — miss that and a feature silently judges the block on
+    one week out of two.
+16. **The Plan row is a width budget, and it has already been overspent once.**
+    `.pxs` is rigid and `.pxn` truncates, so the sets×reps can never be the
+    half that disappears. That balance only holds while the meta stays short:
+    adding the word "straight" to it starved the exercise name to *nothing* at
+    320px in one commit. If you add anything to that row, run the 320 px
+    overflow assertions in `t21` first.
+17. **Test through the UI, not the functions.** The `data-x` collision, the
     112px button and the miswired restore prompt were all invisible to
     unit-style checks and obvious the moment a real click drove them. The menu
     overflow above is the same lesson again: it was found by measuring a

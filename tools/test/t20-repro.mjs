@@ -54,8 +54,8 @@ console.log('meta: ' + JSON.stringify(meta));
 console.log('why:  ' + JSON.stringify(why.replace(/\s+/g, ' ')));
 console.log('prefill: ' + firstW + ' x ' + firstR);
 
-has(planRow, '3×8 straight', 'the Plan row names the mode the exercise is really on');
-has(meta, '8 straight', 'and so does the session card — not the old, too-subtle "8 target"');
+has(planRow, '3×8', 'the Plan row keeps the prescription compact');
+has(meta, '8 straight', 'the session card names the mode — not the old, too-subtle "8 target"');
 has(why, 'add 5 lb', 'the engine still adds weight, because straight sets is what the data says');
 eq(firstW, '140', 'and the prefill follows it');
 

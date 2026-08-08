@@ -466,8 +466,21 @@ table.hist tr.dl td{opacity:.6}
   display:flex;align-items:center;gap:10px;
   padding:9px var(--pad);border-top:1px solid var(--line);
 }
-.pex .pxn{flex:1;min-width:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pex .pxs{font-family:var(--mono);font-size:12px;color:var(--ink-3)}
+/* The name yields, the numbers don't. .pxs had no shrink control at all while
+   .pxn was flex:1/min-width:0, so the name was the first thing to go and a
+   long muscle name could render a row with no exercise name in it whatsoever.
+   Letting both shrink is worse — flexbox eats the sets×reps, which is the half
+   you came to read. So: meta rigid, name truncates, 6ch of it always survives.
+   That only balances because the row's meta is kept short; check the 320px
+   overflow assertion in t21 before adding anything to it. */
+.pex .pxn{
+  flex:1 1 auto;min-width:6ch;font-size:14px;font-weight:600;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.pex .pxs{
+  flex:0 0 auto;white-space:nowrap;text-align:right;
+  font-family:var(--mono);font-size:12px;color:var(--ink-3);
+}
 .iconbtn{
   width:32px;height:32px;border-radius:8px;color:var(--ink-3);
   display:flex;align-items:center;justify-content:center;font-size:15px;flex:0 0 auto;
@@ -576,6 +589,20 @@ nav.tabs .t.on{color:var(--accent);background:var(--accent-soft)}
 }
 .seg button.on{background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
 
+/* The week switcher inside a Plan day card. Same idea as .seg but it sits
+   flush inside the card rather than floating in a panel, and it scrolls
+   sideways rather than squeezing when a day has several weeks. */
+.vseg{
+  display:flex;gap:4px;padding:8px 12px 4px;overflow-x:auto;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;
+}
+.vseg::-webkit-scrollbar{display:none}
+.vseg button{
+  flex:0 0 auto;padding:6px 12px;border-radius:999px;font-size:12.5px;font-weight:600;
+  color:var(--ink-2);background:var(--panel-2);white-space:nowrap;
+}
+.vseg button.on{background:var(--accent);color:var(--on-accent)}
+
 .toast{
   position:fixed;left:50%;bottom:84px;transform:translateX(-50%);
   z-index:80;background:var(--ink);color:var(--bg);
@@ -642,14 +669,14 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v13";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v14";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
 
 function defaultState(){
   return {
-    version:4,
+    version:5,
     settings:{unit:"lb",rest:120,autoRest:true,buzz:true,inc:5,
               sound:true, notify:false, rpe:false, keepTone:false,
               autoBackup:true, shareMode:"",
@@ -658,13 +685,46 @@ function defaultState(){
               bar:45, plates:defaultPlates("lb"),
               lastBackup:0},
     routines:[
-      {id:uid(),key:"A",name:"Day A",exercises:[]},
-      {id:uid(),key:"B",name:"Day B",exercises:[]},
-      {id:uid(),key:"C",name:"Day C",exercises:[]}
+      newRoutine("A","Day A"),
+      newRoutine("B","Day B"),
+      newRoutine("C","Day C")
     ],
     sessions:[],
     active:null
   };
+}
+/* A training day holds one or more week variants. A single-variant day is the
+   old behaviour exactly, which is what makes the migration a one-liner. */
+function newRoutine(key,name){
+  return {id:uid(), key:key, name:name, variants:[newVariant("")]};
+}
+function newVariant(label,exercises){
+  return {id:uid(), label:label||"", exercises:exercises||[]};
+}
+
+/* Every state that comes in from anywhere — storage, a backup file, a paste —
+   goes through here, so an old export lands as a valid v5 state rather than
+   half-migrating and crashing on the first read of r.variants. */
+var MIGRATED=false;
+function normalize(s){
+  if(num(s.version)<5) MIGRATED=true;
+  s.settings=Object.assign(defaultState().settings,s.settings||{});
+  if(!Array.isArray(s.settings.plates)||!s.settings.plates.length)
+    s.settings.plates=defaultPlates(s.settings.unit);
+  (s.routines||[]).forEach(function(r){
+    if(!Array.isArray(r.variants)||!r.variants.length)
+      r.variants=[newVariant("",Array.isArray(r.exercises)?r.exercises:[])];
+    /* One home for the list. Leaving r.exercises behind would let the two
+       drift, and every read would have to guess which one is current. */
+    delete r.exercises;
+    r.variants.forEach(function(v){
+      if(!v.id) v.id=uid();
+      if(!Array.isArray(v.exercises)) v.exercises=[];
+      if(typeof v.label!=="string") v.label="";
+    });
+  });
+  s.version=5;
+  return s;
 }
 function load(){
   if(!storageOK) return mem||(mem=defaultState());
@@ -673,11 +733,7 @@ function load(){
     if(!raw) return defaultState();
     var s=JSON.parse(raw);
     if(!s||!s.routines) return defaultState();
-    s.settings=Object.assign(defaultState().settings,s.settings||{});
-    if(!Array.isArray(s.settings.plates)||!s.settings.plates.length)
-      s.settings.plates=defaultPlates(s.settings.unit);
-    s.version=4;
-    return s;
+    return normalize(s);
   }catch(e){ return defaultState(); }
 }
 var saveTimer=null;
@@ -874,14 +930,69 @@ function sessionVolume(sets,m){
   return v;
 }
 function exVolume(e){ return sessionVolume(e.sets,metricOf(e)); }
+/* ---- week variants ----
+   A day holds variants[]; one variant is the old behaviour. Two rotations run
+   independently: which *day* is next (nextRoutine) and which *week* that day
+   is on (nextVariantIx). Finishing Day A week 1 must advance Day A to week 2
+   while the day rotation moves on to B, so they are never collapsed into one
+   modulo. Both are derived from history — there is no stored counter to drift. */
+function variantsOf(r){ return (r&&r.variants)||[]; }
+function variantAt(r,ix){
+  var v=variantsOf(r); if(!v.length) return null;
+  return v[Math.max(0,Math.min(num(ix)||0,v.length-1))];
+}
+function planExOf(r,ix){ var v=variantAt(r,ix); return v?v.exercises:[]; }
+/* The variant the in-progress session was started from. Falls back to the
+   first, so a session started before variants existed still has a home. */
+function activeVariant(r){
+  if(!S.active||!r) return null;
+  return variantsOf(r).find(function(v){ return v.id===S.active.variantId; })||variantAt(r,0);
+}
+/* Label for display. Unlabelled variants are numbered, so a day that has just
+   gained a second week reads "Week 1 / Week 2" without anyone naming them. */
+function variantLabel(r,ix){
+  var v=variantAt(r,ix); if(!v) return "";
+  if(v.label) return v.label;
+  return variantsOf(r).length>1?("Week "+(num(ix)+1)):"";
+}
+/* Which week of this day comes next. Reads the most recent session of this
+   routine and flips; an unknown or deleted variant restarts at the first. */
+function nextVariantIx(r){
+  var vs=variantsOf(r);
+  if(vs.length<2) return 0;
+  for(var i=0;i<S.sessions.length;i++){
+    var s=S.sessions[i];
+    if(s.routineId!==r.id) continue;
+    var ix=vs.findIndex(function(v){ return v.id===s.variantId; });
+    return ix<0?0:(ix+1)%vs.length;
+  }
+  return 0;
+}
+/* Every plan exercise in the whole split, across every variant. Anything that
+   asks "what lifts am I training" — muscle tags, tracked lifts, renames, the
+   straight-sets count — has to span variants or it judges the block on half
+   the plan. */
+function eachPlanEx(fn){
+  S.routines.forEach(function(r){
+    variantsOf(r).forEach(function(v,vi){
+      v.exercises.forEach(function(e,ei){ fn(e,r,v,vi,ei); });
+    });
+  });
+}
+function planIsEmpty(){
+  var any=false;
+  eachPlanEx(function(){ any=true; });
+  return !any;
+}
+
 function allExerciseNames(){
   var seen={},out=[];
   S.sessions.forEach(function(s){ s.exercises.forEach(function(e){
     var k=normName(e.name); if(!seen[k]){ seen[k]=1; out.push({name:e.name,ts:s.ts}); }
   });});
-  S.routines.forEach(function(r){ r.exercises.forEach(function(e){
+  eachPlanEx(function(e){
     var k=normName(e.name); if(!seen[k]){ seen[k]=1; out.push({name:e.name,ts:0}); }
-  });});
+  });
   return out.sort(function(a,b){ return b.ts-a.ts; });
 }
 
@@ -913,11 +1024,13 @@ function trend(name){
   var pct=(a-b)/b*100;
   return {state: pct>=1.5?"up":(pct<=-2?"down":"flat"), n:h.length, pct:pct};
 }
+/* Spans every variant: judging the block on half the plan because the other
+   week's lifts weren't counted would make deloadCheck() nonsense. */
 function trackedLifts(){
   var seen={},out=[];
-  S.routines.forEach(function(r){ r.exercises.forEach(function(e){
+  eachPlanEx(function(e){
     var k=normName(e.name); if(!seen[k]){ seen[k]=1; out.push(e.name); }
-  });});
+  });
   return out;
 }
 function deloadCheck(){
@@ -1181,9 +1294,9 @@ function planExFromSession(ex){
    today, and failing that to the name guess. */
 function mgIndex(){
   var idx={};
-  S.routines.forEach(function(r){ r.exercises.forEach(function(e){
+  eachPlanEx(function(e){
     if(e.mg||(e.mg2&&e.mg2.length)) idx[normName(e.name)]={mg:e.mg||"",mg2:e.mg2||[]};
-  });});
+  });
   return idx;
 }
 function tagsOf(ex,idx){
@@ -1679,7 +1792,9 @@ function confirmSheet(title,body,label,fn,danger){
 
 /* ============================ navigation ============================ */
 var TAB="today";
-function go(t){ TAB=t; calOffset=0; closeSheet(); render(); window.scrollTo(0,0); }
+/* PLANVAR resets with the tab, like the calendar's month, so Plan always opens
+   on the week you are actually about to train. */
+function go(t){ TAB=t; calOffset=0; PLANVAR={}; closeSheet(); render(); window.scrollTo(0,0); }
 function renderTabs(){
   var tabs=[["today","Today",ICON.today],["progress","Progress",ICON.prog],["plan","Plan",ICON.plan]];
   $("#tabs").innerHTML=tabs.map(function(t){
@@ -1738,14 +1853,20 @@ function nextRoutine(){
   return S.routines[(i+1)%S.routines.length];
 }
 
-function startSession(routine){
+function startSession(routine,vix){
   var ex=[];
-  if(routine) routine.exercises.forEach(function(re){ ex.push(makeSessionEx(re,re.id)); });
+  var v=routine?variantAt(routine,vix===undefined?nextVariantIx(routine):vix):null;
+  if(v) v.exercises.forEach(function(re){ ex.push(makeSessionEx(re,re.id)); });
   S.active={
     id:uid(), ts:Date.now(), date:today(),
     routineId:routine?routine.id:null,
     key:routine?routine.key:"—",
     name:routine?routine.name:"Freestyle",
+    /* The id is what the rotation reads; the label is a snapshot for history,
+       like key and name already are, so deleting a variant later can't rewrite
+       what a past session says it was. */
+    variantId:v?v.id:null,
+    variantName:routine&&v?variantLabel(routine,variantsOf(routine).indexOf(v)):"",
     deload:inDeloadWeek(),
     note:"", exercises:ex
   };
@@ -1796,20 +1917,34 @@ function todayIdle(){
   }
 
   if(nr){
-    var names=nr.exercises.map(function(e){ return e.name; }).join(" · ")||"No exercises yet — add some in Plan";
+    var nvi=nextVariantIx(nr), nvs=variantsOf(nr);
+    var nex=planExOf(nr,nvi);
+    var names=nex.map(function(e){ return e.name; }).join(" · ")||"No exercises yet — add some in Plan";
     html+='<div class="card">'+
       '<div class="hero">'+
         '<div class="daymark"><div class="letter">'+esc(nr.key)+'</div><div class="sub">next</div></div>'+
-        '<div class="body"><h2>'+esc(nr.name)+'</h2><div class="exlist">'+esc(names)+'</div></div>'+
+        '<div class="body"><h2>'+esc(nr.name)+
+          (nvs.length>1?' <span class="chip tag">'+esc(variantLabel(nr,nvi))+'</span>':"")+'</h2>'+
+        '<div class="exlist">'+esc(names)+'</div></div>'+
       '</div>'+
       '<div style="margin-top:12px">'+
-        (nr.exercises.length
-          ? '<button class="btn primary big block" data-act="start" data-id="'+nr.id+'">Start '+esc(nr.name)+'</button>'
+        (nex.length
+          ? '<button class="btn primary big block" data-act="start" data-id="'+nr.id+'" data-vi="'+nvi+'">Start '+esc(nr.name)+'</button>'
           : '<button class="btn primary big block" data-act="tab" data-tab="plan">Set up '+esc(nr.name)+'</button>')+
       '</div>'+
       '<div class="daypicks">'+
-        S.routines.filter(function(r){ return r.id!==nr.id; }).map(function(r){
-          return '<button class="daypick" data-act="start" data-id="'+r.id+'"><span class="k">'+esc(r.key)+'</span>'+esc(r.name)+'</button>';
+        /* Every day and every week it has, minus the one already on the big
+           button. Listing only each day's *next* week would leave the other
+           one unreachable whenever that day isn't the one up next — and a
+           skipped fortnight would mean editing the plan to get back on track.
+           A single-variant day is one button, exactly as before. */
+        S.routines.map(function(r){
+          return variantsOf(r).map(function(v,vi){
+            if(r.id===nr.id&&vi===nvi) return "";
+            return '<button class="daypick" data-act="start" data-id="'+r.id+'" data-vi="'+vi+'">'+
+              '<span class="k">'+esc(r.key)+'</span>'+esc(r.name)+
+              (variantsOf(r).length>1?" · "+esc(variantLabel(r,vi)):"")+'</button>';
+          }).join("");
         }).join("")+
         '<button class="daypick" data-act="start" data-id=""><span class="k">+</span>Freestyle</button>'+
       '</div>'+
@@ -1823,7 +1958,7 @@ function todayIdle(){
      stock split with empty days — not on "no routines" — so this keys off
      having no data anywhere. A backup file is no use if nothing offers to
      read it back. */
-  var fresh=!S.sessions.length&&!S.routines.some(function(r){ return r.exercises.length; });
+  var fresh=!S.sessions.length&&planIsEmpty();
   if(fresh){
     html+='<div class="card"><div class="eyebrow">Been here before?</div>'+
       '<div class="tiny muted" style="margin:6px 0 10px">'+
@@ -2023,7 +2158,8 @@ $("#view").addEventListener("click",function(e){
 
   var startBtn=t.closest('[data-act="start"]');
   if(startBtn){
-    startSession(S.routines.find(function(x){ return x.id===startBtn.dataset.id; })||null);
+    var sr=S.routines.find(function(x){ return x.id===startBtn.dataset.id; })||null;
+    startSession(sr,startBtn.dataset.vi===undefined?undefined:+startBtn.dataset.vi);
     return;
   }
   if(!S.active) return;
@@ -2278,14 +2414,15 @@ var TEMPLATES=[
 ];
 function applyTemplate(t){
   S.routines=t.days.map(function(d,i){
-    return {
-      id:uid(), key:String.fromCharCode(65+i), name:d[0],
-      /* Templates build ordinary exercises through the same constructor as
-         anything you type by hand, so a template plank gets a hold range in
-         seconds and a template curl gets an isolation range. */
-      exercises:d[1].map(function(n){ return newPlanEx(n); })
-    };
+    var r=newRoutine(String.fromCharCode(65+i),d[0]);
+    /* Templates build ordinary exercises through the same constructor as
+       anything you type by hand, so a template plank gets a hold range in
+       seconds and a template curl gets an isolation range. Templates stay
+       single-variant — doubling every one of them would be noise. */
+    r.variants[0].exercises=d[1].map(function(n){ return newPlanEx(n); });
+    return r;
   });
+  PLANVAR={};
   writeNow();
 }
 /* Planks and carries in a template shouldn't arrive claiming "8 reps". */
@@ -2295,7 +2432,7 @@ function guessMetric(name){
   return 0;
 }
 function templateSheet(){
-  var used=S.routines.some(function(r){ return r.exercises.length; });
+  var used=!planIsEmpty();
   sheet('<h3>Start from a template</h3>'+
     '<div class="sub">'+(used
       ? "This replaces your training days. Sessions already logged stay in your history."
@@ -2537,9 +2674,13 @@ function exerciseMenu(ei){
       if(keep) keep.onclick=function(){
         var r=S.routines.find(function(x){ return x.id===S.active.routineId; });
         if(!r) return;
+        /* Into the week you are actually training, not into week 1. */
+        var av=activeVariant(r);
+        if(!av) return;
         var ne=planExFromSession(ex);
-        r.exercises.push(ne); ex.planId=ne.id; ex.supplemental=false;
-        save(); closeSheet(); viewToday(); refreshSummary(); toast("Added to "+r.name);
+        av.exercises.push(ne); ex.planId=ne.id; ex.supplemental=false;
+        save(); closeSheet(); viewToday(); refreshSummary();
+        toast("Added to "+r.name+(variantsOf(r).length>1?" · "+esc(av.label||"this week"):""));
       };
       $('[data-x="hist"]',el).onclick=function(){ closeSheet(); liftSheet(ex.name); };
       $('[data-x="rm"]',el).onclick=function(){
@@ -2563,7 +2704,7 @@ function exerciseMenu(ei){
 /* Renaming follows the exercise everywhere, so its history stays one line. */
 function renameExercise(oldName,newName){
   var k=normName(oldName);
-  S.routines.forEach(function(r){ r.exercises.forEach(function(e){ if(normName(e.name)===k) e.name=newName; }); });
+  eachPlanEx(function(e){ if(normName(e.name)===k) e.name=newName; });
   S.sessions.forEach(function(s){ s.exercises.forEach(function(e){ if(normName(e.name)===k) e.name=newName; }); });
   if(S.active) S.active.exercises.forEach(function(e){ if(normName(e.name)===k) e.name=newName; });
   save();
@@ -2657,9 +2798,10 @@ function finishSheet(){
       if(e.target.closest('[data-x="back"]')){ closeSheet(); return; }
       if(e.target.closest('[data-x="save"]')){
         var r=S.routines.find(function(x){ return x.id===a.routineId; });
+        var av=r?activeVariant(r):null;
         /* Same constructor as the ⋯ menu's "add permanently". Building it by
            hand here is what dropped bar, metric and the muscle tags. */
-        if(r) extras.forEach(function(ex,i){ if(keeps[i]) r.exercises.push(planExFromSession(ex)); });
+        if(av) extras.forEach(function(ex,i){ if(keeps[i]) av.exercises.push(planExFromSession(ex)); });
         commitSession();
       }
     });
@@ -2935,6 +3077,7 @@ function sessionSheet(id){
   var html='<h3>'+esc(s.name)+'</h3><div class="sub">'+
     esc(new Date(s.ts).toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))+
     (s.endTs?' · '+dur(s.endTs-s.ts):"")+' · '+commas(vol)+' '+unit()+
+    (s.variantName?' · '+esc(s.variantName):"")+
     (s.deload?' · deload':"")+'</div>';
   s.exercises.forEach(function(e){
     var mode=bwMode(e), smet=metricOf(e);
@@ -3109,7 +3252,50 @@ function commitEdit(){
 }
 
 /* ============================ PLAN ============================ */
-var editingRoutine=null;
+var editingRoutine=null, editingVariant=0;
+
+/* Which week the Plan tab is showing per day. Defaults to whatever is next, so
+   opening Plan shows the session you are about to do rather than week 1
+   forever. Reset on re-entering the tab, like the calendar's month. */
+var PLANVAR={};
+function shownVariant(r){
+  var vs=variantsOf(r);
+  var ix=PLANVAR[r.id];
+  if(ix===undefined||ix>=vs.length) ix=nextVariantIx(r);
+  return Math.max(0,Math.min(ix,vs.length-1));
+}
+/* Lifts that appear in this week only, and so come round fortnightly. */
+function soloLifts(r,vi){
+  var others={};
+  variantsOf(r).forEach(function(v,i){
+    if(i===vi) return;
+    v.exercises.forEach(function(e){ others[normName(e.name)]=1; });
+  });
+  return planExOf(r,vi).filter(function(e){ return !others[normName(e.name)]; });
+}
+/* Adding a week to a day. A copy is the common case — an alternate week is
+   usually a variation on the one you have — but starting empty is one tap
+   away rather than a delete-everything chore. */
+function addVariant(ri,copy){
+  var r=S.routines[ri]; if(!r) return;
+  var vs=variantsOf(r);
+  if(!vs[0].label) vs[0].label="Week 1";
+  var src=copy?planExOf(r,shownVariant(r)):[];
+  var v=newVariant("Week "+(vs.length+1),src.map(function(e){
+    return Object.assign({},e,{id:uid(),mg2:(e.mg2||[]).slice()});
+  }));
+  vs.push(v);
+  PLANVAR[r.id]=vs.length-1;
+  writeNow(); viewPlan();
+  toastUndo(v.label+" added to "+r.name,function(){
+    var i=vs.indexOf(v);
+    if(i>=0) vs.splice(i,1);
+    if(vs.length===1&&vs[0].label==="Week 1") vs[0].label="";
+    delete PLANVAR[r.id];
+    writeNow(); if(TAB==="plan") viewPlan();
+    toast(v.label+" removed");
+  });
+}
 
 /* Exercises that add weight the moment you hit the target, in a plan whose
    stated default is double progression. Almost always because they predate the
@@ -3118,9 +3304,7 @@ var editingRoutine=null;
    ever said so. */
 function straightSetLifts(){
   var out=[];
-  S.routines.forEach(function(r){ r.exercises.forEach(function(e){
-    if(!(num(e.repTop)>num(e.reps))) out.push({r:r,e:e});
-  });});
+  eachPlanEx(function(e,r){ if(!(num(e.repTop)>num(e.reps))) out.push({r:r,e:e}); });
   return out;
 }
 function rangeTiersHint(){
@@ -3143,8 +3327,8 @@ function applyRanges(){
      would otherwise keep showing the old mode until it was finished. */
   if(S.active) S.active.exercises.forEach(function(x){
     if(num(x.repTop)>num(x.reps)) return;
-    var known=S.routines.some(function(r){ return r.exercises.some(function(e){
-      return normName(e.name)===normName(x.name); }); });
+    var known=false;
+    eachPlanEx(function(e){ if(normName(e.name)===normName(x.name)) known=true; });
     if(known) fit(x);
   });
   writeNow(); render();
@@ -3160,27 +3344,53 @@ function viewPlan(){
   var html='<div class="eyebrow">Your split</div><h1 class="view-title">Plan</h1><div class="stack">';
 
   S.routines.forEach(function(r,ri){
+    var vs=variantsOf(r);
+    var vi=shownVariant(r);
+    var list=planExOf(r,vi);
     html+='<section class="card" style="padding:0">'+
       '<div class="ex-head" style="align-items:center">'+
         '<div class="daymark" style="width:40px;height:40px;flex:0 0 auto"><div class="letter" style="font-size:18px">'+esc(r.key)+'</div></div>'+
         '<div class="t" style="margin-left:2px"><div class="ex-name" style="font-size:15px">'+esc(r.name)+'</div>'+
-        '<div class="ex-meta">'+plural(r.exercises.length,"exercise")+'</div></div>'+
+        '<div class="ex-meta">'+plural(list.length,"exercise")+
+          (vs.length>1?' · next up: '+esc(variantLabel(r,nextVariantIx(r))):"")+'</div></div>'+
         '<button class="kebab" data-act="day-menu" data-ri="'+ri+'" aria-label="Day options">⋯</button>'+
       '</div>';
-    r.exercises.forEach(function(e,ei){
-      var range=e.repTop>e.reps?(e.reps+"–"+e.repTop):(e.reps+" straight");
+    /* One segmented control per day, only once there is more than one week to
+       choose between — a solitary "Week 1" tab is noise. */
+    if(vs.length>1){
+      html+='<div class="vseg">'+vs.map(function(v,i){
+        return '<button'+(i===vi?' class="on"':"")+' data-act="pex-var" data-ri="'+ri+'" data-vi="'+i+'">'+
+          esc(variantLabel(r,i))+'</button>';
+      }).join("")+'</div>';
+    }
+    list.forEach(function(e,ei){
+      /* Compact here on purpose. "straight" spells out the mode on the session
+         card, where the confusion actually happened and there is room for it;
+         in this row it costs more width than the muscle tag, and at 320px
+         something has to give. The Progression banner above names every
+         straight-sets exercise outright, which beats a word per row. */
+      var range=e.repTop>e.reps?(e.reps+"–"+e.repTop):String(e.reps);
       var mode=bwMode(e);
       html+='<div class="pex">'+
-        '<span class="pxn">'+(groupTag(r.exercises,ei)?'<span class="gtag">'+esc(groupTag(r.exercises,ei))+'</span>':"")+esc(e.name)+(mode?' <span class="chip tag">'+(mode===1?"BW":"ASST")+'</span>':"")+
+        '<span class="pxn">'+(groupTag(list,ei)?'<span class="gtag">'+esc(groupTag(list,ei))+'</span>':"")+esc(e.name)+(mode?' <span class="chip tag">'+(mode===1?"BW":"ASST")+'</span>':"")+
           (!mode&&barOf(e)?' <span class="chip tag">BAR '+fmt(barOf(e))+'</span>':"")+'</span>'+
         '<span class="pxs">'+esc(muscleName(tagsOf(e).mg)||"?")+' · '+e.sets+'×'+esc(range)+'</span>'+
-        '<button class="iconbtn" data-act="pex-up" data-ri="'+ri+'" data-ei="'+ei+'" aria-label="Move up">↑</button>'+
-        '<button class="iconbtn" data-act="pex-edit" data-ri="'+ri+'" data-ei="'+ei+'" aria-label="Edit">⋯</button>'+
+        '<button class="iconbtn" data-act="pex-up" data-ri="'+ri+'" data-vi="'+vi+'" data-ei="'+ei+'" aria-label="Move up">↑</button>'+
+        '<button class="iconbtn" data-act="pex-edit" data-ri="'+ri+'" data-vi="'+vi+'" data-ei="'+ei+'" aria-label="Edit">⋯</button>'+
       '</div>';
     });
-    if(!r.exercises.length) html+='<div class="empty" style="padding:14px">No exercises yet.</div>';
-    html+='<div class="ex-foot"><button class="btn sm ghost" data-act="pex-add" data-ri="'+ri+'">+ Add exercise</button></div>'+
-      '</section>';
+    if(!list.length) html+='<div class="empty" style="padding:14px">No exercises yet.</div>';
+    /* Honest about the cost of splitting a day in two: a lift that appears in
+       only one week is trained fortnightly, and trend() needs 4 sessions. */
+    var solo=vs.length>1?soloLifts(r,vi).length:0;
+    if(solo){
+      html+='<div class="tiny muted" style="padding:0 14px 10px">'+
+        (solo===1?"1 lift here runs":solo+" lifts here run")+
+        ' only in this week — fortnightly rather than weekly, so trends take about twice as long to appear.</div>';
+    }
+    html+='<div class="ex-foot"><button class="btn sm ghost" data-act="pex-add" data-ri="'+ri+'" data-vi="'+vi+'">+ Add exercise</button>'+
+      (vs.length>1?"":'<button class="btn sm ghost" data-act="var-add" data-ri="'+ri+'">+ Alternate week</button>')+
+      '</div></section>';
   });
 
   html+='<div class="row" style="gap:8px">'+
@@ -3332,23 +3542,27 @@ $("#view").addEventListener("click",function(e){
   if(t.closest('[data-act="tpl"]')){ templateSheet(); return; }
   if(t.closest('[data-act="day-add"]')){
     var k=String.fromCharCode(65+S.routines.length);
-    S.routines.push({id:uid(),key:k,name:"Day "+k,exercises:[]});
+    S.routines.push(newRoutine(k,"Day "+k));
     save(); viewPlan(); return;
   }
+  var pv=t.closest('[data-act="pex-var"]');
+  if(pv){ PLANVAR[S.routines[+pv.dataset.ri].id]=+pv.dataset.vi; viewPlan(); return; }
+  var va=t.closest('[data-act="var-add"]');
+  if(va){ variantAddSheet(+va.dataset.ri); return; }
   var pa=t.closest('[data-act="pex-add"]');
-  if(pa){ editingRoutine=+pa.dataset.ri; pickExercise("plan"); return; }
+  if(pa){ editingRoutine=+pa.dataset.ri; editingVariant=+pa.dataset.vi||0; pickExercise("plan"); return; }
   var pu=t.closest('[data-act="pex-up"]');
   if(pu){
-    var r=S.routines[+pu.dataset.ri], i=+pu.dataset.ei;
+    var list=planExOf(S.routines[+pu.dataset.ri],+pu.dataset.vi), i=+pu.dataset.ei;
     if(i>0){
-      var tmp=r.exercises[i-1]; r.exercises[i-1]=r.exercises[i]; r.exercises[i]=tmp;
-      if(i-1===0) r.exercises[0].link=false;   // nothing above to pair with
+      var tmp=list[i-1]; list[i-1]=list[i]; list[i]=tmp;
+      if(i-1===0) list[0].link=false;          // nothing above to pair with
       save(); viewPlan();
     }
     return;
   }
   var pe=t.closest('[data-act="pex-edit"]');
-  if(pe){ planExMenu(+pe.dataset.ri,+pe.dataset.ei); return; }
+  if(pe){ planExMenu(+pe.dataset.ri,+pe.dataset.vi,+pe.dataset.ei); return; }
 
   /* Notifications need a grant, so this switch can't be a plain toggle: it
      only goes on if the browser actually says yes. */
@@ -3423,8 +3637,61 @@ $("#view").addEventListener("input",function(e){
 function addToPlan(name){
   var r=S.routines[editingRoutine];
   if(!r) return;
-  r.exercises.push(newPlanEx(name));
+  planExOf(r,editingVariant).push(newPlanEx(name));
   save(); viewPlan();
+}
+
+function variantAddSheet(ri){
+  var r=S.routines[ri]; if(!r) return;
+  sheet('<h3>An alternate week for '+esc(r.name)+'</h3>'+
+    '<div class="sub">'+esc(r.name)+' will alternate between two versions each time it comes round. '+
+      'A lift in both weeks keeps one history and one progression.</div>'+
+    '<div class="menu">'+
+      '<button data-x="copy">Start from a copy of this week</button>'+
+      '<button data-x="empty">Start empty</button>'+
+    '</div>'+
+    '<button class="btn ghost block" style="margin-top:6px" data-x="cancel">Cancel</button>',
+    function(el){
+      $('[data-x="copy"]',el).onclick=function(){ closeSheet(); addVariant(ri,true); };
+      $('[data-x="empty"]',el).onclick=function(){ closeSheet(); addVariant(ri,false); };
+      $('[data-x="cancel"]',el).onclick=closeSheet;
+    });
+}
+
+/* Renaming and removing a week. Kept in its own sheet rather than the day menu
+   so the day menu doesn't grow a row per variant. */
+function variantMenu(ri,vi){
+  var r=S.routines[ri], v=variantAt(r,vi);
+  if(!v) return;
+  var vs=variantsOf(r);
+  sheet('<h3>'+esc(variantLabel(r,vi))+'</h3><div class="sub">In '+esc(r.name)+' · '+
+      plural(v.exercises.length,"exercise")+'</div>'+
+    '<div class="field-row"><div class="fl">Name<div class="fh">Anything you like — "Week 2", "Heavy", "Deload"</div></div>'+
+      '<input class="txt" style="max-width:180px" data-x="label" value="'+esc(v.label)+'"></div>'+
+    '<div class="menu" style="margin-top:10px">'+
+      (vs.length>1?'<button data-x="del" class="dang">Remove this week</button>':"")+
+    '</div>'+
+    '<button class="btn primary block" style="margin-top:6px" data-x="done">Done</button>',
+    function(el){
+      $('[data-x="label"]',el).oninput=function(){ v.label=this.value; save(); };
+      var d=$('[data-x="del"]',el);
+      if(d) d.onclick=function(){
+        confirmSheet("Remove "+variantLabel(r,vi)+"?",
+          plural(v.exercises.length,"exercise")+" in it are removed from the plan. Sessions already logged stay in your history.",
+          "Remove",function(){
+            var gone=vs.splice(vi,1)[0];
+            if(vs.length===1&&vs[0].label==="Week 1") vs[0].label="";
+            delete PLANVAR[r.id];
+            writeNow(); viewPlan();
+            toastUndo("Removed "+(gone.label||"that week"),function(){
+              vs.splice(Math.min(vi,vs.length),0,gone);
+              writeNow(); if(TAB==="plan") viewPlan();
+              toast((gone.label||"That week")+" is back");
+            });
+          },true);
+      };
+      $('[data-x="done"]',el).onclick=function(){ closeSheet(); viewPlan(); };
+    });
 }
 
 function dayMenu(ri){
@@ -3433,12 +3700,21 @@ function dayMenu(ri){
     '<div class="field-row"><div class="fl">Label</div><input class="txt small" data-x="key" maxlength="3" value="'+esc(r.key)+'"></div>'+
     '<div class="field-row"><div class="fl">Name</div><input class="txt" style="max-width:200px" data-x="name" value="'+esc(r.name)+'"></div>'+
     '<div class="menu" style="margin-top:10px">'+
+      variantsOf(r).map(function(v,vi){
+        return '<button data-vx="'+vi+'">'+esc(variantLabel(r,vi)||"Exercises")+
+          '<span class="h">'+plural(v.exercises.length,"exercise")+'</span></button>';
+      }).join("")+
+      '<button data-x="addvar">+ Add another week</button>'+
       (S.routines.length>1?'<button data-x="del" class="dang">Delete this day</button>':"")+
     '</div>'+
     '<button class="btn primary block" style="margin-top:6px" data-x="done">Done</button>',
     function(el){
       $('[data-x="key"]',el).oninput=function(){ r.key=this.value.toUpperCase(); save(); };
       $('[data-x="name"]',el).oninput=function(){ r.name=this.value; save(); };
+      $$('[data-vx]',el).forEach(function(b){
+        b.onclick=function(){ closeSheet(); variantMenu(ri,+b.dataset.vx); };
+      });
+      $('[data-x="addvar"]',el).onclick=function(){ closeSheet(); variantAddSheet(ri); };
       var d=$('[data-x="del"]',el);
       if(d) d.onclick=function(){
         confirmSheet("Delete "+r.name+"?","Past sessions stay in your history.","Delete",function(){
@@ -3455,10 +3731,12 @@ function dayMenu(ri){
     });
 }
 
-function planExMenu(ri,ei){
-  var r=S.routines[ri], ex=r.exercises[ei];
+function planExMenu(ri,vi,ei){
+  var r=S.routines[ri], list=planExOf(r,vi), ex=list[ei];
+  if(!ex) return;
   var p=prescribe(ex.name,ex);
   sheet('<h3>'+esc(ex.name)+'</h3><div class="sub">In '+esc(r.name)+
+      (variantsOf(r).length>1?' · '+esc(variantLabel(r,vi)):"")+
       (p.why?' · next time: '+esc(p.why.toLowerCase()):"")+'</div>'+
     '<div class="field-row"><div class="fl">Name</div>'+
       '<input class="txt" style="max-width:210px" data-x="name" value="'+esc(ex.name)+'"></div>'+
@@ -3485,7 +3763,7 @@ function planExMenu(ri,ei){
     '<div class="menu" style="margin-top:10px">'+
       (ei>0?'<button data-x="link">'+(ex.link?"Break the superset":"Superset with the one above")+'</button>':"")+
       (ei>0?'<button data-x="up">Move up</button>':"")+
-      (ei<r.exercises.length-1?'<button data-x="down">Move down</button>':"")+
+      (ei<list.length-1?'<button data-x="down">Move down</button>':"")+
       '<button data-x="hist">See history &amp; chart</button>'+
       '<button data-x="del" class="dang">Remove from '+esc(r.name)+'</button>'+
     '</div>'+
@@ -3501,32 +3779,32 @@ function planExMenu(ri,ei){
         /* Keep the bottom you already train at and add the reps-first room on
            top — moving the bottom would quietly change the programme. */
         ex.repTop=Math.max(1,num(ex.reps))+rangeWidth(ex.name,metricOf(ex));
-        save(); closeSheet(); viewPlan(); planExMenu(ri,ei);
+        save(); closeSheet(); viewPlan(); planExMenu(ri,vi,ei);
         toast(ex.name+" now climbs to "+ex.repTop+" first");
       };
       $$('[data-pbw]',el).forEach(function(b){
-        b.onclick=function(){ ex.bw=num(b.dataset.pbw); save(); closeSheet(); viewPlan(); planExMenu(ri,ei); };
+        b.onclick=function(){ ex.bw=num(b.dataset.pbw); save(); closeSheet(); viewPlan(); planExMenu(ri,vi,ei); };
       });
       $('[data-pbar]',el).oninput=function(){ ex.bar=Math.max(0,num(this.value)); save(); };
       $$('[data-pmet]',el).forEach(function(b){
-        b.onclick=function(){ ex.metric=num(b.dataset.pmet); save(); closeSheet(); viewPlan(); planExMenu(ri,ei); };
+        b.onclick=function(){ ex.metric=num(b.dataset.pmet); save(); closeSheet(); viewPlan(); planExMenu(ri,vi,ei); };
       });
       $('[data-x="mg"]',el).onclick=function(){
-        musclesSheet(ex,function(){ viewPlan(); planExMenu(ri,ei); });
+        musclesSheet(ex,function(){ viewPlan(); planExMenu(ri,vi,ei); });
       };
       var plk=$('[data-x="link"]',el);
       if(plk) plk.onclick=function(){ ex.link=!ex.link; save(); closeSheet(); viewPlan(); };
       var up=$('[data-x="up"]',el), dn=$('[data-x="down"]',el);
-      if(up) up.onclick=function(){ var t=r.exercises[ei-1]; r.exercises[ei-1]=ex; r.exercises[ei]=t;
+      if(up) up.onclick=function(){ var t=list[ei-1]; list[ei-1]=ex; list[ei]=t;
         if(ei-1===0) ex.link=false; save(); closeSheet(); viewPlan(); };
-      if(dn) dn.onclick=function(){ var t=r.exercises[ei+1]; r.exercises[ei+1]=ex; r.exercises[ei]=t; save(); closeSheet(); viewPlan(); };
+      if(dn) dn.onclick=function(){ var t=list[ei+1]; list[ei+1]=ex; list[ei]=t; save(); closeSheet(); viewPlan(); };
       $('[data-x="hist"]',el).onclick=function(){ closeSheet(); liftSheet(ex.name); };
       $('[data-x="del"]',el).onclick=function(){
-        var gone=r.exercises.splice(ei,1)[0];
+        var gone=list.splice(ei,1)[0];
         save(); closeSheet(); viewPlan();
         toastUndo("Removed "+gone.name,function(){
           if(S.routines.indexOf(r)<0) return;      // the whole day went too
-          r.exercises.splice(Math.min(ei,r.exercises.length),0,gone);
+          list.splice(Math.min(ei,list.length),0,gone);
           save(); if(TAB==="plan") viewPlan();
           toast(gone.name+" is back");
         });
@@ -3762,8 +4040,7 @@ function doImport(){
         var parsed;
         try{ parsed=JSON.parse(raw); }catch(e){ toast("That isn't valid Iron Log JSON"); return; }
         if(!parsed||!parsed.routines||!parsed.sessions){ toast("That file is missing routines or sessions"); return; }
-        S=parsed;
-        S.settings=Object.assign(defaultState().settings,S.settings||{});
+        S=normalize(parsed);
         recomputePRs();
         writeNow(); closeSheet(); go("today"); toast("Log imported");
       };
@@ -3787,6 +4064,11 @@ new MutationObserver(function(muts){
 }).observe(document.documentElement,{attributes:true});
 
 if(S.active) TAB="today";
+/* Persist the variant migration once, so there is a single shape on disk and
+   the next backup file is already v5 rather than something the importer has to
+   migrate again. Deferred to here rather than done inside load(), because
+   writeNow() can toast and the DOM has to exist first. */
+if(MIGRATED) writeNow();
 render();
 
 /* Offline support, only when self-hosted (the manifest is the tell). */

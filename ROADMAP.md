@@ -16,9 +16,8 @@ Six items. Four are Nick's, from actually training with the app; two I found
 while diagnosing those. Each has been reproduced or explicitly not reproduced —
 don't re-derive that work.
 
-**Items 1, 2, 3, 5 and 6 are fixed and shipped** (1 in v12, the rest in v13).
-They stay here as the record of what the bugs were. **Item 4 is the only one
-left**, and it wants a design conversation before any code.
+**All six are fixed and shipped** — 1 in v12, 2/3/5/6 in v13, 4 in v14. They
+stay here as the record of what the bugs were and what was decided.
 
 ### 1. BUG — both exercise menus overflowed sideways ✅ *fixed in v12*
 
@@ -96,7 +95,33 @@ Two notes on what was built versus what was asked:
 - Templates now go through the same constructor, which fixes a latent one:
   a template Plank used to arrive asking for **8–12 seconds**.
 
-### 4. FEATURE — A/B week variants inside each training day *(Nick's, and the biggest item here)*
+### 4. FEATURE — A/B week variants inside each training day ✅ *shipped in v14*
+
+**Settled with Nick before building:** a week variant is a **different exercise
+selection**, not the same lifts programmed heavy/volume — so a variant owns an
+exercise list and nothing else changes. And a day may have **two or more**
+weeks, not exactly two; the array model gave that for free and only the
+switcher UI had to grow.
+
+Built as sketched below, `variants[]` on the routine with no parallel field.
+What the sketch didn't cover, and what turned out to matter:
+
+- `session` stores `variantId` **and** `variantName` — the id drives the
+  rotation, the name is a history snapshot like `key`/`name` already are, so
+  renaming or deleting a week can't rewrite the past. An unresolvable id
+  restarts the rotation rather than throwing.
+- **A deload session consumes its slot.** The fortnight ticks through it.
+- **Every day's every week is one tap from Today.** Offering only each day's
+  *next* week stranded the other one whenever that day wasn't up next — found
+  by a test, not by reading the code.
+- `normalize()` became the single door into the state (storage, file, paste),
+  and the migration is written back on boot so the next backup is already v5.
+- Rejected on the way: putting "straight" in the Plan row alongside the muscle
+  tag. It starved the exercise name to nothing at 320 px. See trap 16.
+
+The original design sketch follows, kept because the reasoning still holds.
+
+#### The sketch as written
 
 Wanted: Day A, B and C each get a **week-A and a week-B version**, so the split
 alternates fortnightly — different exercise selection, or heavy/volume weeks,
@@ -141,19 +166,14 @@ moves to B — so they must not be collapsed into one modulo.
 which item 3 also touches, and the exercise constructor, which item 5 fixes.
 Doing it last means both are already tidy.
 
-**Status (v13): both prerequisites are now done.** The exercise constructor is
-`newPlanEx()` / `planExFromSession()`, so variants inherit one code path rather
-than six. Open questions to settle with Nick before building — see the end of
-the session notes:
-
-1. Is a variant a *different exercise selection*, or the *same exercises
-   programmed differently* (heavy/volume)? The model above handles the first
-   cleanly; the second means one lift with two rep ranges and two progressions,
-   which `exSessions()`-joins-by-name does **not** currently support.
-2. What happens to a half-finished fortnight when you add a third variant, or
-   delete one? The "derive from history" rule has to answer this.
-3. Does the deload week interact? A deload landing on week B means week B is
-   skipped for a fortnight.
+**Still open, deliberately not built:** the *same* exercises programmed
+differently across weeks — heavy 4×5 one week, volume 3×12 the next. Nick's
+answer was that a week is a different exercise selection, so this wasn't
+needed. It is a genuinely harder change and worth knowing why before anyone
+promises it: `exSessions()` joins by **name**, so one lift appearing in two
+weeks shares one history and one progression *by design*. Giving it two rep
+ranges means two progressions over one history, which the engine has no
+concept of. Do not treat it as a small follow-on.
 
 ### 5. BUG — keeping an extra exercise from the finish screen loses its settings ✅ *fixed in v13*
 

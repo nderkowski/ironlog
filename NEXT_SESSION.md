@@ -31,25 +31,25 @@ not a toy.
   `/opt/node22/lib/node_modules/playwright`. Serve with
   `npx http-server -p 8117 -s -c-1 .` and use a 390×844 mobile context. Most of
   the genuine bugs in this codebase were invisible to function-level tests and
-  obvious the moment a real click drove them. There are ~212 assertions across
-  13 suites from previous sessions — I don't have them saved, so write fresh
-  ones for whatever you touch.
+  obvious the moment a real click drove them. **The suites live in
+  `tools/test/` now** — `t20`–`t24`, 162 assertions, run with
+  `node tools/test/tNN-….mjs` against that server. Run them before you change
+  anything and after; add to them for whatever you touch.
 - Ask before merging to `main`.
 
-**The queue, in order.** Items 2–6 in `ROADMAP.md` are already diagnosed — each
-says whether it was reproduced, and the ones I found while investigating include
-the cause. Don't redo that work.
+**The queue.** The six items under "Next session starts here" in `ROADMAP.md`
+are all shipped (v12–v14) and stay there as the record of what the bugs were —
+don't redo them, but do read item 2's write-up, because the lesson in it
+(a setting that only applied at creation time, invisible to the user for weeks)
+is the kind of thing this codebase keeps producing.
 
-Start with **item 2**: the progression engine appears to always suggest more
-weight when I hit the bottom of the rep range, instead of suggesting more reps
-first. Double progression demonstrably works on a stock exercise, so it's
-conditional on my data. The roadmap lists three candidate causes and the single
-question that distinguishes them — ask me that question first rather than
-guessing.
+The live backlog is **Slice 4 — sync and accounts**, and the roadmap argues for
+starting at the cheapest rung. There's also a "Known weaknesses in the maths"
+section; nothing there is urgent, but the Epley-above-10-reps one now matters
+more than it did, because isolation lifts default to a 12–16 range as of v13.
 
-Then items 3, 5, 6, and finally 4 (A/B week variants), which is the biggest and
-touches the data model — the roadmap has a design sketch, and I'd like to talk
-it through before you build it.
+Before starting anything, ask me what's actually annoying me in the gym right
+now — the last six items all came from real sessions, and that beats the list.
 
 **How I like to work:** tell me when something I've asked for is a bad idea, and
 say so plainly rather than building it and hedging afterwards. If you can't

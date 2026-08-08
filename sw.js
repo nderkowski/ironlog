@@ -1,7 +1,7 @@
 /* Iron Log service worker.
    The app is one HTML file with no external requests, so caching the shell is
    enough to make it work with no signal at all. Bump CACHE on every deploy. */
-const CACHE = "ironlog-v13";
+const CACHE = "ironlog-v14";
 const SHELL = [
   "./",
   "./index.html",
