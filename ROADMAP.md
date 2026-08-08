@@ -29,8 +29,19 @@ gym session:
 | **v17** | Settings moved off the foot of the Plan tab into their own screen behind a header gear; Progression stayed with the split it shapes |
 | **v18** | The gear had no SVG sizing rule and rendered edge-to-edge as a smudge |
 
-287 assertions across eight suites now live in `tools/test/`. Run them before
-and after any change.
+Then an external review (`REVIEW.md`) audited the app, the engine, this file
+and the cut list. Its Slice A — everything that touches trust in the data or
+the engine — shipped as v19–v21:
+
+| | |
+|---|---|
+| **v19** | **The back-off spiral.** `prescribe()`'s "one cut then hold" guard looked back 3 sessions while the verdict it guards is a slope over ~9, so it expired first and cut another 10% every four sessions. Closed-loop, a lifter whose true 1RM was *rising* got walked from 190 lb to 115. Also: the same guard was inverted on assisted work, walking a strengthening lifter from 50 lb of assistance up to 105 |
+| **v20** | Renaming onto an existing lift merged two histories silently, with ghost PRs, a duplicated plan row and no undo — it now asks, and the "keep them separate" answer is item 12 below. The session editor re-resolved old bodyweight loads against *today's* bodyweight. A state missing its `sessions` key rendered a permanent blank page |
+| **v21** | The lift sheet's two banners described maths that no longer existed; `deloadCheck()` counted flawless wide-range lifts as stalled, and said nothing at all about what it was watching |
+
+The suites are in `tools/test/` — ten of them now, `t20`–`t29`. Run them all
+before and after any change and read the summary lines; assertion counts are
+deliberately not written down here, because they go stale and did.
 
 ### 1. BUG — both exercise menus overflowed sideways ✅ *fixed in v12*
 
@@ -382,7 +393,10 @@ Not bugs, but they should be revisited and are honest limits of the current mode
   which on an A/B/C split is about three weeks. New users see a dumb logger for a
   month. Consider a lower-confidence signal at 2–3 sessions, labelled as such.
 - **The 60% deload threshold is a defensible guess, not a derived number.** It is
-  now dismissible and deload-aware, which was the dangerous part. If it still
+  now dismissible, deload-aware, and it no longer judges rep ranges wider than
+  eight sessions at all — past that width the cycle phase doesn't wash out of
+  even the long window, so a flawless run and a stall are indistinguishable
+  (v21; the measured table is in PROJECT_STATE). If it still
   fires too often, make it aware of intent — a cut or a maintenance block makes
   flat lifts the goal rather than a warning.
 - **Distance work has no unit.** `metric: 2` stores a bare number and the app

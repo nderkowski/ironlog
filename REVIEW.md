@@ -639,7 +639,7 @@ Sliced so every slice leaves the app fully usable, ordered by the project's
 priority rule. Costs are judged against the one-tap rule and the option rule
 (set once, sane default, state visible where the effect lands).
 
-### Slice A — restore trust in the engine (do first, it's all small)
+### ~~Slice A — restore trust in the engine (do first, it's all small)~~  ✅ *shipped as v19–v21*
 
 1. **The back-off fix** (§1.1: window-length guard + rep-climb under hold,
    plus the `t28` closed-loop suite). No decisions added; the card's why-line
@@ -695,7 +695,7 @@ write-up.
     nearest entry at log time — but stored `load` stays authoritative for
     history, so no retro-rewrites. Model change: yes; migration: trivial and
     additive.
-12. **Merge/rename as a feature** ("swap an exercise keeping history
+12. ~~**Merge/rename as a feature**~~ ✅ *shipped in v20, with §1.2* — ("swap an exercise keeping history
     joined"). §1.2's fix builds the confirm-and-merge machinery; this item
     is only the framing on top: "Replace with…" in the exercise menu that
     renames the plan entry going forward while explicitly merging or *not*

@@ -6,7 +6,7 @@ non-obvious parts, and what has actually been verified. Pair it with
 for the commercial question. **[Traps](#traps--read-before-changing-anything)
 is the section to read before touching anything.**
 
-*Last updated: 8 Aug 2026 (v18) — built with Claude Opus 5.*
+*Last updated: 8 Aug 2026 (v21) — built with Claude Opus 5.*
 
 ---
 
@@ -100,6 +100,11 @@ Notes that will bite you if you miss them:
 - **Exercises are joined by name, not id** (`normName()` lower-cases and trims).
   That's why `renameExercise()` has to rewrite routines, history *and* the active
   session together — otherwise a rename silently forks a lift's history in two.
+  The same join makes renaming *onto an existing name* a merge, so that case
+  asks first (merge the histories, or change the plan slot only) and carries a
+  whole-state undo. Both paths run `recomputePRs()` and drop duplicate plan
+  rows within a week. **Do not add a rename path that skips
+  `renameExercise()`** — the collision check and the PR rebuild live there.
 - **`w` is what you typed; `load` is what it means.** For a normal lift they're
   the same. For bodyweight work `w` is *added* weight and `load` is bodyweight +
   added. For assisted work `w` is *assistance* and `load` is bodyweight − assist.
@@ -469,6 +474,15 @@ written back to storage once on boot (`MIGRATED`), deferred until after the DOM
 exists because `writeNow()` can toast — so the next backup file is already v5
 rather than something the importer has to migrate again.
 
+"Only door" has to mean the **whole shape**, not just the parts that have
+needed migrating. It checks `sessions`, `routines`, `active` and the arrays
+below them are actually arrays, because a state whose `sessions` key was
+missing used to render a blank `#view` and stay blank on every reload, with
+nothing but "clear your storage" to do about it. Those repairs set `MIGRATED`
+too, so a damaged state is fixed in storage rather than re-repaired every boot.
+`load()` no longer falls back to a stock split when `routines` is damaged
+either — that discarded the entire log to fix half of it.
+
 ### Settings is a screen, not a tab
 
 Session, Barbell and Data used to sit at the foot of the Plan tab, below the
@@ -521,10 +535,16 @@ Order of precedence:
 
 1. **Deload week running** → `easier()` load, reps at the bottom of the range,
    sets × 0.6. (`kind: "deload"`)
-2. **Trend is down** → one 10% back-off, *once*. If today's load is already below
-   the peak of the last three sessions, it holds instead. This guard exists
-   because without it a decline produces a cut, which produces a lower session,
-   which reads as a further decline — the app chases itself down.
+2. **Trend is down** → one 10% back-off per decline episode. If today's load is
+   still below the best first-set load anywhere in **the same window the "down"
+   verdict was computed from** (`trendWin()`), it holds instead — and while
+   holding, the reps still climb. This guard exists because without it a
+   decline produces a cut, which produces a lower session, which reads as a
+   further decline; the app chases itself down. **The window length is
+   load-bearing.** It used to be a flat 3 sessions against a ~9-session
+   verdict, which expired first and cut again every four sessions. On assisted
+   work "best" means the *least* assistance, so the comparison inverts with the
+   load direction. See trap 17b and `t28`.
 3. **Double progression** (`repTop > reps`) → all sets at the top of the range
    means harder load and reps reset to the bottom; inside the range means same
    load and one more rep; short of the bottom means run it back.
@@ -865,6 +885,42 @@ Slice 9 (v17), Settings as its own screen — `t27`:
 - The gear itself: a full-size tap target, an icon inset rather than filling it,
   and readable ink — the first version rendered edge to edge and looked like a
   smudge
+
+Slice A (v19–v21), the external review's trust findings — `t28` (the closed
+loop) and `t29` (history integrity), plus new copy and deload assertions in
+`t26`. Every item was reproduced through the UI *before* being fixed, and the
+reproduction is what became the assertion:
+
+- **The back-off spiral, closed-loop.** `t28` drives 30–45 real sessions —
+  prescribe, simulate a lifter with per-set fatigue, log through the UI, repeat
+  — for a steady gainer, a gainer with one sick day, a genuine decline, and an
+  assisted lift. Before: a lifter whose true 1RM rose 250→295 was walked from
+  190 lb to 115, and the sick-day lifter from 185 to 80. After: one cut, full
+  recovery to 185 and 195 respectively
+- The genuine decline **still cuts**, twice over 30 sessions of real strength
+  loss, and tracks the true 8RM to 150. What is asserted is the *spacing* —
+  cuts can never come closer than the trend window
+- The assisted lift, where every direction inverts: before the fix a
+  strengthening lifter with one bad day was walked from 50 lb of assistance up
+  to 105
+- **Rename-merge**: the collision sheet, both outcomes, cancel, undo, an
+  ordinary rename unaffected, PRs rebuilt over the merged lineage (the 60 lb
+  ghost flag gone, the 120 lb set now a real record), and the sheet measured at
+  320 px and 390 px
+- **Editor loads**: a 30-day-old weighted pull-up at stored load 205 with
+  today's bodyweight at 200 — editing only the note used to make it 225. It
+  stays 205, the session is backfilled with the bodyweight its loads imply, and
+  a weight you *do* change re-resolves against the session (25→35 gives 215),
+  not against today
+- **Shape hardening**: a state with no `sessions` key, one with `sessions: {}`
+  and `routines: "nope"`, a session with no `exercises`, an exercise with no
+  `sets` — all render, all repair, all written back
+- **Banner copy**: the down banner names the slope it measured and the
+  prescription `prescribe()` actually returns; a flat lift that already has a
+  range is no longer told to set one
+- **Deload check**: three heavy 8–20 lifts trained flawlessly for 34 sessions
+  used to produce "Time to deload". They are now excluded as too wide to judge,
+  and Progress says what it is watching instead of going silent
 
 **Confirmed on a real phone** (Android, 1 Aug 2026, v7 deploy)
 
