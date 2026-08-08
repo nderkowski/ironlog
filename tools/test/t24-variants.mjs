@@ -1,7 +1,7 @@
 /* Item 4 — A/B week variants inside a training day.
    The two rotations (which day, which week) are independent and both derived
    from history, so most of this suite is about proving they don't interfere. */
-import { launch, boot, getState, planExercises, ok, eq, has, report } from './harness.mjs';
+import { launch, boot, getState, planExercises, openSettings, ok, eq, has, report } from './harness.mjs';
 
 const SET = { unit:'lb', rest:120, autoRest:false, buzz:false, inc:5, sound:false, notify:false,
   rpe:false, keepTone:false, autoBackup:false, shareMode:'', doubleDefault:true,
@@ -298,7 +298,7 @@ has(await page.textContent('.hero'), 'Week 2',
 /* --------------------------------------------- export / import round trip */
 await boot(page, twoWeek);
 const exported = await page.evaluate(() => localStorage.getItem('ironlog.v1'));
-await page.click('[data-tab="plan"]');
+await openSettings(page);
 await page.click('[data-act="import"]');
 await page.waitForSelector('[data-x="paste"]');
 await page.fill('[data-x="paste"]', exported);
@@ -315,7 +315,7 @@ const oldFile = JSON.stringify({
   sessions: []
 });
 /* importing lands you back on Today, so go and get the button again */
-await page.click('[data-tab="plan"]');
+await openSettings(page);
 await page.click('[data-act="import"]');
 await page.waitForSelector('[data-x="paste"]');
 await page.fill('[data-x="paste"]', oldFile);

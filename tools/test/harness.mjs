@@ -45,6 +45,13 @@ export async function getState(page) {
   return JSON.parse(await page.evaluate(() => localStorage.getItem('ironlog.v1')));
 }
 
+/* Settings moved off the Plan tab into their own screen behind the header
+   gear. Anything driving a setting has to go there first. */
+export async function openSettings(page) {
+  await page.click('[data-act="settings"] >> nth=0');
+  await page.waitForSelector('[data-set="unit"]');
+}
+
 /* Every plan exercise across every day and every week variant. */
 export function planExercises(state) {
   return (state.routines || []).flatMap(r => (r.variants || []).flatMap(v => v.exercises));

@@ -424,6 +424,39 @@ Both are derived from history: there is no stored counter, as everywhere else.
   single button.
 - **Templates stay single-variant.** Doubling every template would be noise.
 
+### Switching lb ↔ kg asks, because the app can't know
+
+Flipping the unit used to relabel and nothing else, so a 225 lb squat became a
+"225 kg" squat: every number in the log silently changed meaning, and the bar
+and plate inventory were stranded in the old unit. Both readings of that switch
+are legitimate —
+
+1. *"convert my log"* — the numbers are lb and I want them in kg;
+2. *"just change the label"* — the numbers were always kg, the label was wrong;
+
+— and nothing in the data distinguishes them, so `unitSheet()` asks rather than
+guessing. Cancel is a real option and changes nothing.
+
+- **Reps, seconds and distance are never touched.** `load` is converted
+  alongside `w`, because it is a *resolved* weight stored at log time, not
+  something re-derived on read. Converting one without the other would desync
+  every bodyweight and assisted lift.
+- **A bar that was the standard one snaps to the new standard**, rather than
+  converting to 20.4 kg — plate maths against 20.4 with real kg plates is
+  inexact on every single lift. A genuinely custom bar (trap, safety squat) has
+  no standard to snap to, so it converts. Same rule for the settings bar and
+  the per-exercise override.
+- **Both paths reset the plate inventory**, since 20.4 kg plates don't exist
+  and the relabel path's own premise is that everything was already kg.
+- A backup file is written **inside the tap**, before anything changes, on the
+  same reasoning as `commitSession()`. Undo holds a whole-state snapshot for
+  ten seconds — an undo that re-derived would just be a second chance to get
+  the arithmetic wrong.
+- An empty log switches with no questions asked: there is nothing to convert or
+  mislabel, so don't make an empty app ask.
+- **Round-tripping drifts.** Values are rounded to 0.1, so lb → kg → lb lands
+  at 225.1 rather than 225. Accepted, and asserted so it can't get worse.
+
 ### `normalize()` is the only door into the state
 
 Storage, a backup file and a paste all go through it, so an old export can't
@@ -432,6 +465,34 @@ land half-migrated. It is also where `r.exercises` becomes
 written back to storage once on boot (`MIGRATED`), deferred until after the DOM
 exists because `writeNow()` can toast — so the next backup file is already v5
 rather than something the importer has to migrate again.
+
+### Settings is a screen, not a tab
+
+Session, Barbell and Data used to sit at the foot of the Plan tab, below the
+split, where the list you scrolled past to reach them had nothing to do with
+them. They now live in `viewSettings()`, reached from a gear in the header.
+
+- **Not a fourth tab.** The bottom bar is the gym-floor surface and a settings
+  tab would be dead weight in every session. `renderTabs()` keeps Plan
+  highlighted while Settings is open, so the bar still says where you are, and
+  any tab tap leaves.
+- **Progression stayed on Plan.** Rep ranges and the deload window shape the
+  split they sit under, and separating cause from effect is precisely what made
+  the `doubleDefault` bug invisible for weeks.
+- **The rows kept their handlers**, which live behind `if(TAB!=="plan") return;`
+  on the two `#view` listeners. Both now accept `"settings"` as well. Miss that
+  and every switch on the new screen silently does nothing — there is a suite
+  that toggles all five and asserts the state actually changed.
+- Anything that re-renders after changing a preference calls **`viewPrefs()`**,
+  which routes by tab, because a few of these rows are reachable from either
+  screen. Calling `viewPlan()` directly throws you off Settings mid-edit.
+- **The gear is the only way in, so it is sized and inked for it.** An inline
+  SVG with no rule fills its `.iconbtn` edge to edge — the text-labelled icon
+  buttons (`↑`, `⋯`) have natural padding and hid that omission for months. It
+  is now inset to 20px inside the 32px target and uses `--ink-2` rather than
+  the most muted ink.
+- **`BUILD` still prints at the foot of the Plan tab.** It is also in Settings →
+  About, but the Plan one is the documented place and the one in muscle memory.
 
 ### Undo
 
@@ -527,15 +588,65 @@ copy of every exercise.
 
 ### `trend(name)` — is this lift moving
 
-Mean best-e1RM (Epley) of the last 3 non-deload sessions vs the 3 before.
-`up` ≥ +1.5%, `down` ≤ −2%, `flat` between. Returns `new` until 4 sessions exist,
-so the app stays quiet rather than guessing.
+**Least-squares slope** of best-e1RM over the last `max(6, cycle + 3)` non-deload
+sessions, scaled to *percent per 3 sessions*. `up` ≥ +1.5%, `down` ≤ −2%, `flat`
+between. Returns `new` until 4 sessions exist, so the app stays quiet rather
+than guessing.
+
+It used to be the mean of the last 3 sessions against the 3 before, **and that
+measured the wrong thing.** Under double progression e1RM *sawtooths*: reps
+climb from the bottom of the range to the top, then the load steps and reps
+reset, dropping the score back. A 3-vs-3 mean straddling that reset reads the
+phase of the sawtooth, not the trend.
+
+Simulated on a flawless run — never a missed rep — the old code reported
+**"down"**:
+
+| range | load | old verdict |
+|---|---|---|
+| 8–12 | 185 | −2.6% down |
+| 8–12 | 225 | −2.9% down |
+| 6–10 | 185 | −2.8% down |
+| 8–15 | 135 | −8.3% down |
+| 8–20 | 100 | −16.6% down |
+
+and it got **worse the stronger you got**, because a fixed 5 lb step is a
+shrinking fraction of the load while the rep climb is not. `"down"` is what
+makes `prescribe()` cut 10% off the bar, so the engine could back off someone
+doing everything right.
+
+A slope over a window guaranteed to contain a whole cycle has no phase to read.
+`cycleOf(name)` is `repTop − reps + 1`, from the plan and then from history;
+straight sets have no cycle, so 1. Scaling to "% per 3 sessions" is what lets
+the ±1.5 / −2 thresholds keep the calibration they were tuned with.
+
+Two things to know before touching it:
+
+- **Whole-cycle windows are worse, not better.** A window of exactly one cycle
+  captures the ramp and then the reset as separate phases and swings harder
+  (−2.1% to +7.2% on 8–15, versus +0.5% to +2.1% for `cycle + 3`). The
+  overlapping longer window is what smooths it.
+- **A wide range genuinely reads slower.** 8–15 gains 5 lb every eight sessions,
+  which really is under the +1.5% bar, so it shows "flat". The chip is a rate
+  now. That is honest, not a bug.
 
 ### `deloadCheck()` — is the whole block stale
 
-Of the lifts in your routines that have enough history, the share that aren't
-climbing. ≥60% → "time to deload"; ≥40% → a softer watch note. Suppressed while a
-deload week is running or during a 14-day snooze.
+Of the lifts in your routines with at least 6 sessions, the share whose
+**`trendLong()` slope is ≤ 0**. ≥60% → "time to deload"; ≥40% → a softer watch
+note. Suppressed while a deload week is running or during a 14-day snooze.
+
+Both halves of that changed, and for one reason. Over the short window the
+slope still depends slightly on cycle phase: across every plausible range and
+load, a flawless run dips as low as **−0.37%** at its worst phase, while a
+genuine stall reads exactly **0.00%**. Those overlap, so *no threshold on the
+short window can separate "progressing slowly" from "not progressing at all"*.
+Over two cycles the phase washes out — flawless never drops below **+0.35%**,
+a stall is still 0.00% — and `pct <= 0` splits them cleanly.
+
+That is also why it no longer keys off the `"up"` *label*: the flat band
+includes real but slow progress, and counting that as stalled is exactly how a
+working plan gets told to take a week off.
 
 ### `recomputePRs()`
 
@@ -681,6 +792,49 @@ Slice 6 (v14), week variants — `t24`, 68 assertions:
   clean** — which is the shape every auto-backup already on the phone has
 - Plan with a switcher measured at 320 px and 390 px, no sideways scroll
 
+Slice 7 (v15), switching units — `t25`, 40 assertions:
+
+- An empty log switches silently and picks up the kg bar, plate set and step
+- With history it asks, shows the actual arithmetic (225 lb → 102.1 kg), and
+  cancelling changes nothing at all
+- Converting: `w` and `load` together, session and settings bodyweight, the
+  per-exercise weight step; reps left alone; the standard bar snapped to 20
+  while a 60 lb trap bar converted to 27.2
+- Relabelling leaves every number and still un-strands the bar and plates
+- Undo restores the whole log, the inventory and the per-exercise overrides
+- A round trip lands within 0.1 of where it started
+- The sheet measured at 320 px and 390 px
+
+Slice 8 (v16), the trend signal — `t26`, 37 assertions, all driven by seeding a
+textbook double-progression history and reading the verdict off the card:
+
+- Four ranges that used to read "down" on a flawless run — 8–12 @185, 8–12
+  @225, 6–10 @185, 8–15 @135 — now read climbing or flat, never slipping, and
+  the engine never backs off or cuts a set
+- A genuine decline still shows SLIPPING and still refuses to add weight
+- A genuine stall reads flat, and is not mistaken for a decline
+- Straight sets, which have no cycle, are unaffected
+- Under 4 sessions it still says nothing
+- **The deload nudge checked at every phase of the cycle**, 10 through 20
+  sessions, on a 3-lift plan: never fires on flawless progress — and still
+  fires on a plan that has genuinely stopped
+
+Slice 9 (v17), Settings as its own screen — `t27`, 45 assertions:
+
+- The gear opens it, the back arrow returns to Plan, any tab tap leaves, and
+  the bottom bar stays three tabs with Plan lit while it is open
+- Progression and the build marker are still on Plan; Session, Barbell and Data
+  are not
+- **All five switches toggled and the stored state checked** — the guard bug
+  would have left every one of them inert while looking fine
+- Number fields save; the plate inventory saves *and* keeps DOM identity while
+  typing; add / reset re-render Settings rather than throwing you back to Plan
+- The unit sheet opens from here and cancelling returns here
+- Measured at 320 px and 390 px: no sideways scroll, no nested `.field-row`
+- The gear itself: a full-size tap target, an icon inset rather than filling it,
+  and readable ink — the first version rendered edge to edge and looked like a
+  smudge
+
 **Confirmed on a real phone** (Android, 1 Aug 2026, v7 deploy)
 
 - The tap-freeze is gone.
@@ -793,7 +947,19 @@ bite.
     adding the word "straight" to it starved the exercise name to *nothing* at
     320px in one commit. If you add anything to that row, run the 320 px
     overflow assertions in `t21` first.
-17. **Test through the UI, not the functions.** The `data-x` collision, the
+17. **Any signal derived from e1RM has to survive the double-progression
+    sawtooth.** Reps climb, load steps, reps reset — so the score saws up and
+    down with a period of `repTop − reps + 1` sessions. Compare two windows
+    across that and you measure phase, not progress; it read "down" on a
+    flawless run and cut the weight. If you add another trend, stall, PR-pace
+    or readiness signal, simulate a perfect run through it *first* and check it
+    never reports a decline. `tools/test/t26-trend.mjs` does exactly that.
+18. **A view that borrows another view's event listeners inherits its guard.**
+    The `#view` click and input listeners early-return unless `TAB` is the one
+    they were written for. Moving rows to a new screen without widening those
+    guards leaves every control rendered, styled and completely inert. Toggle
+    one of everything on any screen you add.
+19. **Test through the UI, not the functions.** The `data-x` collision, the
     112px button and the miswired restore prompt were all invisible to
     unit-style checks and obvious the moment a real click drove them. The menu
     overflow above is the same lesson again: it was found by measuring a
