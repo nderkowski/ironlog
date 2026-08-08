@@ -424,6 +424,39 @@ Both are derived from history: there is no stored counter, as everywhere else.
   single button.
 - **Templates stay single-variant.** Doubling every template would be noise.
 
+### Switching lb ↔ kg asks, because the app can't know
+
+Flipping the unit used to relabel and nothing else, so a 225 lb squat became a
+"225 kg" squat: every number in the log silently changed meaning, and the bar
+and plate inventory were stranded in the old unit. Both readings of that switch
+are legitimate —
+
+1. *"convert my log"* — the numbers are lb and I want them in kg;
+2. *"just change the label"* — the numbers were always kg, the label was wrong;
+
+— and nothing in the data distinguishes them, so `unitSheet()` asks rather than
+guessing. Cancel is a real option and changes nothing.
+
+- **Reps, seconds and distance are never touched.** `load` is converted
+  alongside `w`, because it is a *resolved* weight stored at log time, not
+  something re-derived on read. Converting one without the other would desync
+  every bodyweight and assisted lift.
+- **A bar that was the standard one snaps to the new standard**, rather than
+  converting to 20.4 kg — plate maths against 20.4 with real kg plates is
+  inexact on every single lift. A genuinely custom bar (trap, safety squat) has
+  no standard to snap to, so it converts. Same rule for the settings bar and
+  the per-exercise override.
+- **Both paths reset the plate inventory**, since 20.4 kg plates don't exist
+  and the relabel path's own premise is that everything was already kg.
+- A backup file is written **inside the tap**, before anything changes, on the
+  same reasoning as `commitSession()`. Undo holds a whole-state snapshot for
+  ten seconds — an undo that re-derived would just be a second chance to get
+  the arithmetic wrong.
+- An empty log switches with no questions asked: there is nothing to convert or
+  mislabel, so don't make an empty app ask.
+- **Round-tripping drifts.** Values are rounded to 0.1, so lb → kg → lb lands
+  at 225.1 rather than 225. Accepted, and asserted so it can't get worse.
+
 ### `normalize()` is the only door into the state
 
 Storage, a backup file and a paste all go through it, so an old export can't
@@ -680,6 +713,19 @@ Slice 6 (v14), week variants — `t24`, 68 assertions:
 - Export→import round trip with variants, **and a v4 backup file importing
   clean** — which is the shape every auto-backup already on the phone has
 - Plan with a switcher measured at 320 px and 390 px, no sideways scroll
+
+Slice 7 (v15), switching units — `t25`, 40 assertions:
+
+- An empty log switches silently and picks up the kg bar, plate set and step
+- With history it asks, shows the actual arithmetic (225 lb → 102.1 kg), and
+  cancelling changes nothing at all
+- Converting: `w` and `load` together, session and settings bodyweight, the
+  per-exercise weight step; reps left alone; the standard bar snapped to 20
+  while a 60 lb trap bar converted to 27.2
+- Relabelling leaves every number and still un-strands the bar and plates
+- Undo restores the whole log, the inventory and the per-exercise overrides
+- A round trip lands within 0.1 of where it started
+- The sheet measured at 320 px and 390 px
 
 **Confirmed on a real phone** (Android, 1 Aug 2026, v7 deploy)
 

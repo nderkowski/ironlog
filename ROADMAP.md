@@ -323,11 +323,14 @@ taken. Everything else on this list is a weekend; this is a project. Options in
 increasing order of effort: a "restore from file on launch" prompt, a
 user-supplied cloud file handle, or a real backend with auth.
 
-Slices 1–3 are done and Slice 0 is nearly closed, so this is next. Start with
-the cheapest rung — **"restore from file on launch"** — because it is most of
-the safety for none of the server: on a fresh install with no data, offer to
-import a backup file before showing an empty split. That plus a working export
-is the whole disaster-recovery story, and neither needs a backend.
+**The cheapest rung is already built** — the `fresh` check in `viewToday()`
+offers "Restore from a backup" on an install with no sessions and no exercises
+anywhere, and auto-backup writes a file inside the tap on "Save workout". That
+plus a working export is the whole disaster-recovery story, and none of it
+needed a backend. So what is actually left here is the expensive half: a
+user-supplied cloud file handle, or a real backend with auth. Both are a
+project rather than a weekend, and neither should start without deciding
+whether multi-device is a real need — see the settled decision on accounts.
 
 ---
 
@@ -352,11 +355,12 @@ Not bugs, but they should be revisited and are honest limits of the current mode
 - **The RPE 9.5 hold threshold is another defensible guess.** So is weighting a
   helper muscle at ½ a set. Both are conventions, both are documented, neither
   is derived.
-- **Unit switching relabels without converting.** Flipping lb → kg leaves every
-  historical number numerically identical. Either convert the whole log on switch
-  or refuse to switch once history exists. It now also strands the bar weight and
-  plate inventory in the old unit — there's a "Reset to kg/lb" button in settings,
-  but nothing prompts you to press it.
+- ~~**Unit switching relabels without converting.**~~ ✅ *fixed in v15.* The
+  switch now asks: convert the log, or relabel it. Both readings were
+  legitimate and nothing in the data distinguishes them, so guessing either way
+  would have been wrong for half of users. Both paths also un-strand the bar and
+  plate inventory, which was simply broken. Round-tripping drifts by 0.1 —
+  accepted and asserted. See PROJECT_STATE.
 - **The ½-set helper weighting is a convention, not a measurement.** It's the
   common one and it beats both alternatives (full credit inflates, main-only
   undercounts pressing triceps), but nobody has derived it. If it ever needs to

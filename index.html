@@ -669,7 +669,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v14";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v15";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -1071,6 +1071,100 @@ function defaultPlates(u){
     : [{w:45,n:4},{w:35,n:1},{w:25,n:2},{w:10,n:2},{w:5,n:2},{w:2.5,n:2}];
 }
 function defaultBar(u){ return u==="kg"?20:45; }
+
+/* ---- changing units ----
+   Flipping lb → kg used to relabel and nothing else, so a 225 lb squat became
+   a "225 kg" squat: every number in the log silently changed meaning, and the
+   bar and plate inventory were left stranded in the old unit. Both readings of
+   the switch are legitimate — "convert my log" and "the numbers were already
+   kg, the label was wrong" — and the app cannot tell them apart, so it asks
+   instead of guessing. Either way the bar and plates end up in the new unit,
+   which is the half that was simply broken. */
+var LB_PER_KG=0.45359237;
+
+/* Reps, seconds and distance are not weights and are never touched. `load` is
+   converted alongside `w` so the pair stays coherent — it is a resolved weight,
+   not a derived-on-read value. */
+function convertUnits(to){
+  var f=(to==="kg")?LB_PER_KG:(1/LB_PER_KG);
+  var oldBar=num(S.settings.bar);
+  function cv(v){ var n=num(v); return n?round(n*f,1):n; }
+  /* A bar that was the standard one snaps to the new standard: converting it
+     gives a 20.4 kg bar, and plate maths against 20.4 with real kg plates is
+     inexact on every single lift. A genuinely custom bar — a trap bar, a
+     safety squat bar — is converted, because there is no standard to snap to. */
+  function cvBar(v){
+    var n=num(v);
+    if(!n) return n;
+    return (n===oldBar||n===defaultBar(to==="kg"?"lb":"kg"))?defaultBar(to):cv(n);
+  }
+  function cvEx(e){ e.inc=e.inc?cv(e.inc):e.inc; e.bar=cvBar(e.bar); }
+  function cvSets(sets){
+    (sets||[]).forEach(function(s){
+      if(s.w!==""&&s.w!==null&&s.w!==undefined) s.w=String(cv(s.w));
+      if(s.load!==undefined&&s.load!==null) s.load=cv(s.load);
+    });
+  }
+  S.sessions.forEach(function(sess){
+    sess.bw=cv(sess.bw);
+    sess.exercises.forEach(function(e){ cvEx(e); cvSets(e.sets); });
+  });
+  if(S.active){
+    S.active.bw=cv(S.active.bw);
+    S.active.exercises.forEach(function(e){ cvEx(e); cvSets(e.sets); });
+  }
+  eachPlanEx(cvEx);
+  S.settings.bodyweight=cv(S.settings.bodyweight);
+  S.settings.inc=cv(S.settings.inc)||defaultInc(to);
+}
+function defaultInc(u){ return u==="kg"?2.5:5; }
+
+function setUnit(to,convert){
+  /* A full snapshot, because this rewrites every weight in the log and an undo
+     that re-derives would be a second chance to get the maths wrong. */
+  var before=JSON.parse(JSON.stringify(S));
+  if(convert) convertUnits(to);
+  S.settings.unit=to;
+  /* Both paths land the bar and plates in the new unit: converting gives you
+     20.4 kg plates, which don't exist, and relabelling means the numbers were
+     already in the new unit so a 45 "kg" bar was never right either. */
+  S.settings.bar=defaultBar(to);
+  S.settings.plates=defaultPlates(to);
+  recomputePRs();
+  writeNow(); viewPlan();
+  toastUndo(convert?("Log converted to "+to):("Now labelled "+to),function(){
+    S=before; recomputePRs(); writeNow(); render();
+    toast("Units put back");
+  });
+}
+
+function unitSheet(from,to){
+  sheet('<h3>Switch to '+esc(to)+'?</h3>'+
+    '<div class="sub">You have '+plural(S.sessions.length,"session")+' logged in '+esc(from)+
+      '. The app can\'t tell which of these you mean, so it won\'t guess.</div>'+
+    '<div class="menu">'+
+      '<button data-x="conv"><b>Convert my log to '+esc(to)+'</b>'+
+        '<span class="h">every weight ×'+(to==="kg"?"0.45":"2.2")+'</span></button>'+
+      '<button data-x="label"><b>Just change the label</b>'+
+        '<span class="h">numbers stay as they are</span></button>'+
+    '</div>'+
+    '<div class="tiny muted" style="margin:10px 0 0">Converting multiplies every logged weight, '+
+      'so a '+(from==="lb"?"225 lb":"100 kg")+' lift reads '+(from==="lb"?"102.1 kg":"220.5 lb")+
+      ' afterwards. Relabelling leaves the numbers alone — use it only if they were already in '+esc(to)+
+      '. Either way your bar and plates are reset to the standard '+esc(to)+' set, and a backup file is '+
+      'saved first. Ten seconds to undo.</div>'+
+    '<button class="btn ghost block" style="margin-top:10px" data-x="cancel">Cancel</button>',
+    function(el){
+      function go(convert){
+        /* Still inside the tap, which is what a download needs. */
+        try{ downloadBackup(payload(),true); }catch(e){}
+        closeSheet(); setUnit(to,convert);
+      }
+      $('[data-x="conv"]',el).onclick=function(){ go(true); };
+      $('[data-x="label"]',el).onclick=function(){ go(false); };
+      $('[data-x="cancel"]',el).onclick=function(){ closeSheet(); viewPlan(); };
+    });
+}
 function barOf(ex){ var b=num(ex&&ex.bar); return b>0?b:0; }
 function plateInv(){
   return (S.settings.plates||[])
@@ -3613,7 +3707,21 @@ $("#view").addEventListener("change",function(e){
   var el=e.target.closest("[data-set]");
   if(!el||el.classList.contains("switch")) return;
   var k=el.dataset.set;
-  S.settings[k]=(k==="unit")?el.value:num(el.value);
+  if(k==="unit"){
+    var to=el.value;
+    if(to===S.settings.unit) return;
+    /* Nothing logged and nothing planned means nothing to convert or mislabel,
+       so don't make an empty app ask a question it can answer itself. */
+    if(!S.sessions.length&&planIsEmpty()&&!S.active){
+      S.settings.unit=to;
+      S.settings.bar=defaultBar(to); S.settings.plates=defaultPlates(to);
+      S.settings.inc=defaultInc(to);
+      writeNow(); viewPlan(); return;
+    }
+    unitSheet(S.settings.unit,to);
+    return;
+  }
+  S.settings[k]=num(el.value);
   if(k==="rest"&&S.settings.rest<5) S.settings.rest=5;
   if(k==="repLow") S.settings.repLow=Math.max(1,S.settings.repLow);
   if(k==="repHigh") S.settings.repHigh=Math.max(S.settings.repLow,S.settings.repHigh);
