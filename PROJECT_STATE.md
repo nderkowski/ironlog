@@ -560,15 +560,65 @@ copy of every exercise.
 
 ### `trend(name)` — is this lift moving
 
-Mean best-e1RM (Epley) of the last 3 non-deload sessions vs the 3 before.
-`up` ≥ +1.5%, `down` ≤ −2%, `flat` between. Returns `new` until 4 sessions exist,
-so the app stays quiet rather than guessing.
+**Least-squares slope** of best-e1RM over the last `max(6, cycle + 3)` non-deload
+sessions, scaled to *percent per 3 sessions*. `up` ≥ +1.5%, `down` ≤ −2%, `flat`
+between. Returns `new` until 4 sessions exist, so the app stays quiet rather
+than guessing.
+
+It used to be the mean of the last 3 sessions against the 3 before, **and that
+measured the wrong thing.** Under double progression e1RM *sawtooths*: reps
+climb from the bottom of the range to the top, then the load steps and reps
+reset, dropping the score back. A 3-vs-3 mean straddling that reset reads the
+phase of the sawtooth, not the trend.
+
+Simulated on a flawless run — never a missed rep — the old code reported
+**"down"**:
+
+| range | load | old verdict |
+|---|---|---|
+| 8–12 | 185 | −2.6% down |
+| 8–12 | 225 | −2.9% down |
+| 6–10 | 185 | −2.8% down |
+| 8–15 | 135 | −8.3% down |
+| 8–20 | 100 | −16.6% down |
+
+and it got **worse the stronger you got**, because a fixed 5 lb step is a
+shrinking fraction of the load while the rep climb is not. `"down"` is what
+makes `prescribe()` cut 10% off the bar, so the engine could back off someone
+doing everything right.
+
+A slope over a window guaranteed to contain a whole cycle has no phase to read.
+`cycleOf(name)` is `repTop − reps + 1`, from the plan and then from history;
+straight sets have no cycle, so 1. Scaling to "% per 3 sessions" is what lets
+the ±1.5 / −2 thresholds keep the calibration they were tuned with.
+
+Two things to know before touching it:
+
+- **Whole-cycle windows are worse, not better.** A window of exactly one cycle
+  captures the ramp and then the reset as separate phases and swings harder
+  (−2.1% to +7.2% on 8–15, versus +0.5% to +2.1% for `cycle + 3`). The
+  overlapping longer window is what smooths it.
+- **A wide range genuinely reads slower.** 8–15 gains 5 lb every eight sessions,
+  which really is under the +1.5% bar, so it shows "flat". The chip is a rate
+  now. That is honest, not a bug.
 
 ### `deloadCheck()` — is the whole block stale
 
-Of the lifts in your routines that have enough history, the share that aren't
-climbing. ≥60% → "time to deload"; ≥40% → a softer watch note. Suppressed while a
-deload week is running or during a 14-day snooze.
+Of the lifts in your routines with at least 6 sessions, the share whose
+**`trendLong()` slope is ≤ 0**. ≥60% → "time to deload"; ≥40% → a softer watch
+note. Suppressed while a deload week is running or during a 14-day snooze.
+
+Both halves of that changed, and for one reason. Over the short window the
+slope still depends slightly on cycle phase: across every plausible range and
+load, a flawless run dips as low as **−0.37%** at its worst phase, while a
+genuine stall reads exactly **0.00%**. Those overlap, so *no threshold on the
+short window can separate "progressing slowly" from "not progressing at all"*.
+Over two cycles the phase washes out — flawless never drops below **+0.35%**,
+a stall is still 0.00% — and `pct <= 0` splits them cleanly.
+
+That is also why it no longer keys off the `"up"` *label*: the flat band
+includes real but slow progress, and counting that as stalled is exactly how a
+working plan gets told to take a week off.
 
 ### `recomputePRs()`
 
@@ -727,6 +777,20 @@ Slice 7 (v15), switching units — `t25`, 40 assertions:
 - A round trip lands within 0.1 of where it started
 - The sheet measured at 320 px and 390 px
 
+Slice 8 (v16), the trend signal — `t26`, 37 assertions, all driven by seeding a
+textbook double-progression history and reading the verdict off the card:
+
+- Four ranges that used to read "down" on a flawless run — 8–12 @185, 8–12
+  @225, 6–10 @185, 8–15 @135 — now read climbing or flat, never slipping, and
+  the engine never backs off or cuts a set
+- A genuine decline still shows SLIPPING and still refuses to add weight
+- A genuine stall reads flat, and is not mistaken for a decline
+- Straight sets, which have no cycle, are unaffected
+- Under 4 sessions it still says nothing
+- **The deload nudge checked at every phase of the cycle**, 10 through 20
+  sessions, on a 3-lift plan: never fires on flawless progress — and still
+  fires on a plan that has genuinely stopped
+
 **Confirmed on a real phone** (Android, 1 Aug 2026, v7 deploy)
 
 - The tap-freeze is gone.
@@ -839,7 +903,14 @@ bite.
     adding the word "straight" to it starved the exercise name to *nothing* at
     320px in one commit. If you add anything to that row, run the 320 px
     overflow assertions in `t21` first.
-17. **Test through the UI, not the functions.** The `data-x` collision, the
+17. **Any signal derived from e1RM has to survive the double-progression
+    sawtooth.** Reps climb, load steps, reps reset — so the score saws up and
+    down with a period of `repTop − reps + 1` sessions. Compare two windows
+    across that and you measure phase, not progress; it read "down" on a
+    flawless run and cut the weight. If you add another trend, stall, PR-pace
+    or readiness signal, simulate a perfect run through it *first* and check it
+    never reports a decline. `tools/test/t26-trend.mjs` does exactly that.
+18. **Test through the UI, not the functions.** The `data-x` collision, the
     112px button and the miswired restore prompt were all invisible to
     unit-style checks and obvious the moment a real click drove them. The menu
     overflow above is the same lesson again: it was found by measuring a

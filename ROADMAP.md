@@ -338,9 +338,19 @@ whether multi-device is a real need — see the settled decision on accounts.
 
 Not bugs, but they should be revisited and are honest limits of the current model.
 
-- **Epley e1RM degrades above ~10 reps.** Using it as the trend signal for a
-  12-rep accessory is noisy. Consider trending top-set load or volume for
-  exercises whose rep range tops out high, and keep e1RM for the low-rep lifts.
+- ~~**Epley e1RM degrades above ~10 reps.**~~ ❌ *this was wrong — checked in
+  v16.* Measured against standard %1RM reference tables across 1–20 reps, Epley
+  has the **lowest** mean error of the common formulas (1.09 pp; Wathen 1.19,
+  Brzycki 2.09, Mayhew 3.79, Lombardi 4.18) and is essentially exact at 10, 12
+  and 20 reps. The belief comes from noticing Epley and Brzycki diverge above
+  10 — but it is Brzycki that collapses up there (−12.8 pp at 20 reps). Epley's
+  only structural flaw is at 1 rep, and `e1rm()` already special-cases it.
+  **Do not swap the formula.**
+
+  Chasing this did find a real bug, one level up: `trend()` was reading the
+  phase of the double-progression sawtooth and reporting "down" on a flawless
+  run, which is what makes `prescribe()` cut 10% off the bar. ✅ *fixed in v16* —
+  see PROJECT_STATE and trap 17.
 - **~3 weeks before the app says anything.** `trend()` needs 4 sessions of a lift,
   which on an A/B/C split is about three weeks. New users see a dumb logger for a
   month. Consider a lower-confidence signal at 2–3 sessions, labelled as such.
