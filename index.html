@@ -675,7 +675,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v21";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v22";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -1310,6 +1310,44 @@ function platesFor(target,bar){
   return {list:out,per:per,got:num(bar)+got*2,exact:Math.abs(got-per)<1e-9};
 }
 
+/* The warm-up ramp.
+
+   Deletes typing and mental arithmetic at the moment attention is lowest, off
+   inputs the app already has: today's working weight, the bar, and the plates
+   you own. Deliberately NOT automatic — how much warm-up a lift needs depends
+   on where it sits in the session, and the first exercise wants three sets
+   where the fourth wants none. One tap in the ⋯ menu, session-local.
+
+   Snapped to loads you can actually build: `platesFor().got` is the achievable
+   total, so a ramp never asks for 137 lb on a bar that can only make 135. With
+   no bar (dumbbells, a machine) it rounds to the weight step instead. */
+/* Today's working weight for this exercise: the first working set's, since
+   that is what the prescription filled in and what the later sets carry
+   forward from. Warm-ups are skipped by definition — ramping off a warm-up
+   would compound. */
+function workWeight(ex){
+  var w=working((ex&&ex.sets)||[]);
+  for(var i=0;i<w.length;i++) if(num(w[i].w)>0) return num(w[i].w);
+  return 0;
+}
+function rampSets(ex,target){
+  var bar=barOf(ex), step=stepFor(ex), out=[], seen={};
+  function add(w,r){
+    w=Math.round(w*10)/10;
+    if(!(w>0)||w>=target||seen[w]) return;
+    seen[w]=1; out.push({w:String(w),r:String(r),warm:true,done:false});
+  }
+  function achievable(w){
+    if(!bar) return Math.max(step,Math.round(w/step)*step);
+    if(w<=bar) return bar;
+    return platesFor(w,bar).got;
+  }
+  if(bar) add(bar,5);                          // the empty bar, always first
+  add(achievable(target*0.6),5);
+  add(achievable(target*0.8),3);
+  out.sort(function(a,b){ return num(a.w)-num(b.w); });
+  return out;
+}
 /* Everything on the set row's second line. Returns inner HTML only — the
    .plates node itself is never replaced, so nothing on the logging path loses
    DOM identity. The RPE chip re-enables pointer events on itself; the rest of
@@ -2117,6 +2155,21 @@ function startSession(routine,vix){
   save(); render();
 }
 
+/* How long this day usually takes. Derived, not stored — `ts` and `endTs`
+   have always been there — and it answers the one question you ask before
+   starting: have I got time for this. Median rather than mean, because one
+   session you forgot to finish for three hours would otherwise define "usual".
+   Silent under three sessions rather than extrapolating from one. */
+function typicalDur(routine){
+  var ms=S.sessions.filter(function(s){
+      return s.routineId===routine.id&&num(s.endTs)>num(s.ts);
+    }).map(function(s){ return num(s.endTs)-num(s.ts); })
+    .filter(function(d){ return d>4*60000&&d<5*3600000; })   // not a mis-tap, not a forgotten session
+    .sort(function(a,b){ return a-b; });
+  if(ms.length<3) return "";
+  return ' · usually '+dur(ms[Math.floor(ms.length/2)]);
+}
+
 /* Build an in-session exercise, prefilled with today's prescription.
    Warm-ups carry over from last time so you don't retype them. */
 function makeSessionEx(planEx,planId){
@@ -2169,7 +2222,7 @@ function todayIdle(){
         '<div class="daymark"><div class="letter">'+esc(nr.key)+'</div><div class="sub">next</div></div>'+
         '<div class="body"><h2>'+esc(nr.name)+
           (nvs.length>1?' <span class="chip tag">'+esc(variantLabel(nr,nvi))+'</span>':"")+'</h2>'+
-        '<div class="exlist">'+esc(names)+'</div></div>'+
+        '<div class="exlist">'+esc(names)+typicalDur(nr)+'</div></div>'+
       '</div>'+
       '<div style="margin-top:12px">'+
         (nex.length
@@ -2507,6 +2560,19 @@ function toggleSet(ei,si){
   }
   if(!num(st.r)){ toast("Add reps first"); return; }
   st.done=true; st.ts=Date.now();
+  /* How long the gap before this set actually was, in seconds. Every input
+     already existed — `ts` is stamped on each set at toggle — and storing the
+     gap costs nothing, but it can only be recorded as it happens. Nothing
+     reads it yet; it is context for a bad session later ("reps fell, but the
+     rest was 45s shorter than usual"), which is an input that stops the trend
+     reading a rushed session as weakness. Absent means unknown, so no
+     migration: old sets simply don't have it. */
+  var prev=null;
+  for(var q=si-1;q>=0;q--) if(ex.sets[q].done&&num(ex.sets[q].ts)){ prev=ex.sets[q]; break; }
+  if(prev){
+    var gap=Math.round((st.ts-num(prev.ts))/1000);
+    if(gap>0&&gap<3600) st.rest=gap;
+  }
   st.load=effLoad(st.w,bwMode(ex));
   if(st.warm){ st.pr=false; }
   else {
@@ -2853,6 +2919,12 @@ function exerciseMenu(ei){
     barRow(ex,"bar")+
     muscleRow(ex)+
     '<div class="menu" style="margin-top:10px">'+
+      /* Loaded work only: there is nothing to ramp on a bodyweight or assisted
+         lift, which is the same rule the plate line already follows. */
+      (bwMode(ex)===0&&num(workWeight(ex))>0
+        ?'<button data-x="ramp">Build a warm-up ramp<span class="h">'+
+          esc(rampSets(ex,num(workWeight(ex))).map(function(s){ return fmt(num(s.w))+"×"+s.r; }).join("  ")||"nothing to ramp")+
+          '</span></button>':"")+
       '<button data-x="warmup">+ Add a warm-up set</button>'+
       /* NB: not data-x="top"/"up" — this sheet already uses data-x="top" for
          the rep-range field, and the collision silently binds the handler to
@@ -2890,6 +2962,23 @@ function exerciseMenu(ei){
           ex.metric=num(b.dataset.met); save(); closeSheet(); viewToday(); refreshSummary(); exerciseMenu(ei);
         };
       });
+      var rampBtn=$('[data-x="ramp"]',el);
+      if(rampBtn) rampBtn.onclick=function(){
+        var target=num(workWeight(ex));
+        var ramp=rampSets(ex,target);
+        if(!ramp.length){ toast("Nothing to ramp — that's already the lightest load"); return; }
+        var before=ex.sets.slice();
+        /* Replaces carried-forward warm-ups rather than stacking on top of
+           them; anything already logged is left alone, since undoing work you
+           have done is not what this button is for. */
+        var kept=ex.sets.filter(function(s){ return !s.warm||s.done; });
+        ex.sets=ramp.concat(kept);
+        save(); closeSheet(); viewToday(); refreshSummary();
+        toastUndo(plural(ramp.length,"warm-up set")+" added",function(){
+          ex.sets=before; save(); if(TAB==="today"){ viewToday(); refreshSummary(); }
+          toast("Ramp removed");
+        });
+      };
       $('[data-x="warmup"]',el).onclick=function(){
         ex.sets.unshift({w:ex.sets[0]?ex.sets[0].w:"",r:"5",warm:true,done:false});
         save(); closeSheet(); viewToday(); refreshSummary();
