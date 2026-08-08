@@ -675,7 +675,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v18";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v19";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -1080,7 +1080,12 @@ function trendAt(name,win){
   var pct=(sxy/sxx)/ym*100*3;
   return {state: pct>=1.5?"up":(pct<=-2?"down":"flat"), n:h.length, pct:pct};
 }
-function trend(name){ return trendAt(name,Math.max(6,cycleOf(name)+3)); }
+/* How many sessions the card's verdict is computed from. Named because
+   prescribe()'s back-off guard has to use the same window: a guard shorter
+   than the signal it guards expires while the signal is still firing, which is
+   how the app used to cut 10% off the bar again and again. */
+function trendWin(name){ return Math.max(6,cycleOf(name)+3); }
+function trend(name){ return trendAt(name,trendWin(name)); }
 
 /* The deload question needs a longer horizon than the card chip, and the
    reason is worth understanding before anyone "simplifies" this back to one
@@ -1633,14 +1638,30 @@ function prescribe(name,ex){
   }
 
   if(trend(name).state==="down"){
-    /* One cut, then hold and rebuild. If today's load is already below the
-       peak of the last few sessions, the back-off has happened — cutting
-       again is how an app chases its own tail down. */
-    var recent=hist.slice(1,4).map(function(h){ return num(h.sets[0].w); });
-    var peak=recent.length?Math.max.apply(null,recent):w;
+    /* One cut, then hold and rebuild — and the two halves of that have to be
+       measured over the SAME window, or they fight each other.
+
+       The guard used to look at the last 3 sessions while the verdict it
+       guards is a slope over cycle+3 (≈9). Three obedient sessions at the cut
+       weight pushed every heavier one out of the lookback, so "already backed
+       off" went false while the slope still contained the pre-cut scores and
+       stayed down — a second cut, then a third, every 4 sessions. Simulated
+       closed-loop, that walked a lifter whose true 1RM was *rising* from
+       190 lb to 115. The guard window must be at least the trend window:
+       never cut again while today's load is still below the best first-set
+       load anywhere the "down" verdict was computed from. */
+    var recent=hist.slice(1,1+trendWin(name)).map(function(h){ return num(h.sets[0].w); });
+    /* On assisted work the best session is the one with the LEAST help, so
+       "peak" inverts with the load direction like harder()/easier() do. */
+    var peak=recent.length?(mode===2?Math.min.apply(null,recent):Math.max.apply(null,recent)):w;
     var alreadyDown=mode===2?(w>peak):(w<peak);
     if(alreadyDown)
-      return {w:w,r:low,sets:nsets,why:"Already backed off — beat this before adding",kind:"hold"};
+      /* Hold the load, but let the reps keep climbing. Pinning them to the
+         bottom of the range every session meant an obedient lifter could never
+         produce a rising e1RM — the hold suppressed exactly the evidence that
+         would clear the verdict, so the verdict never cleared. */
+      return {w:w,r:(top>low&&minR>=low)?Math.min(top,minR+rstep):low,sets:nsets,
+              why:"Already backed off — beat this before adding",kind:"hold"};
     if(mode===1&&w<=0)
       return {w:0,r:low,sets:Math.max(1,nsets-1),
               why:"Sliding 3 sessions — drop a set rather than adding load",kind:"deload"};
