@@ -675,7 +675,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v19";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v20";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -717,6 +717,18 @@ function normalize(s){
   s.settings=Object.assign(defaultState().settings,s.settings||{});
   if(!Array.isArray(s.settings.plates)||!s.settings.plates.length)
     s.settings.plates=defaultPlates(s.settings.unit);
+  /* This is documented as the only door into the state, so it has to check the
+     whole shape and not just the parts that have needed migrating. A state
+     whose `sessions` key is missing — a truncated backup, a half-finished
+     write — used to render a blank page and stay blank on every reload, with
+     nothing but "clear your storage" to do about it. */
+  if(!Array.isArray(s.sessions)){ s.sessions=[]; MIGRATED=true; }
+  if(!Array.isArray(s.routines)){ s.routines=[]; MIGRATED=true; }
+  s.sessions.forEach(function(x){
+    if(!Array.isArray(x.exercises)){ x.exercises=[]; MIGRATED=true; }
+    x.exercises.forEach(function(e){ if(!Array.isArray(e.sets)){ e.sets=[]; MIGRATED=true; } });
+  });
+  if(s.active&&!Array.isArray(s.active.exercises)){ s.active=null; MIGRATED=true; }
   (s.routines||[]).forEach(function(r){
     if(!Array.isArray(r.variants)||!r.variants.length)
       r.variants=[newVariant("",Array.isArray(r.exercises)?r.exercises:[])];
@@ -738,7 +750,11 @@ function load(){
     var raw=localStorage.getItem(KEY);
     if(!raw) return defaultState();
     var s=JSON.parse(raw);
-    if(!s||!s.routines) return defaultState();
+    if(!s||typeof s!=="object") return defaultState();
+    /* Nothing recognisable at all — take the stock split. But a log with a
+       damaged `routines` key is still a log, and handing back defaultState()
+       there would silently discard every session in it. */
+    if(!s.routines&&!Array.isArray(s.sessions)) return defaultState();
     return normalize(s);
   }catch(e){ return defaultState(); }
 }
@@ -2900,20 +2916,100 @@ function exerciseMenu(ei){
       };
       $('[data-x="done"]',el).onclick=function(){
         var newName=nameEl.value.trim();
-        if(newName&&newName!==ex.name) renameExercise(ex.name,newName);
+        /* Close this menu BEFORE renaming: a rename onto an existing name
+           opens a sheet of its own, and sheets are a single slot. */
         closeSheet(); viewToday(); refreshSummary();
+        if(newName&&newName!==ex.name) renameExercise(ex.name,newName);
       };
     });
 }
 
-/* Renaming follows the exercise everywhere, so its history stays one line. */
-function renameExercise(oldName,newName){
+/* Renaming follows the exercise everywhere, so its history stays one line.
+
+   Renaming *onto a name that already exists* is a different operation, and it
+   used to happen silently: history joins by name, so "Curl" → "Barbell Curl"
+   fused two lifts into one lineage with no warning, no PR rebuild and no undo
+   — the only destructive action in the app that had none. Tidying names ("DB
+   Press" → "Dumbbell Bench Press") is exactly when someone does this.
+
+   Both outcomes are legitimate and nothing in the data says which is meant, so
+   the app asks, the same way switching units does. */
+function planNameCount(name){
+  var k=normName(name),n=0;
+  eachPlanEx(function(e){ if(normName(e.name)===k) n++; });
+  return n;
+}
+/* Two identical rows in one day is a plan you can't train — you'd do the lift
+   twice. Renaming onto a lift already in the same week produced exactly that. */
+function dedupePlanNames(){
+  S.routines.forEach(function(r){
+    variantsOf(r).forEach(function(v){
+      var seen={};
+      v.exercises=v.exercises.filter(function(e){
+        var k=normName(e.name);
+        if(seen[k]) return false;
+        seen[k]=1; return true;
+      });
+    });
+  });
+}
+/* `history` false renames the plan slot only: from today this row is the new
+   lift, and the old name keeps its own past. The active session counts as
+   today either way. */
+function applyRename(oldName,newName,history){
   var k=normName(oldName);
   eachPlanEx(function(e){ if(normName(e.name)===k) e.name=newName; });
-  S.sessions.forEach(function(s){ s.exercises.forEach(function(e){ if(normName(e.name)===k) e.name=newName; }); });
+  if(history) S.sessions.forEach(function(s){
+    s.exercises.forEach(function(e){ if(normName(e.name)===k) e.name=newName; });
+  });
   if(S.active) S.active.exercises.forEach(function(e){ if(normName(e.name)===k) e.name=newName; });
-  save();
-  toast("Renamed to "+newName);
+  dedupePlanNames();
+  /* Trap 8. A merge is the largest history edit there is, and without this the
+     swallowed lift's sets keep PR flags they never earned. */
+  recomputePRs();
+  writeNow();
+}
+function renameExercise(oldName,newName){
+  var k=normName(oldName), nk=normName(newName);
+  var clash=nk!==k&&(planNameCount(newName)>0||exSessions(newName).length>0);
+  if(!clash){
+    applyRename(oldName,newName,true);
+    render();
+    toast("Renamed to "+newName);
+    return;
+  }
+  var mine=exSessions(oldName).length, theirs=exSessions(newName).length;
+  function go(history){
+    /* A whole-state snapshot, like setUnit(): once two lifts share a name
+       nothing in the data remembers which sets were whose, so an undo that
+       re-derived would have nothing to re-derive from. */
+    var before=JSON.parse(JSON.stringify(S));
+    closeSheet();
+    applyRename(oldName,newName,history);
+    render();
+    toastUndo(history?"Histories merged":"Plan updated, history kept apart",function(){
+      S=before; recomputePRs(); writeNow(); render();
+      toast(oldName+" is back");
+    });
+  }
+  sheet('<h3>'+esc(newName)+' already exists</h3>'+
+    '<div class="sub">'+esc(newName)+' has '+plural(theirs,"logged session")+' and '+
+      esc(oldName)+' has '+plural(mine,"logged session")+
+      '. History is joined by name, so this decides whether they become one lift.</div>'+
+    '<div class="menu">'+
+      '<button data-x="merge"><b>Merge the histories</b>'+
+        '<span class="h">one lift, one trend, one progression</span></button>'+
+      '<button data-x="keep"><b>Keep them separate</b>'+
+        '<span class="h">only the plan changes — past '+esc(oldName)+' sessions stay '+esc(oldName)+'</span></button>'+
+    '</div>'+
+    '<div class="tiny muted" style="margin:10px 0 0">Merging can\'t be undone by renaming back: '+
+      'once both lifts share a name, nothing records which sets were which. Ten seconds to undo.</div>'+
+    '<button class="btn ghost block" style="margin-top:10px" data-x="cancel">Cancel</button>',
+    function(el){
+      $('[data-x="merge"]',el).onclick=function(){ go(true); };
+      $('[data-x="keep"]',el).onclick=function(){ go(false); };
+      $('[data-x="cancel"]',el).onclick=closeSheet;
+    });
 }
 
 /* ---- exercise picker ---- */
@@ -3323,6 +3419,10 @@ function editSession(id){
   var orig=S.sessions.find(function(x){ return x.id===id; });
   if(!orig) return;
   draft=JSON.parse(JSON.stringify(orig));
+  /* Remember what each weight was when the editor opened, so committing can
+     tell an edited set from an untouched one. Stripped again in commitEdit —
+     it must never reach storage. */
+  draft.exercises.forEach(function(e){ e.sets.forEach(function(s){ s.w0=s.w; }); });
   drawEditor();
 }
 
@@ -3434,13 +3534,43 @@ function drawEditor(){
 function commitEdit(){
   var d=draft;
   if(!d) return;
+  /* What bodyweight this session was logged at. `load` is resolved once, at
+     log time, precisely so that changing your bodyweight later can't rewrite
+     history — but sessions predating the d.bw snapshot have no record of it,
+     and the editor used to fill that gap with TODAY's bodyweight. Editing the
+     note on a months-old weighted pull-up silently moved every load in it.
+
+     An untouched set still carries the load it was logged with, so the
+     session's own bodyweight can be read back out of it. */
+  function readBackBw(){
+    var found=0;
+    d.exercises.forEach(function(e){
+      var mode=bwMode(e);
+      if(found||!mode) return;
+      e.sets.forEach(function(s){
+        if(found||s.w0===undefined||s.w0!==s.w||!(num(s.load)>0)) return;
+        found=mode===1?num(s.load)-num(s.w):num(s.load)+num(s.w);
+      });
+    });
+    return found;
+  }
+  var known=(d.bw!==undefined&&num(d.bw)>0)?num(d.bw):readBackBw();
+  var sbw=known||num(S.settings.bodyweight);
+  /* Backfill only what was actually read back — writing today's bodyweight
+     onto an old session would be inventing the very number this is protecting. */
+  if(d.bw===undefined&&known>0) d.bw=known;
+
   /* Drop empty sets and empty exercises, resolve loads, then re-sort. */
   d.exercises.forEach(function(e){
     var mode=bwMode(e);
     e.sets=e.sets.filter(function(s){ return num(s.r)>0; });
     e.sets.forEach(function(s){
+      var edited=s.w0===undefined||s.w0!==s.w;
+      delete s.w0;
       s.done=true;
-      s.load=effLoad(s.w,mode,d.bw!==undefined?d.bw:S.settings.bodyweight);
+      /* Only a weight you actually changed gets re-resolved, and even then
+         against this session's bodyweight rather than today's. */
+      if(edited||!(num(s.load)>0)) s.load=effLoad(s.w,mode,sbw);
     });
   });
   d.exercises=d.exercises.filter(function(e){ return e.sets.length; });
@@ -4073,8 +4203,8 @@ function planExMenu(ri,vi,ei){
       };
       $('[data-x="done"]',el).onclick=function(){
         var newName=nameEl.value.trim();
+        closeSheet(); viewPlan();                    // see the note in the session menu
         if(newName&&newName!==ex.name) renameExercise(ex.name,newName);
-        closeSheet(); viewPlan();
       };
     });
 }
