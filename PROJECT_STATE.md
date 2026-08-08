@@ -6,7 +6,7 @@ non-obvious parts, and what has actually been verified. Pair it with
 for the commercial question. **[Traps](#traps--read-before-changing-anything)
 is the section to read before touching anything.**
 
-*Last updated: 1 Aug 2026 — built with Claude Opus 5.*
+*Last updated: 8 Aug 2026 (v18) — built with Claude Opus 5.*
 
 ---
 

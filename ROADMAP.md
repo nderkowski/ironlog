@@ -19,6 +19,19 @@ don't re-derive that work.
 **All six are fixed and shipped** — 1 in v12, 2/3/5/6 in v13, 4 in v14. They
 stay here as the record of what the bugs were and what was decided.
 
+Four more shipped after them, from working down this file rather than from a
+gym session:
+
+| | |
+|---|---|
+| **v15** | Switching lb ↔ kg converts the log, or relabels it, but asks first — it used to relabel silently and strand the bar and plates in the old unit |
+| **v16** | `trend()` was reading the phase of the double-progression sawtooth and reporting "down" on a flawless run, which is what makes `prescribe()` cut 10% off the bar. Also: the "Epley degrades above 10 reps" note was wrong, and is now corrected in place |
+| **v17** | Settings moved off the foot of the Plan tab into their own screen behind a header gear; Progression stayed with the split it shapes |
+| **v18** | The gear had no SVG sizing rule and rendered edge-to-edge as a smudge |
+
+287 assertions across eight suites now live in `tools/test/`. Run them before
+and after any change.
+
 ### 1. BUG — both exercise menus overflowed sideways ✅ *fixed in v12*
 
 Reported on the Plan page; it affected the Today menu identically. The sheet
