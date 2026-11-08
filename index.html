@@ -196,6 +196,17 @@ h1,h2,h3{margin:0;text-wrap:balance}
 }
 .daypick .k{font-family:var(--mono);color:var(--ink);font-weight:700}
 
+/* Today: the one-line "Last ... Edit" row under the day card */
+.lastsess{
+  display:flex;align-items:center;gap:10px;width:100%;min-height:44px;
+  padding:8px 12px;border-radius:12px;border:1px solid var(--line);
+  background:var(--panel);text-align:left;font-size:13px;color:var(--ink-2);
+}
+.lastsess .ls-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lastsess .ls-t b{color:var(--ink);font-weight:700}
+.lastsess .ls-k{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
+.lastsess .ls-edit{flex:0 0 auto;font-weight:700;color:var(--accent);padding:4px 8px}
+
 /* ---------- exercise card ---------- */
 .ex{padding:0;overflow:hidden}
 .ex-head{
@@ -628,6 +639,14 @@ nav.tabs .t.on{color:var(--accent);background:var(--accent-soft)}
   padding:8px 14px calc(20px + env(safe-area-inset-bottom,0px));
   animation:up .2s cubic-bezier(.2,.8,.3,1);
 }
+/* editor Save/Cancel stay in reach: sticky to the bottom of the scrolling sheet,
+   cancelling the sheet's own bottom padding so it sits flush above the safe area */
+.sheet .sheet-foot{
+  position:sticky;bottom:calc(-20px - env(safe-area-inset-bottom,0px));z-index:2;display:flex;gap:8px;
+  margin:12px -14px calc(-20px - env(safe-area-inset-bottom,0px));
+  padding:10px 14px calc(14px + env(safe-area-inset-bottom,0px));
+  background:var(--bg);border-top:1px solid var(--line);
+}
 .grab{width:38px;height:4px;border-radius:2px;background:var(--line);margin:6px auto 12px}
 .sheet h3{font-size:17px;font-weight:700;margin-bottom:2px}
 .sheet .sub{font-size:13px;color:var(--ink-2);margin-bottom:14px}
@@ -739,7 +758,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v26.1";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v26.4";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -2712,20 +2731,19 @@ function todayIdle(){
       '<button class="btn ghost block" data-act="import">Restore from a backup</button></div>';
   }
 
+  /* One small row for the session he just finished: most edits are a typo
+     fixed straight after the workout, and History is ~2000px down Progress.
+     Opens the existing editor (editSession) directly. Hidden mid-workout
+     because todayActive() renders instead of this view. */
   var last=S.sessions[0];
   if(last){
-    var vol=0,sets=0;
-    last.exercises.forEach(function(e){ vol+=exVolume(e); sets+=working(e.sets).length; });
-    html+='<div class="card">'+
-      '<div class="row"><div class="eyebrow">Last session</div><div style="flex:1"></div>'+
-      '<span class="tiny muted">'+esc(relDate(last.ts))+'</span></div>'+
-      '<div class="row" style="margin-top:8px">'+
-        '<div><div class="num" style="font-size:19px;font-weight:700">'+esc(last.key)+'</div><div class="tiny muted">'+esc(last.name)+'</div></div>'+
-        '<div style="margin-left:auto;text-align:right">'+
-          '<div class="num" style="font-size:19px;font-weight:700">'+commas(vol)+'</div>'+
-          '<div class="tiny muted">'+unit()+' volume · '+plural(sets,"set")+'</div>'+
-        '</div>'+
-      '</div></div>';
+    var lsets=0, ago=Math.floor((Date.now()-last.ts)/864e5);
+    last.exercises.forEach(function(e){ lsets+=working(e.sets).length; });
+    html+='<button class="lastsess" data-act="edit-last" data-id="'+esc(last.id)+'">'+
+      '<span class="ls-t"><span class="ls-k">Last</span> <b>'+esc(last.name)+'</b> · '+
+        esc(ago>=0&&ago<7?new Date(last.ts).toLocaleDateString(undefined,{weekday:"short"}):shortDate(last.ts))+
+        ' · '+plural(lsets,"set")+'</span>'+
+      '<span class="ls-edit">Edit</span></button>';
   }
 
   var d=deloadCheck();
@@ -2947,6 +2965,9 @@ $("#view").addEventListener("click",function(e){
   if(t.closest('[data-act="repout-off"]')){
     S.settings.repOutDefault=false; writeNow(); render(); toast("Back to the classic method"); return;
   }
+
+  var editLast=t.closest('[data-act="edit-last"]');
+  if(editLast){ editSession(editLast.dataset.id); return; }
 
   var startBtn=t.closest('[data-act="start"]');
   if(startBtn){
@@ -4660,7 +4681,7 @@ function drawEditor(){
   html+='<button class="btn ghost block" style="margin-top:10px" data-x="addex">+ Add exercise</button>'+
     '<div style="margin-top:10px"><div class="eyebrow" style="margin-bottom:6px">Note</div>'+
     '<textarea class="txt" data-x="note">'+esc(d.note||"")+'</textarea></div>'+
-    '<div class="row" style="gap:8px;margin-top:12px">'+
+    '<div class="sheet-foot">'+
       '<button class="btn ghost" style="flex:1" data-x="cancel">Cancel</button>'+
       '<button class="btn primary" style="flex:1.4" data-x="save">Save changes</button></div>';
 
