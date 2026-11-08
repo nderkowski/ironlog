@@ -760,7 +760,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v26.7";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v26.8";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -939,8 +939,14 @@ function shortDate(ts){
   var same=d.getFullYear()===n.getFullYear();
   return d.toLocaleDateString(undefined,same?{month:"short",day:"numeric"}:{month:"short",day:"numeric",year:"2-digit"});
 }
+/* Calendar days, not 24-hour blocks: 23:00 last night read at 08:00 is
+   "yesterday", not "today" (sprint review; the Today row uses the same rule). */
+function calDaysAgo(ts){
+  var a=new Date(), b=new Date(ts);
+  return Math.round((new Date(a.getFullYear(),a.getMonth(),a.getDate())-new Date(b.getFullYear(),b.getMonth(),b.getDate()))/864e5);
+}
 function relDate(ts){
-  var days=Math.floor((Date.now()-ts)/864e5);
+  var days=calDaysAgo(ts);
   if(days<=0) return "today";
   if(days===1) return "yesterday";
   if(days<14) return days+"d ago";
@@ -2783,8 +2789,7 @@ function todayIdle(){
   if(last){
     /* Calendar days, not 24-hour blocks: last Sunday 09:00 seen on Sunday
        08:00 is six blocks ago and would print "Sun", which reads as today. */
-    var d0=new Date(), d1=new Date(last.ts), lsets=0, lvol=0,
-        ago=Math.round((new Date(d0.getFullYear(),d0.getMonth(),d0.getDate())-new Date(d1.getFullYear(),d1.getMonth(),d1.getDate()))/864e5);
+    var d1=new Date(last.ts), lsets=0, lvol=0, ago=calDaysAgo(last.ts);
     last.exercises.forEach(function(e){ lsets+=working(e.sets).length; lvol+=exVolume(e); });
     html+='<button class="lastsess" data-act="edit-last" data-id="'+esc(last.id)+'">'+
       '<span class="ls-t"><span class="ls-k">Last</span> <b>'+esc(last.name||last.key||"Workout")+'</b> · '+
