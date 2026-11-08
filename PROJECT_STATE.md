@@ -1098,9 +1098,28 @@ bite.
 
 ## Settled decisions
 
-- **No accounts, no server.** The whole point was zero friction and zero ads.
-  The cost is no sync and no automatic backup, which is accepted and mitigated
-  with the share-sheet backup. Revisit only if multi-device becomes a real need.
+- **No accounts, no server — but an automatic backup since v23.** The whole
+  point was zero friction and zero ads, and that still holds: there is no
+  server of ours. Backup goes to a **private GitHub gist on Nick's own
+  account**, with a token he pastes into Settings. It runs after every saved
+  workout, ~30 s after any other change, when the app is backgrounded, and on
+  reconnect. GitHub's gist revisions are the version history. This is a
+  one-user decision: a token in localStorage is fine for the owner and
+  unusable for strangers, so if the app is ever given to other people this
+  becomes a real backend (PRODUCT.md).
+  - **The token and gist id live under `ironlog.gist`, never in `S`**, so they
+    can't reach `payload()`, an export file or the gist itself. `t31` asserts
+    the token appears in no request body, no page HTML and no other key.
+  - **No gist id ≠ no backup.** A new phone with the token pasted back in
+    looks for an existing backup before creating one, and refuses to back up
+    over one holding more sessions than the phone ("Restore it first"). Without
+    that, the near-empty phone log became the newest gist and Restore — which
+    picks the newest — offered it. `gistTarget()`; `t31` section 9.
+  - Restore keeps the phone's log under `ironlog.v1.before-restore` (one slot)
+    before replacing, and goes through `replaceLog()` — the same path as file
+    import, so `normalize()` and `recomputePRs()` always run (traps 8, 15).
+  - `navigator.storage.persist()` is requested on every load; Settings shows
+    whether the browser agreed.
 - **Data is keyed to the origin.** Moving hosts means export-then-import. There is
   no way around this in the browser.
 - **Numbers are monospace everywhere**, UI is system-ui. Font CDNs are blocked in

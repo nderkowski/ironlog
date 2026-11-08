@@ -675,7 +675,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v22";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v23";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -763,9 +763,10 @@ function writeNow(){
   clearTimeout(saveTimer); saveTimer=null;
   try{ localStorage.setItem(KEY,JSON.stringify(S)); }
   catch(e){ toast("Couldn't save — storage is full"); }
+  gistChanged();                      // GitHub backup, debounced; see below
 }
 function save(){
-  if(!storageOK){ mem=S; return; }
+  if(!storageOK){ mem=S; gistChanged(); return; }
   clearTimeout(saveTimer);
   saveTimer=setTimeout(writeNow,120);
 }
@@ -3206,6 +3207,7 @@ function commitSession(){
      that reliably has it AND is exactly when the log is worth keeping. No
      extra tap, no remembering. */
   var auto=autoBackup();
+  gistBackupNow();                    // a finished workout is not left to the debounce
   closeSheet(); go("progress");
   toast(auto?"Workout saved · backup written":"Workout saved");
 }
@@ -3869,9 +3871,10 @@ function viewSettings(){
   '</div>';
 
   html+='<div class="eyebrow" style="margin:6px 0 0">Data</div><div class="card"><div class="stack">'+
-    '<div class="tiny muted">Your log lives in this browser on this device. Nothing is uploaded anywhere, which also means nothing is backed up until you send a copy out.'+
+    '<div class="tiny muted" id="storage-status">'+esc(storageLine())+'</div>'+
+    '<div class="tiny muted">Your log lives in this browser on this device. It only leaves it when you back it up to GitHub below, or send a file out.'+
     (S.settings.lastBackup?' Last copy '+relDate(S.settings.lastBackup)+'.':' No copy yet.')+'</div>'+
-    '<button class="btn primary block" data-act="backup">Back up now</button>'+
+    '<button class="btn primary block" data-act="backup">Save a file copy</button>'+
     '<div class="row" style="gap:8px">'+
       '<button class="btn" style="flex:1" data-act="export">Export file</button>'+
       '<button class="btn" style="flex:1" data-act="import">Import</button>'+
@@ -3879,6 +3882,9 @@ function viewSettings(){
     '<button class="btn danger block" data-act="wipe">Erase everything</button>'+
   '</div></div>';
 
+
+  html+='<div class="eyebrow" style="margin:6px 0 0">GitHub backup</div><div class="card"><div class="stack">'+
+    gistSettingsHtml()+'</div></div>';
 
   html+='<div class="eyebrow" style="margin:6px 0 0">About</div><div class="card">'+
     '<div class="field-row"><div class="fl">Version<div class="fh">Also printed at the foot of the Plan tab — check it on the device before believing any bug report</div></div>'+
@@ -4091,6 +4097,10 @@ $("#view").addEventListener("click",function(e){
   }
   var pw=t.closest("[data-pw],[data-pn]");
   if(pw) return;                                  // let the input handler have it
+  if(t.closest('[data-act="gist-save"]')){ if(gistSaveToken()) viewPrefs(); return; }
+  if(t.closest('[data-act="gist-remove"]')){ gistRemoveToken(); viewPrefs(); return; }
+  if(t.closest('[data-act="gist-now"]')){ gistNowTap(); return; }
+  if(t.closest('[data-act="gist-restore"]')){ gistRestore(); return; }
   if(t.closest('[data-act="export"]')){ doExport(); return; }
   if(t.closest('[data-act="import"]')){ doImport(); return; }
   if(t.closest('[data-act="wipe"]')){
@@ -4544,11 +4554,286 @@ function doImport(){
         var parsed;
         try{ parsed=JSON.parse(raw); }catch(e){ toast("That isn't valid Iron Log JSON"); return; }
         if(!parsed||!parsed.routines||!parsed.sessions){ toast("That file is missing routines or sessions"); return; }
-        S=normalize(parsed);
-        recomputePRs();
-        writeNow(); closeSheet(); go("today"); toast("Log imported");
+        replaceLog(parsed);
+        closeSheet(); go("today"); toast("Log imported");
       };
     });
+}
+
+/* The one way a whole log comes in, from a file or from GitHub. */
+function replaceLog(parsed){
+  S=normalize(parsed);
+  recomputePRs();
+  writeNow();
+}
+
+/* ============================ GitHub backup ============================ */
+/* The token and gist id live under their own key and never in S, so they
+   can't reach the export file, the gist content or a backup. */
+var GIST_KEY="ironlog.gist", GIST_FILE="ironlog.json", GIST_DELAY=30000;
+var BEFORE_KEY="ironlog.v1.before-restore";
+var gistMem=null, gistTimer=null, gistQueue=Promise.resolve();
+var storageKept=null;                 // true/false as the browser reports it; null = not said
+
+function gistLoad(){
+  if(gistMem) return gistMem;
+  var g=null;
+  try{ g=JSON.parse(localStorage.getItem(GIST_KEY)||"null"); }
+  catch(e){ /* unreadable or blocked storage: behave as if not set up */ }
+  return (g&&typeof g==="object")?g:{};
+}
+/* Returns false when the browser refuses the write; the record then lives in
+   memory for this visit only, and the caller says so where it matters. */
+function gistStore(g){
+  try{ localStorage.setItem(GIST_KEY,JSON.stringify(g)); gistMem=null; return true; }
+  catch(e){ gistMem=g; return false; }
+}
+function gistPatch(fields){
+  var g=gistLoad();
+  Object.keys(fields).forEach(function(k){ g[k]=fields[k]; });
+  gistStore(g);
+  return g;
+}
+
+/* Called from writeNow(), so every save path is covered without each one
+   knowing GitHub exists. Marks the gist stale now and sends it GIST_DELAY on. */
+function gistChanged(){
+  var g=gistLoad();
+  if(!g.token) return;
+  if(!g.dirty) gistPatch({dirty:true});
+  clearTimeout(gistTimer);
+  gistTimer=setTimeout(gistBackupNow,GIST_DELAY);
+}
+
+/* Pushes are queued so two never race to create two gists, and each one
+   reads the log when it starts, so the last one sent is the newest state. */
+function gistBackupNow(){
+  clearTimeout(gistTimer); gistTimer=null;
+  if(!gistLoad().token) return Promise.resolve();
+  gistQueue=gistQueue.then(gistPush).catch(function(err){
+    gistPatch({dirty:true, lastError:"Backup failed: "+(err&&err.message||"unknown error")+"."});
+    gistPaint();
+  });
+  return gistQueue;
+}
+function gistNewBody(files){
+  return {description:"Iron Log backup", public:false, files:files};
+}
+/* No gist id in this browser does NOT mean no backup exists: a new phone, or
+   a cleared browser, with the token pasted back in. Creating a gist there
+   would put a near-empty log on top as the newest backup, and Restore — which
+   picks the newest — would then offer the empty one. So look first. Adopt an
+   existing backup only when this phone holds at least as many sessions;
+   otherwise stop and ask for a restore. Nothing is ever lost (GitHub keeps
+   every revision), but this keeps the obvious button pointing at the right
+   log. */
+function gistTarget(g){
+  if(g.gistId) return Promise.resolve(g.gistId);
+  return gistFind().then(function(id){
+    return gistReq("GET","/gists/"+encodeURIComponent(id)).then(function(gist){
+      return gistFileText(gist).then(function(text){
+        var n=0;
+        try{ var p=JSON.parse(text); n=(p&&Array.isArray(p.sessions))?p.sessions.length:0; }
+        catch(e){ n=0; }                  // unreadable: nothing in it worth protecting
+        if(n>S.sessions.length)
+          throw gistFail("GitHub already has a backup with "+plural(n,"session")+
+            ", more than this phone. Restore it first so it isn't buried.");
+        gistPatch({gistId:id});
+        return id;
+      });
+    });
+  },function(err){
+    if(err&&err.none) return "";          // genuinely no backup yet: create one
+    throw err;
+  });
+}
+function gistPush(){
+  var g=gistLoad();
+  if(!g.token) return Promise.resolve();
+  var files={}; files[GIST_FILE]={content:payload()};
+  var sent=gistTarget(g).then(function(id){
+    if(!id) return gistReq("POST","/gists",gistNewBody(files));
+    return gistReq("PATCH","/gists/"+encodeURIComponent(id),{files:files}).catch(function(err){
+      if(err.status!==404) throw err;
+      /* Deleted on GitHub: start again, once. The old id is no longer useful. */
+      gistPatch({gistId:""});
+      return gistReq("POST","/gists",gistNewBody(files));
+    });
+  });
+  return sent.then(function(res){
+    gistPatch({gistId:res.id, lastSync:Date.now(), lastError:"", dirty:false});
+    gistPaint();
+  },function(err){
+    gistPatch({dirty:true, lastError:gistErrText(err)});
+    gistPaint();
+  });
+}
+
+function gistReq(method,path,body){
+  var g=gistLoad();
+  var init={method:method, cache:"no-store", headers:{
+    "Accept":"application/vnd.github+json",
+    "X-GitHub-Api-Version":"2022-11-28",
+    "Authorization":"Bearer "+g.token}};
+  if(body){ init.headers["Content-Type"]="application/json"; init.body=JSON.stringify(body); }
+  return fetch("https://api.github.com"+path,init).then(function(res){
+    return res.text().then(function(text){
+      if(!res.ok){ var err=new Error("HTTP "+res.status); err.status=res.status; throw err; }
+      if(!text) return null;
+      try{ return JSON.parse(text); }
+      catch(e){ throw gistFail("GitHub sent back something unreadable."); }
+    });
+  },function(){
+    var err=new Error("network"); err.status=0; throw err;
+  });
+}
+function gistFail(msg){ var e=new Error(msg); e.userMsg=msg; return e; }
+function gistErrText(err){
+  if(err&&err.userMsg) return err.userMsg;
+  var s=err&&err.status;
+  if(s===0) return "Couldn't reach GitHub. Will retry when you're back online.";
+  if(s===401||s===403) return "GitHub rejected the token. It is invalid or lacks gist permission.";
+  if(s===404) return "The backup gist was not found on GitHub.";
+  if(s) return "GitHub returned an error ("+s+"). Will retry on the next change.";
+  return "Backup failed: "+(err&&err.message||"unknown error")+".";
+}
+
+/* Status text is written into the node directly. A backup never re-renders
+   the screen, so it can finish while you are still looking at it. */
+function gistStatusText(){
+  var g=gistLoad();
+  if(!g.token) return "Not set up. Save a token to start.";
+  if(g.lastError) return "Not backed up: "+g.lastError;
+  if(g.dirty) return "Changes waiting to be backed up.";
+  if(g.lastSync) return "Last backed up "+relDate(g.lastSync)+" at "+
+    new Date(g.lastSync).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"})+".";
+  return "Token saved. Nothing backed up yet.";
+}
+function gistPaint(){ var el=document.getElementById("gist-status"); if(el) el.textContent=gistStatusText(); }
+function paintStorage(){ var el=document.getElementById("storage-status"); if(el) el.textContent=storageLine(); }
+
+function gistSettingsHtml(){
+  var g=gistLoad(), h='';
+  h+='<div class="field-row" style="display:block"><div class="fl">Copy to a private GitHub gist'+
+    '<div class="fh">Every change is copied to one private gist on your account, and GitHub keeps each earlier version. '+
+    'Needs a classic token with only the gist scope, or a fine-grained token with Account permissions → Gists set to read and write.</div></div>';
+  if(g.token){
+    h+='<div class="row" style="gap:8px;margin-top:8px"><span class="tiny" style="flex:1">Token saved</span>'+
+      '<button class="btn sm ghost" data-act="gist-remove">Remove</button></div>';
+  } else {
+    h+='<div class="row" style="gap:8px;margin-top:8px"><input class="txt" type="password" autocomplete="off" '+
+      'autocapitalize="off" spellcheck="false" placeholder="Paste token" data-gist="token" style="flex:1">'+
+      '<button class="btn sm primary" data-act="gist-save">Save</button></div>';
+  }
+  h+='<div class="tiny muted" id="gist-status" style="margin-top:8px">'+esc(gistStatusText())+'</div></div>';
+  h+='<div class="row" style="gap:8px">'+
+    '<button class="btn" style="flex:1" data-act="gist-now">Back up now</button>'+
+    '<button class="btn" style="flex:1" data-act="gist-restore">Restore from GitHub</button></div>';
+  return h;
+}
+
+/* Returns true when a token was stored, so the caller re-renders the row. */
+function gistSaveToken(){
+  var el=$('[data-gist="token"]');
+  var t=el?String(el.value||"").trim():"";
+  if(!t){ toast("Paste a token first"); return false; }
+  if(/\s/.test(t)){ toast("That doesn't look like a token"); return false; }
+  var g=gistLoad();
+  g.token=t; g.dirty=true; g.lastError="";        // nothing is in the gist yet
+  gistStore(g);
+  toast("Token saved");
+  return true;
+}
+function gistRemoveToken(){
+  var g=gistLoad();
+  clearTimeout(gistTimer); gistTimer=null;
+  gistStore(g.gistId?{gistId:g.gistId}:{});       // keep the gist id so a re-added token resumes it
+  toast("Token removed from this browser");
+}
+function gistNowTap(){
+  if(!gistLoad().token){ toast("Save a token first"); return; }
+  gistBackupNow().then(function(){
+    var g=gistLoad();
+    toast(g.dirty?(g.lastError||"Backup didn't finish"):"Backed up to GitHub");
+  });
+}
+
+/* Finds the most recently updated gist holding a backup, for when the token is
+   known but the id isn't (a fresh install, or a second phone). */
+function gistFind(){
+  return gistReq("GET","/gists?per_page=100").then(function(list){
+    var hits=(Array.isArray(list)?list:[]).filter(function(x){ return x&&x.files&&x.files[GIST_FILE]; });
+    hits.sort(function(a,b){ return String(b.updated_at).localeCompare(String(a.updated_at)); });
+    if(!hits.length){
+      var e=gistFail("No Iron Log backup was found in this account's gists.");
+      e.none=true; throw e;
+    }
+    return hits[0].id;
+  });
+}
+function gistFileText(gist){
+  var f=gist&&gist.files&&gist.files[GIST_FILE];
+  if(!f) return Promise.reject(gistFail("That gist has no "+GIST_FILE+" in it."));
+  if(!f.truncated) return Promise.resolve(String(f.content||""));
+  /* Large files come back truncated. The raw URL is fetched without the token,
+     so the token never goes to a second host. */
+  return fetch(f.raw_url,{cache:"no-store"}).then(function(res){
+    if(!res.ok) throw gistFail("Couldn't download the full backup (HTTP "+res.status+").");
+    return res.text();
+  },function(){ throw gistFail("Couldn't reach GitHub. Try again when you're online."); });
+}
+function gistRestore(){
+  var g=gistLoad();
+  if(!g.token){ toast("Save a token first"); return; }
+  toast("Fetching your backup…");
+  var have=g.gistId?Promise.resolve(g.gistId):gistFind();
+  have.then(function(id){
+    return gistReq("GET","/gists/"+encodeURIComponent(id)).then(function(gist){
+      if(!g.gistId) gistPatch({gistId:id});
+      return gistFileText(gist).then(function(text){ return {gist:gist, text:text}; });
+    });
+  }).then(function(r){
+    var parsed;
+    try{ parsed=JSON.parse(r.text); }
+    catch(e){ throw gistFail("That backup isn't valid Iron Log JSON."); }
+    if(!parsed||!Array.isArray(parsed.routines)||!Array.isArray(parsed.sessions))
+      throw gistFail("That backup is missing routines or sessions.");
+    confirmRestore(parsed,r.gist);
+  }).catch(function(err){ toast(gistErrText(err)); });
+}
+function confirmRestore(parsed,gist){
+  var when="", ts=gist?Date.parse(gist.updated_at):NaN;
+  if(isFinite(ts)) when=" (saved "+shortDate(ts)+")";
+  confirmSheet("Restore from GitHub?",
+    "The backup"+when+" has "+plural(parsed.sessions.length,"session")+". This phone has "+
+    plural(S.sessions.length,"session")+". Restoring replaces everything on this phone with the backup. "+
+    "A copy of what's on this phone now is kept on the phone, in case you need it back.",
+    "Restore",function(){ applyRestore(parsed); },true);
+}
+function applyRestore(parsed){
+  /* Keep what's there first. If that copy can't be made, nothing is replaced. */
+  try{ localStorage.setItem(BEFORE_KEY,JSON.stringify(S)); }
+  catch(e){ toast("Couldn't keep a copy of this log, so nothing was restored"); return; }
+  try{ replaceLog(parsed); }
+  catch(e){ toast("That backup couldn't be read, so nothing was restored"); return; }
+  go("today"); toast("Restored from GitHub");
+}
+
+/* ============================ storage ============================ */
+function storageLine(){
+  if(storageKept===true) return "Storage: kept by the browser";
+  if(storageKept===false) return "Storage: the browser may clear this if space runs low";
+  return "Storage: this browser doesn't say whether it keeps the log";
+}
+/* Asked once per load. A missing API or a refusal is reported on the line,
+   never thrown at the user. */
+function askPersist(){
+  if(!(navigator.storage&&navigator.storage.persisted)) return;
+  Promise.resolve()
+    .then(function(){ return navigator.storage.persisted(); })
+    .then(function(kept){ return kept?true:navigator.storage.persist(); })
+    .then(function(kept){ storageKept=!!kept; },function(){ storageKept=null; })
+    .then(paintStorage);
 }
 
 /* ============================ render ============================ */
@@ -4575,6 +4860,18 @@ if(S.active) TAB="today";
    writeNow() can toast and the DOM has to exist first. */
 if(MIGRATED) writeNow();
 render();
+
+askPersist();
+/* Anything that failed to reach GitHub is retried when the network returns,
+   and once on each load. */
+window.addEventListener("online",function(){ if(gistLoad().dirty) gistBackupNow(); });
+/* Leaving the app is the last chance before the debounce would have fired —
+   a plan edit followed by locking the phone shouldn't wait for the next
+   launch. Best effort: the browser may suspend the request. */
+document.addEventListener("visibilitychange",function(){
+  if(document.hidden&&gistLoad().token&&gistLoad().dirty) gistBackupNow();
+});
+if(gistLoad().token&&gistLoad().dirty) setTimeout(gistBackupNow,2000);
 
 /* Offline support, only when self-hosted (the manifest is the tell). */
 if("serviceWorker" in navigator && $('link[rel="manifest"]') &&

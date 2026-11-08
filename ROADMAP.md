@@ -67,7 +67,11 @@ it failed on every real case above. The same finding killed a companion fix that
 across slots with different rep ranges (it would have moved a cable fly from
 20 to 10 the session he did 20×10/14/16).
 
-The suites are in `tools/test/` — eleven of them now, `t20`–`t30`. Run them all
+| | |
+|---|---|
+| **v23** | **Automatic backup to a private GitHub gist** (Slice 4's "user-supplied cloud file", for one user). Token in Settings; backs up after every workout and on changes; restore with both session counts shown and the old log kept. A new phone can't bury the real backup under an empty one. Also asks the browser to keep the data (`storage.persist()`). Details in PROJECT_STATE's settled decisions |
+
+The suites are in `tools/test/` — twelve of them now, `t20`–`t31`. Run them all
 before and after any change and read the summary lines; assertion counts are
 deliberately not written down here, because they go stale and did.
 
