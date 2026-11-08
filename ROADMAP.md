@@ -10,7 +10,102 @@ Ship in slices; each slice should leave the app fully usable.
 
 ---
 
-## Next session starts here — v24 shipped in shadow; v25 decides whether it takes over
+## Next session starts here — v25: stop spinning wheels, then hand over
+
+Written 8 Nov 2026 from two independent checks of v24.1:
+
+- **A bug hunt.** Every bug below was reproduced through the real UI; the
+  scripts were throwaway.
+- **A simulated year.** 20 seeds × 52 weeks of the recommended plan through
+  the real `makeSessionEx()/prescribe()/shadowPrescribe()/deloadCheck()`.
+  The simulated lifter has reserve on sets 1–2, rep-outs, ±1 rep noise, bad
+  days and gaps.
+
+The engine's headline year: **only 40% of sessions progress.** The light
+lifts get stuck at loads that can't be done:
+
+- `prescribe()` takes Lateral Raise 15→20 at about week 18 and holds it
+  there for a median 34 weeks, with "Fell short — run it back" and no
+  way out.
+- The v24 shadow flips weight up and down 198 times a year.
+- The shadow misses its own v25 gate: 81% of tapped suggestions landed the
+  rep-out at or above the bottom of the range, against the 85% gate.
+
+### 1. Data safety (reproduced bugs, worst first)
+
+1. **Erase everything pushes an empty log over the GitHub backup.**
+   `gistTarget()`'s guard only runs without a gist id. Fix: never push a
+   log with fewer sessions than the last push without asking; Erase offers
+   to detach from the gist.
+2. **A second tab or the installed app overwrites a saved workout.**
+   `writeNow()` writes its stale `S` wholesale. Fix: listen for the
+   `storage` event, or keep a revision counter that refuses stale writes.
+3. **Restore (GitHub or file import) mid-workout silently discards it**, and
+   nothing ever reads `ironlog.v1.before-restore`. Fix: refuse while
+   `S.active`, as the plan switch does; add "put back the log from before
+   the restore".
+4. **`S.planBackup` is skipped by rename and by lb↔kg conversion**, so
+   Switch back restores a lift cut off from its history, or a 45 kg bar.
+   Fix: `eachPlanEx()` gains an option to include the backup's routines;
+   rename and convert use it.
+5. **lb↔kg mid-workout leaves `shadow.w` and `lastW` unconverted.**
+   Use then fills 65 kg where 65 lb was meant.
+6. **A change made during a gist upload is marked backed up.** Fix: a
+   change counter; only clear `dirty` if it didn't move during the upload.
+7. **`sw.js` caches error responses as the app shell**, so the next offline
+   launch is blank. Fix: only cache `res.ok`.
+8. *(Suspected, check it.)* Skipping the planned last set makes an ordinary
+   set the "rep-out", which skews the v25 evidence.
+
+### 2. Engine (each fix tested in the year simulation; replay Nick's export before shipping, trap 17c)
+
+| | Rule | Year sim, before → after |
+|---|---|---|
+| **P1** | `shadowPrescribe()` remembers a failed jump. If a step from W landed the rep-out below `low−1`, hold W and let the reps run past the top until the last two rep-outs at W have recovered the reps that jump cost (measured, not predicted: the mean of up to 3 rep-outs before the jump minus the one after). Allow +2 steps only when they are ≤10% of the load. Step down only if the last session was the jump, or the previous rep-out at this load was also short (one bad day ≠ a cut). | flips 198 → 18; cuts while stronger 22 → 3.7; unreachable loads 73 → 6; **v25 gate 81% → 94%** (light lifts 69% → 95%) |
+| **P2** | `prescribe()` steps back one step after a failed jump (the first session after it, or two in a row at an established load, below `low−1`), and the same memory gates the next "add 5 lb". | unreachable loads 146 → 6; **sessions that progress 40% → 54%** |
+| **P3** | When a deload week ends, snooze the deload check for 21 days. Today, deload sessions are excluded, so the check sees the same data and fires again at once. | after an illness: 10.8 deload weeks → 2.8, none back-to-back; back to pre-illness loads at week 29.6 instead of 34.9 |
+| **F4** | The stall line can't tell a stall from slow progress: it fires on ~35% of exposures while strength is rising. A stricter slope rule caught only 47% of real plateaus. **Remove it from the card** until v26 has a better rule. | — |
+
+Two lessons from the simulation:
+
+- **The light-lift fix is reactive, not predictive.** It steps back after a
+  jump has *observably* failed, and that is why it works. The v22 jump
+  check, which predicted failure from Epley, was wrong every time on the
+  real log.
+- **What P1 costs:** light lifts sit at their load with reps above the top
+  of the range (curl 30×13–15) until the jump is earned. Rep progression
+  builds muscle about as well as load (Plotkin 2022), but the card must say
+  why. For example: "Building reps before the jump to 20 (+33%)".
+
+### 3. Hand over, and show it working
+
+- **In-app scorecard:** tapped Use count, the share of rep-outs at or above
+  `low`, and the per-lift result. At ≥9 tapped uses and ≥85%, offer "make
+  the rep-out method the default" (one tap, reversible). No export needed.
+- **"Since you started"** in Progress: per lift, first month vs now (load,
+  e1RM, %), sessions per month, and the record timeline. This is the screen
+  that has to answer "did it work?" a year from now.
+- **Keep the year simulation as a regression suite** (shortened, as a new
+  `t3x`), so no future change reintroduces the oscillation or the deload
+  loop.
+
+### Then — the coach (v26–v28)
+
+- **v26, rule-based coach every ~2 weeks:**
+  - Stall → a variation from a curated family, linked to the same history.
+  - Skipped in 3 of 4 → replace or remove.
+  - Under ~10 sets a week for a muscle → add a set.
+  - A session runs long → pair or trim.
+  - Accessory rotation every ~8 weeks, labelled as convention.
+  - At most 2 changes per check-in, one-tap accept, undoable.
+- **v27, AI check-in every 2 weeks (Claude, opt-in, Nick's own key):** it
+  reviews the coach's evidence plus his session notes and proposes up to 3
+  changes from the same fixed action list. It never sets weights. Roughly
+  $0.15 a check-in on Opus 5.5.
+- **v28, form check:** 8–12 frames from a side-on clip, 2–3 cues for the
+  next set, with honest limits.
+
+## Previously — v24 shipped in shadow; v25 decides whether it takes over
 
 **Why.** v22's replay and the research (RESEARCH.md) agree: the engine's limit
 is not its rules but its input. Half of Nick's logged exercises stop exactly
