@@ -760,7 +760,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v26.5";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v26.6";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -6747,8 +6747,8 @@ function coachRuleVolume(){
       title:worst.m.n+" gets few sets",
       reason:worst.m.n+" averaged "+fmt(round(worst.avg,1))+" sets a week over the last 3 weeks (a set counts 1 for the main muscle, "+
         "½ for a helper), while you trained "+(sess/3).toFixed(1)+" times a week.",
-      evidence:"More weekly sets grow more muscle, with diminishing returns; about 10 or more a week is the usual floor "+
-        "in the reviews (Schoenfeld 2017; Pelland 2026; ACSM 2026). This only speaks under "+COACH_MIN_WEEKLY+", well short of that, "+
+      evidence:"More weekly sets grow more muscle, with diminishing returns (Schoenfeld 2017; Pelland 2026); about 10 or "+
+        "more a week is the usual floor (ACSM 2026). This only speaks under "+COACH_MIN_WEEKLY+", well short of that, "+
         "and only on a day with room. Those are short trials, mostly 6–12 weeks, so a guide, not a target.",
       options:[{act:"add", lift:pick.e.name, n:1, label:"Add a set to "+pick.e.name+" ("+pick.r.name+")"}]})];
   }
@@ -6848,7 +6848,7 @@ function coachRuleStall(){
       reason:run.length+" sessions in a row at "+entryText({w:W},mode)+" "+unit()+", over "+
         Math.round((run[0].ts-run[run.length-1].ts)/864e5/7)+" weeks, with the best set no better than before "+
         "(most reps in a set: "+best+")."+(why?" "+why:""),
-      evidence:"Rule of thumb, not a validated test — no plateau rule has one (Bell 2023 is coach opinion), "+
+      evidence:"Rule of thumb, not a validated test — no plateau rule has one (the nearest, Bell 2023, is coaches' consensus on deloading), "+
         "so this waits for six sessions at one load with nothing gained. "+
         (stage===1?"The lift's history stays with it: a small change first, a swap only if it stalls again. "
                   :"A swap starts the new lift's history from zero. ")+
