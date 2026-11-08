@@ -117,7 +117,14 @@ DB Curl 8–12, 9 Sep. History: 25×12,12,9 → app said "go for 10" (the target
 slid from 12 to 10 off the rep-out) → 25×12,12,11 → v26.1 "go for 12",
 prototype "30×8" → he did 25×12,12,12, then 25×14,12, then 30×8,8,8. The jump
 the prototype asks for was made at the bottom of the range when he finally
-took it, a month later. Supports lane A; no real call gets more aggressive
+took it, a month later. Supports lane A;
+
+Real-log **load agreement** (replayed `prescribe()` load = load he used, non-deload,
+84 exposures): v26.1 **62%** (52/84; he went heavier 14, lighter 18). The near-miss
+prototype: 61% (the one changed call is a jump he took a month later, so it
+counts as a disagreement). Agreement is a baseline, not a target: an override
+is evidence, not truth (the review found overrides in 37% of exposures).
+ no real call gets more aggressive
 than what he went on to make.
 
 ## Owner questions
