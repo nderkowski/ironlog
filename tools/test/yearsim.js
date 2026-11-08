@@ -37,6 +37,7 @@ window.runSim = function (cfg) {
     T.S.routines.push({ id: 'r' + key, key, name: 'Day ' + key, variants: [{ id: 'v' + key, label: '', exercises: ex }] });
   });
   const movementClass = ev('movementClass');
+  const trendFn = ev('trend'), trendWinFn = ev('trendWin');   // t43 reads the verdict the engine saw
 
   // ---- lifter ----
   const LIFTS = cfg.lifts;            // name -> {w0, c0, G, K}
@@ -88,6 +89,7 @@ window.runSim = function (cfg) {
     const exs = [];
     for (const pe of v.exercises) {
       const n = pe.name, L = lift[n];
+      const tr = trendFn(n), tw = trendWinFn(n);   // before the session is made: what prescribe() will read
       const ex = T.makeSessionEx(pe, pe.id);
       const work = ex.sets.filter(s => !s.warm);
       const presc = { w: work[0].w === '' ? null : Number(work[0].w), r: Number(work[0].r), n: work.length, kind: ex.kind, why: ex.why };
@@ -96,6 +98,7 @@ window.runSim = function (cfg) {
         work.forEach(s => { s.w = String(sh.w); s.r = String(sh.r); });
         ex.shadow.used = true;
       }
+      if (cfg.pinLoad) work.forEach(s => { s.w = String(L.w0); });   // t43 trend measurement: a lifter who never changes the bar
       const W = work[0].w === '' ? L.w0 : Number(work[0].w);
       const tgt = Number(work[0].r);
       const low = Number(pe.reps), top = Number(pe.repTop);
@@ -116,7 +119,8 @@ window.runSim = function (cfg) {
       const fresh = capAt(n, W, wk);
       log.push({ n, sess: sessionN, ts: now, wk, M: strength(n, wk), presc, sh, used: !!(cfg.useShadow && sh && !inDeload),
         W, tgt, reps: done.map(s => Number(s.r)), A: Number(done[done.length - 1].r), low, top, step: Number(pe.inc) || 5,
-        fresh, deload: inDeload, cls: L.cls });
+        fresh, deload: inDeload, cls: L.cls,
+        tr: { state: tr.state, n: tr.n, pct: tr.pct }, tw, nsets: Number(pe.sets) || 3 });   // t43
     }
     const s = { id: 's' + sessionN, ts: now, endTs: now + 3600e3, routineId: r.id, key, name: r.name, variantId: v.id,
       exercises: exs, deload: inDeload };
@@ -125,13 +129,16 @@ window.runSim = function (cfg) {
     // after the session the lifter opens Progress: deloadCheck()
     now += 2 * 3600e3;
     const dc = T.deloadCheck();
+    const dayNow = now;
     const dst = T.deloadStatus();
     let started = false;
     if (dc && dc.level === 'high' && cfg.obeyDeload !== false) { ev('startDeloadWeek')(7); started = true; }
     sessLog.push({ sess: sessionN, ts: s.ts, wk, key, deload: inDeload, dc: dc ? dc.level : null,
-      stalled: dst.stalled.map(x => x.name), judged: dst.judged.length, started });
+      stalled: dst.stalled.map(x => x.name), judged: dst.judged.length, started,
+      startTs: started ? dayNow : null, endTs: started ? T.S.settings.deloadUntil : null });   // t43
     sessionN++;
     prevTs = s.ts;
+    if (cfg.maxSessions && sessionN >= cfg.maxSessions) break;   // t43: the first few sessions only
     // next session
     let gap = [2, 3, 3, 3, 2, 4][Math.floor(rnd() * 6)];
     if (missedIdx < gapsAt.length && wk + gap / 7 >= gapsAt[missedIdx]) { gap = 10 + Math.floor(rnd() * 5); missedIdx++; }
