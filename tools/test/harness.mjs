@@ -3,7 +3,7 @@
    the bugs that mattered here were all invisible to function-level tests. */
 import { chromium, devices } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 
-export const URL = 'http://127.0.0.1:8117/index.html';
+export const URL = 'http://127.0.0.1:' + (process.env.IRONLOG_PORT || 8117) + '/index.html';
 
 let pass = 0, fail = 0;
 const failures = [];
