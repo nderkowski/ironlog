@@ -137,12 +137,21 @@ than what he went on to make.
   - Gate: fresh Opus review (no Important; fixed Minor 1 timed lifts, Minor 2 long assisted text) + `/code-review high` (fixed: skipped last set counted; narrow ranges 10,10,8 at 8–10 jumped; why length. Rejected: require the `out` flag — the one real-log case predates it; shadow disagreeing on the card — labelled as the other method, already disagrees elsewhere; helper refactor).
 - **Lane D merged — v26.4 edit last session from Today** (0987a79 + fixes). Edit just-finished session: **5 taps / 2 scrolls → 3 taps / 0 scrolls**; editor Save/Cancel sticky. Gate: Opus review (no Important; fixed calendar-day label "Today/Yesterday"), `/code-review high` (fixed: dropped volume/deload info restored; scroll-padding so focused fields don't sit under the sticky bar). Verified by real taps at 390×844 (labels, editor opens with Save in view, 0 page errors).
 
+## Wave 3 (17:25–17:45)
+- v26.5: the session editor keeps its scroll position after + Set / warm-up / remove (reviewer nit on lane D; t45 fails on v26.4: 900 → 0 px).
+- v26.6: coach card citations corrected (review #8, checked against RESEARCH.md). Text only.
+- **Where the remaining "behind" is** (10 seeds, after v26.2): heavy lifts with small relative steps — Leg Press 100%, RDL 100%, Lat Pulldown 94%, Hamstring Curls 88% of exposures — and 0% on every light lift. Cause: double progression adds one rep per session, so a 5 lb step on 190 lb comes every 4–5 exposures, and the classic rule settles where the fatigued rep-out reaches top−2, i.e. fresh capacity ≈ top+1 — about 3 reps above the metric's mid-range "ideal". Part of this is the metric's definition, not an engine error; I'm reporting it, not chasing it.
+- Rejected prototypes (both measured, paired vs v26.2, 20 seeds):
+  - two steps when the rep-out is ≥ top+4 (OUT_JUMP2 in classic): behind +0.7 ± 0.3 pts, flips +0.4 ± 0.2 — worse.
+  - let the target skip ahead to rep-out−2: behind −0.5 ± 0.1 pts. Real but tiny; not worth a behaviour change and a review cycle.
+
 ## Owner questions
 0. **`main` is v21.** GitHub Pages serves `main`, and `main` holds v21:
    v22–v26 were never merged, so your phone runs v21 (check the BUILD line at
    the foot of Plan). Everything this sprint measured is v26.1+. Merge when
    you have reviewed it — nothing here touches `main`.
 1. ~~Real export for replay~~ — received, used (see above).
+3. Whole 12-set workout needs 4 swipes (journey 3b). Want the screen to scroll the next exercise into view when you tick the last set of one? It touches the logging path (Trap 1 forbids re-rendering there; a scroll is not a re-render), so I didn't do it unasked.
 2. The review's biggest lever is frequency (1.4 → 2–3 sessions/week ≈ +8 pp
    strength/yr), not code. Want a sessions-per-week vs target line on Progress?
 
