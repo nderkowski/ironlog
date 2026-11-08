@@ -121,6 +121,7 @@ window.runSim = function (cfg) {
     const s = { id: 's' + sessionN, ts: now, endTs: now + 3600e3, routineId: r.id, key, name: r.name, variantId: v.id,
       exercises: exs, deload: inDeload };
     T.S.sessions.unshift(s);
+    if (window.__afterSession) window.__afterSession(s);   // t39b: the coach looks at the log after each save
     // after the session the lifter opens Progress: deloadCheck()
     now += 2 * 3600e3;
     const dc = T.deloadCheck();

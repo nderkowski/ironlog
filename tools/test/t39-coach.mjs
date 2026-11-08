@@ -365,14 +365,14 @@ await finishDay('rC', ['RDL']);
 eq((await ofKind('volume')).length, 0, 'volume: one session a week is not "training 2x a week" -> silent');
 
 /* ================= 6. stalled lift: a ladder ================= */
-const stall = (rowsFor) => Array.from({ length:7 }, (_, i) => sess('r' + i, 'rA', 'A', 'vA', 4 + 7 * i, rowsFor(i)));
+const stall = (rowsFor, n = 16) => Array.from({ length:n }, (_, i) => sess('r' + i, 'rA', 'A', 'vA', 4 + 7 * i, rowsFor(i)));
 const cRows = [sess('c1','rC','C','vC',9,lifts()), sess('c2','rC','C','vC',16,lifts())];
 const flat = () => [['Cable Row', 65, 8], ['Leg Press', 190, 10]];
 const cableOf = async () => (await ofKind('stall')).filter(p => p.lift === 'Cable Row');
 await boots(state(stall(flat).concat(cRows)));
 await finishDay('rA', ['Leg Press']);
 let stl = (await cableOf())[0];
-ok(stl && stl.status === 'open' && stl.stage === 1, 'stall: 7 sessions at 65 x 8 with nothing gained -> raised, as step one');
+ok(stl && stl.status === 'open' && stl.stage === 1, 'stall: 16 sessions (an 8-12 lift: 3 whole cycles) at 65 x 8 with nothing gained -> raised, as step one');
 has(stl.reason, 'sessions in a row at 65', 'stall: the reason counts sessions at the load');
 ok(/rule of thumb/i.test(stl.evidence) && /validated/i.test(stl.evidence), 'stall: labelled a rule of thumb, no validated test');
 eq(stl.options.map(o => o.act).join(), 'add,shift_range,unpair', 'stall: step one keeps the lift (and its history): a set, a lower range, out of its superset - no swap');
@@ -429,6 +429,12 @@ eq((await cableOf()).length, 0, 'stall: reps still climbing at the same load -> 
 await boots(state(stall(i => [['Cable Row', i < 3 ? 70 : 65, 8], ['Leg Press', 190, 10]])));
 await finishDay('rA', ['Leg Press']);
 eq((await cableOf()).length, 0, 'stall: load went up recently -> not 6 at one load -> silent');
+await boots(state(stall(flat, 11).concat(cRows)));
+await finishDay('rA', ['Leg Press']);
+eq((await cableOf()).length, 0, 'stall: 11 exposures at one load (two cycles) is not yet enough -> silent');
+await boots(state(stall(flat, 16).map(s => s.exercises[0].sets.forEach(x => { x.w = '95'; x.load = 95; }) || s).concat(cRows), { routines:routines({ A:[px('a1','Leg Press',8,12), px('a3','Cable Row',8,12,{ inc:10 }), px('a5','Lateral Raise',12,20,{ link:true })] }) }));
+await finishDay('rA', ['Leg Press']);
+eq((await cableOf()).length, 0, 'stall: a step over 8% of the load (10 on 95... 10.5%) -> slow progress could not make it -> silent');
 await boots(state(Array.from({ length:5 }, (_, i) => sess('r' + i, 'rA', 'A', 'vA', 4 + 7 * i, flat()))));
 await finishDay('rA', ['Leg Press']);
 eq((await cableOf()).length, 0, 'stall: only 5 exposures -> silent');
@@ -468,7 +474,7 @@ await page.waitForSelector('[data-act="start"]');
 
 /* ================= 9. a swapped-in lift's first card ================= */
 {
-  const stalled = Array.from({ length:7 }, (_, i) => sess('r' + i, 'rA', 'A', 'vA', 4 + 7 * i, [['Cable Row', 65, 8, 3, i === 0 ? 'elbow pain on rows' : ''], ['Lateral Raise', 15, 14], ['Leg Press', 190, 10]]));
+  const stalled = Array.from({ length:16 }, (_, i) => sess('r' + i, 'rA', 'A', 'vA', 4 + 7 * i, [['Cable Row', 65, 8, 3, i === 0 ? 'elbow pain on rows' : ''], ['Lateral Raise', 15, 14], ['Leg Press', 190, 10]]));
   await boots(state(stalled.concat(cRows),
     { routines:routines({ A:[px('a1','Leg Press',8,12), px('a3','Cable Row',8,12,{ inc:5 }), px('a5','Lateral Raise',12,20,{ link:true })] }) }));
   await finishDay('rA', ['Leg Press']);

@@ -6088,9 +6088,10 @@ function coachRuleVolume(){
 /* RULE 4 — stalled lift. Deliberately hard to trigger: a naive stall rule
    fired on ~35% of exposures while strength was rising (ROADMAP v25 F4), and
    no validated plateau rule exists (RESEARCH.md). Needs ≥6 exposures in a row
-   at the SAME working load (workLoad()) spanning ≥4 weeks, the best set
-   (rep-out if present) of the newest 3 no better than the earlier ones, and
-   trend() not "up".
+   at the SAME working load (workLoad()) — at least a whole progression cycle
+   — spanning ≥4 weeks, the least-squares slope of the best set (rep-out if
+   present) over that run not above zero, the range no wider than 8 sessions
+   of climb (deloadCheck's limit), and trend() not "up".
 
    A LADDER, history first. A swap throws away a lift's history, so it is the
    second rung, not the first:
@@ -6099,6 +6100,17 @@ function coachRuleVolume(){
      2. a swap for a close variation — only if it stalls AGAIN after a rung-1
         change was accepted (≥42 days and ≥4 exposures later), or at once when
         one of its last three notes mentions pain, soreness or a pinch. */
+/* Least-squares slope of a run of scores (newest first in), as % per 3
+   sessions — the same units and shape as trendAt(), over the run only. */
+function coachSlope(newestFirst){
+  var v=newestFirst.slice().reverse(), n=v.length;
+  var ym=v.reduce(function(a,b){ return a+b; },0)/n; if(!ym) return 0;
+  var xm=(n-1)/2, sxy=0, sxx=0;
+  for(var i=0;i<n;i++){ sxy+=(i-xm)*(v[i]-ym); sxx+=(i-xm)*(i-xm); }
+  return sxx?(sxy/sxx)/ym*100*3:0;
+}
+var COACH_STALL_N=6;       // at least this many exposures in a row at one load...
+var COACH_STALL_CYCLES=3;  // ...and this many progression cycles' worth of them (an 8–12 lift: 15)
 var COACH_PAIN=/pain|hurt|ache|pinch|tweak|sore/i;
 function coachNoteOf(x,name){
   var se=S.sessions.filter(function(s){ return s.id===x.sessionId; })[0];
@@ -6112,12 +6124,30 @@ function coachRuleStall(){
     var mode=h[0].bw, W=workLoad(h[0].sets,mode); if(!(W>0)) return;
     var run=[];
     for(var i=0;i<h.length&&workLoad(h[i].sets,mode)===W;i++) run.push(h[i]);
-    if(run.length<6||run[0].ts-run[run.length-1].ts<28*864e5) return;
-    var sc=run.map(trendScore);
-    if(Math.max.apply(null,sc.slice(0,3))>Math.max.apply(null,sc.slice(3))) return;
-    if(trend(name).state==="up") return;
+    /* TWO whole double-progression cycles at one load. A lifter on double
+       progression steps the load every cycle (an 8–12 lift: ~5 sessions); two
+       cycles without a step is stuck, not slow. Measured: over 6 sessions a
+       lifter getting stronger by 5–15% a year looks exactly like a stalled one
+       (the rep noise is the size of the gain), and a 6-exposure rule raised
+       ~26 cards a year on him. */
+    if(cycleOf(name)>8) return;          // past this width no threshold separates slow progress from none (deloadCheck)
+    if(run.length<Math.max(COACH_STALL_N,COACH_STALL_CYCLES*cycleOf(name))||run[0].ts-run[run.length-1].ts<28*864e5) return;
     var key="stall|"+normName(name), tg=coachTargets(name); if(!tg.length) return;
     var row=tg[0].e;
+    /* A step over 8% of the load (5 lb on a 45 lb dumbbell) is a jump slow
+       progress can't make: sitting at that load for months is ordinary there. */
+    if(W>0&&mode===0&&stepFor(row)/W>0.08) return;
+    /* Slope of the mean reps at the load over the run (the climbing set targets
+       count, not only the rep-out) must not be positive. */
+    var sc=run.slice(0,12).map(function(x){
+      var at=x.sets.filter(function(y){ return isAt(y,W,mode); });
+      return at.reduce(function(a,y){ return a+num(y.r); },0)/Math.max(1,at.length);
+    });
+    if(coachSlope(sc)>0) return;
+    if(trend(name).state==="up") return;
+    /* At the top of the range and not stepping up is the engine waiting out a
+       failed jump (v25), which is its business, not a plateau. */
+    if(num(row.repTop)>num(row.reps)&&sc[0]>=num(row.repTop)) return;
     var prior=coachState().proposals.filter(function(q){ return q.key===key&&q.status==="accepted"&&q.stage===1; })
       .sort(function(a,b){ return num(b.decided)-num(a.decided); })[0];
     var pain=h.slice(0,3).map(function(x){ return {ts:x.ts, n:coachNoteOf(x,name)}; }).filter(function(x){ return COACH_PAIN.test(x.n); })[0];
