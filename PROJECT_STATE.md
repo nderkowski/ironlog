@@ -531,12 +531,27 @@ Returns `{w, r, sets, why, kind}`. Everything is derived from history; there are
 no stored counters to drift out of sync. `makeSessionEx()` uses the result as the
 prefill, so following the plan costs zero taps and the card explains itself.
 
+**Which weight a session was "at"** comes first, because every branch below
+reads it. `workLoad()` is the load *most* working sets were done at, ties to
+the heavier (on assisted work, the less help). Not the first set: a ramp
+starts light, and v21 and earlier added the step to the warm-up — 135 after
+130/150/170. Not the heaviest set: one test set at 170 between two at 150 is
+not the working weight. Reps (`minR`) come only from sets *at* that load.
+Lighter sets *before* the first one at it are a ramp and are ignored; lighter
+sets *after* it (`droppedSets()`) are back-offs or a mid-exercise drop, and
+make the lift hold: "Only 1 of 3 sets at 225 — get them all there first".
+A blank weight on loaded work is an un-retyped set, not a set at zero. See
+`t30`.
+
 Order of precedence:
 
 1. **Deload week running** → `easier()` load, reps at the bottom of the range,
    sets × 0.6. (`kind: "deload"`)
-2. **Trend is down** → one 10% back-off per decline episode. If today's load is
-   still below the best first-set load anywhere in **the same window the "down"
+2. **Trend is down** → one 10% back-off per decline episode, never more than
+   `MAX_CUT` (20%) — on the 5 lb grid 10% of a 15 lb dumbbell rounds to a
+   third, and of a 5 lb one to zero. Past the cap it drops a set instead, with
+   the reps left free to climb for the same reason as the hold below. If
+   today's load is still below the best working load anywhere in **the same window the "down"
    verdict was computed from** (`trendWin()`), it holds instead — and while
    holding, the reps still climb. This guard exists because without it a
    decline produces a cut, which produces a lower session, which reads as a
@@ -545,10 +560,16 @@ Order of precedence:
    verdict, which expired first and cut again every four sessions. On assisted
    work "best" means the *least* assistance, so the comparison inverts with the
    load direction. See trap 17b and `t28`.
-3. **Double progression** (`repTop > reps`) → all sets at the top of the range
+3. **Sets dropped after the working load** → hold there at the reps done
+   there (see above).
+4. **Double progression** (`repTop > reps`) → all sets at the top of the range
    means harder load and reps reset to the bottom; inside the range means same
    load and one more rep; short of the bottom means run it back.
-4. **Straight sets** (`repTop` empty) → hit the target on every set, load goes up.
+5. **Straight sets** (`repTop` empty) → hit the target on every set, load goes up.
+
+There is **no load-jump check**, on purpose — read ROADMAP's v22 entry before
+adding one. Epley from a set stopped at its target is a lower bound, and on
+Nick's real log it would have blocked every jump he then made.
 
 `harder()` / `easier()` respect load direction: on assisted work progress means
 the *number goes down*, so they invert. Getting this backwards silently prescribes
@@ -1055,6 +1076,15 @@ bite.
    anything that changes what gets logged has to be simulated by feeding its
    own output back in for 40+ sessions, which is what `t28` does. One-verdict
    tests cannot see this class of bug at all.
+17c. **Replay a real export before trusting an engine change.** Simulated
+   lifters are built from the same Epley the engine scores with, so they agree
+   with it by construction. Real sets are stopped at their targets, with reps
+   in reserve Epley can't see. A load-jump check that was principled, tested
+   and green against every simulation would have blocked six jumps Nick
+   actually made, and was caught only by replaying his 21 sessions through the
+   old and new `prescribe()` and comparing each changed call with what he did
+   next. Do that — ask for the export — for anything that changes a
+   prescription.
 18. **A view that borrows another view's event listeners inherits its guard.**
     The `#view` click and input listeners early-return unless `TAB` is the one
     they were written for. Moving rows to a new screen without widening those

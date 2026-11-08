@@ -39,7 +39,35 @@ the engine — shipped as v19–v21:
 | **v20** | Renaming onto an existing lift merged two histories silently, with ghost PRs, a duplicated plan row and no undo — it now asks, and the "keep them separate" answer is item 12 below. The session editor re-resolved old bodyweight loads against *today's* bodyweight. A state missing its `sessions` key rendered a permanent blank page |
 | **v21** | The lift sheet's two banners described maths that no longer existed; `deloadCheck()` counted flawless wide-range lifts as stalled, and said nothing at all about what it was watching |
 
-The suites are in `tools/test/` — ten of them now, `t20`–`t29`. Run them all
+Then a review of the engine against Nick's real exports (21 sessions,
+Jul–Nov 2026), replaying every session through the old and new `prescribe()`
+and checking each changed call against what he actually did next:
+
+| | |
+|---|---|
+| **v22** | **Which weight a session was "at".** `prescribe()` read the load off the *first* set and the reps off the worst set at *any* load. On his log it prescribed 135 after 130/150/170, 145 after 145/155/225, and judged 225×8, 185×8, 135×8 as three eights at 225. On assisted work a last set with *extra* help made it take help away. It now uses the load most sets were at (ties to the heavier), ignores a ramp before it, and holds — "Only 1 of 3 sets at 225" — on sets dropped after it. 13 of 102 historical calls change; none is worse. Also: a slide never cuts more than 20% (it took a 15 lb raise to 10 and a 5 lb one to **0**); past that it drops a set and leaves the reps free to climb |
+
+**Built and deliberately not shipped in v22 — the load-jump check.** The idea:
+before adding load, use Epley to ask whether the lifter can still make the
+bottom of the range at the new weight, and if not, hold and let reps run past
+the top. It is the obvious fix for "+5 on a 15 lb raise is +33%", and **on
+Nick's real log it was wrong every time it fired**: it would have blocked six
+jumps he then made cleanly (curl 25→30 then 30×8×3, split squat 20→25 then
+25×8×3, raise 15→20 then 20×8×3) and caught no failed one. The reason is
+structural, not a tuning problem: Epley read off a set *stopped at its target*
+is a lower bound, and on isolation work it is a loose one. Do not ship it on
+rep counts alone. It becomes sound with an effort signal — RPE/RIR on the
+last set gives reps-to-failure, which is what Epley actually needs — so the
+honest version is gated on RPE being recorded. What was built, for whoever
+picks it up: reps available at the new load = `(30 + r) × w / next − 30` on
+effective loads (so it works for assisted and weighted bodyweight too); block
+the step when that is under `low − 2`, hold the load, and ask for `r + 1`
+until it clears, capped at twice the range top. Even with two reps of slack
+it failed on every real case above. The same finding killed a companion fix that translated load
+across slots with different rep ranges (it would have moved a cable fly from
+20 to 10 the session he did 20×10/14/16).
+
+The suites are in `tools/test/` — eleven of them now, `t20`–`t30`. Run them all
 before and after any change and read the summary lines; assertion counts are
 deliberately not written down here, because they go stale and did.
 
