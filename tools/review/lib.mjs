@@ -23,7 +23,8 @@ const HOOK = 'var S=load(); window.__t={get S(){return S},prescribe:prescribe,sh
 /* Each patch: [find, replace]. find must occur exactly once, or we throw —
    an ablation that silently fails to apply would report "no effect". */
 export function buildCopy(dir, patches = []) {
-  let src = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  /* REVIEW_INDEX pins another build (e.g. v26 from git) for before/after runs. */
+  let src = readFileSync(process.env.REVIEW_INDEX || join(ROOT, 'index.html'), 'utf8');
   const n = src.split('\nvar S=load();\n').length - 1;
   if (n !== 1) throw new Error('hook line found ' + n + ' times');
   src = src.replace('\nvar S=load();\n', '\n' + HOOK + '\n');
@@ -38,7 +39,10 @@ export function buildCopy(dir, patches = []) {
 }
 
 export async function serve(dir, port) {
-  const p = spawn('npx', ['http-server', '-p', String(port), '-s', '-c-1', dir], { stdio: 'ignore' });
+  /* Its own process group, so kill() takes npx's http-server child with it. */
+  const p = spawn('npx', ['http-server', '-p', String(port), '-s', '-c-1', dir], { stdio: 'ignore', detached: true });
+  const kill = p.kill.bind(p);
+  p.kill = () => { try { process.kill(-p.pid, 'SIGTERM'); } catch { kill(); } };
   for (let i = 0; i < 50; i++) {
     try { const r = await fetch(`http://127.0.0.1:${port}/index.html`); if (r.ok) return p; } catch {}
     await new Promise(r => setTimeout(r, 200));

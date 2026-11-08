@@ -92,18 +92,37 @@ for v in VARS:
         fails = ','.join(k for k, ok in fl.items() if not ok) or 'none'
         print(f"| {c} | {S['M1']:.1f} | {dv} | {S['obs']:.1f} | {S['M2']:.0%} | {S['M3']:.1f} ({S['M3slow']:.1f}) | {S['M4a']:.2f} ({S['M4a_all']:.2f}) | {S['M4b']:.1f} ({S['M4b90']:.1f}) | {S['M5']:.0%} | {S['M6']:.2f} | {S['spiral']:.1%} | {S['hold8']:.1%} | {S['stuck']:.1%} | {S['deloads']:.2f} | {fails} |")
     print('\nAblations: each rule vs its engine with the rule on (paired, same lifters). Δ = with rule − without.\n')
-    print('| rule switched off | engine | ΔM1 pp [95% CI] | Δ M3 stall wk | Δ M4a cuts | Δ M9 stuck | verdict |')
+    print('| rule switched off | engine | ΔM1 pp [95% CI] | Δ M3 stall wk (main) | Δ M4a cuts/lift-yr (all) | Δ M9 stuck, pp of lift-years | verdict (pre-registered rule) |')
     print('|---|---|---|---|---|---|---|')
     names = {'c-trend': 'trend back-off', 'c-jump': 'failed-jump memory', 'c-step': 'step-down', 'c-nodeload': 'deload week',
              'r-jump': 'failed-jump memory', 'r-step': 'step-down', 'r-nodeload': 'deload week', 'r-echo': 'target-echo +1',
              'classic': 'rep-out method'}
+    def lifter_sec(x):
+        allk = list(x['lifts'])
+        st_ = lifter_mean(x, 'stallWk', MAIN)
+        cu = lifter_mean(x, 'cuts', allk)
+        sk = sum(1 for k in allk if x['lifts'][k].get('stuck')) / len(allk)
+        return st_, cu, sk
+    def pdiff(A, B, f):
+        ks = sorted(set(A) & set(B)); d = [f(A[k]) - f(B[k]) for k in ks]
+        return sum(d) / len(d), boot_mean(d)
     for c, par in PARENT.items():
         if c not in D or par not in D: continue
         m, (lo, hi) = paired(D[par], D[c])
-        Sp, Sc = SUM[par], SUM[c]
-        dst, dcu, dsk = Sp['M3'] - Sc['M3'], Sp['M4a_all'] - Sc['M4a_all'], Sp['stuck'] - Sc['stuck']
-        helps = lo > 0 or (dst < -0.5 or dcu < -0.25 or dsk < -0.01) and m > -0.5
-        print(f"| {names[c]} | {par} | {m:+.2f} [{lo:+.2f}, {hi:+.2f}] | {dst:+.1f} | {dcu:+.2f} | {dsk:+.1%} | {'justified' if helps else 'not shown to help'} |")
+        # paired with-rule minus without-rule, per lifter; bootstrap CI (pre-registered: "by more than the CI half-width")
+        s3 = pdiff(D[par], D[c], lambda x: lifter_sec(x)[0])
+        s4 = pdiff(D[par], D[c], lambda x: lifter_sec(x)[1])
+        s9 = pdiff(D[par], D[c], lambda x: lifter_sec(x)[2])
+        # removing the rule WORSENS a metric when "with rule" is significantly lower (better) than "without"
+        worse_without = [nm for nm, (mm, (a, b)) in [('M3', s3), ('M4a', s4), ('M9', s9)] if b < 0]
+        better_without = [nm for nm, (mm, (a, b)) in [('M3', s3), ('M4a', s4), ('M9', s9)] if a > 0]
+        helps = hi < 0 and False
+        justified = lo > 0 or (worse_without and m > -0.5)
+        fmt = lambda t, u='': f"{t[0]:+.2f}{u} [{t[1][0]:+.2f}, {t[1][1]:+.2f}]"
+        print(f"| {names[c]} | {par} | {m:+.2f} [{lo:+.2f}, {hi:+.2f}] | {fmt(s3)} | {fmt(s4)} | {s9[0]*100:+.1f} [{s9[1][0]*100:+.1f}, {s9[1][1]*100:+.1f}] | "
+              f"{'justified' if justified else 'not shown to help'}"
+              f"{' (rule costs M1)' if hi < 0 else ''}{' — worse without: ' + ','.join(worse_without) if worse_without else ''}"
+              f"{' — better without: ' + ','.join(better_without) if better_without else ''} |")
     # coach
     for c in ['classic', 'repout']:
         if c not in D: continue
