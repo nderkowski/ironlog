@@ -105,6 +105,7 @@ on the diff + `/code-review high` → Playwright run of the changed flow at
 390×844 → merge.
 
 ## Decision log
+- 16:48 Brief changed (owner via parent session): HARD STOP 19:00 CST. Handoff pushed by 18:45; 18:45–19:00 only reviewed finishing work; no wakeups at/after 19:00.
 - 16:40 Cherry-picked v26.1 from review branch rather than redo it.
 - 16:55 Rejected "target never slides below set 1": behind −0.5 pp (noise), progressing −7 pp (metric artefact, but no real gain).
 - 16:50 Real export received; replay: prototype changes 1/102 calls, in the right direction.
