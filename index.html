@@ -739,7 +739,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v26.1";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v26.2";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -1939,6 +1939,7 @@ function rangeHist(hist,name,ex){
   return same.length?same:hist;
 }
 
+var NEAR_SLACK=2;                                     // reps the rep-out may fall short of the top
 function prescribe(name,ex){
   var step=stepFor(ex);
   var met=metricOf(ex);
@@ -2047,8 +2048,44 @@ function prescribe(name,ex){
             why:"Only "+at.length+" of "+(at.length+dropped)+" sets at "+entryText({w:w},mode)+" — get them all there first",
             kind:"hold"};
 
+  /* v26.2: a rep-out one or two reps under the top still earns the jump.
+     The last working set of a ranged lift is a rep-out, taken as far as the
+     lifter can, so it ends under the earlier sets from fatigue alone: 12, 12,
+     11 at 8–12 is a top-of-range session. The strict rule (every set at the
+     top) held it, and the next target was then built from the 11 — the target
+     slid 12 → 10 off one tired set and the load lagged. In the 20-seed
+     simulated year, prescriptions were >=1 step lighter than the heaviest
+     load that still gives mid-range reps in 37.3% of exposures (mean |steps
+     off| 0.82). Letting the last set be NEAR_SLACK short, with every earlier
+     set at the top: SLACK 1 -> 33.7% / 0.72, SLACK 2 -> 31.9% / 0.68 (paired
+     over seeds -5.5 +/- 0.5 points), with over-loading (5.9 -> 5.4%), unmeetable
+     loads (7.65 -> 7.6 a year) and direction flips (14.4 -> 14.85) all inside
+     one paired se. SLACK 2 was kept. Two things are deliberately NOT here:
+       - A relative-step gate (strict rule on big jumps like 15 -> 20). It was
+         measured: gating at step <= 10% of the load drops the gain on light
+         lifts and raises over-loading (+0.13 +/- 0.06 points); gating at 20%
+         raises unmeetable loads and flips by about 2 paired se, from 10-20%
+         steps on pushdowns and split squats — while the lateral raise (+33%)
+         got *better* (42 -> 22 unmeetable exposures over 20 years; the failed-
+         jump memory below and the step-back catch a jump that doesn't hold).
+         So the gain and the harm do not track step size.
+       - Any change to the target. After 12, 12, 9 it still says "go for 10"
+         (measured: moving it buys no load accuracy).
+     Needs two sets at the load (one earlier set is not a pattern), a loaded
+     lift (a bodyweight jump from nothing to +5 lb is not a step), and the
+     near-miss still clears the bottom of the range; dropped sets, RPE, deload
+     and trend back-off have already returned above. Real lifters stop at the
+     target (trap 17c), so real logs rarely show this; a replay of the
+     owner's log changed 1 of 102 prescriptions (25x12,12,11 on a curl). */
+  var nm=false, nmR=0;
+  if(top>low&&minR<top&&!noLoad&&at.length>=2&&w>0){
+    nmR=num(at[at.length-1].r);
+    nm=nmR>=Math.max(low,top-NEAR_SLACK)&&
+       Math.min.apply(null,at.slice(0,-1).map(function(s){ return num(s.r); }))>=top;
+  }
+
   if(top>low){                                        // double progression
-    if(minR>=top){
+    if(minR>=top||nm){
       if(noLoad) return {w:w,r:minR+rstep,sets:nsets,
               why:"Held "+amtText(top,met)+" on every set — go for "+(minR+rstep),kind:"up"};
       /* The last jump from here failed? Not again until the reps here have
@@ -2061,7 +2098,9 @@ function prescribe(name,ex){
                   why:"Building reps before "+fmt(jf.w)+" again (it cost "+cost+" reps last time) — go for "+(minR+rstep),kind:"reps"};
       }
       return {w:harder(w,step,mode),r:low,sets:nsets,
-              why:"Hit "+amtText(top,met)+" on every set — "+harderPhrase(step,mode),kind:"up"};
+              why:nm?"Hit "+(met===0?top:amtText(top,met))+" on "+(at.length-1)+" of "+at.length+", "+nmR+
+                     (at[at.length-1].out?" on the rep-out":" on the last")+" — "+harderPhrase(step,mode)
+                    :"Hit "+amtText(top,met)+" on every set — "+harderPhrase(step,mode),kind:"up"};
     }
     if(minR>=low)
       return {w:w,r:nextR,sets:nsets,
