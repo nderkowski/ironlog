@@ -1,5 +1,26 @@
 # Cloud sprint 2026-11-08 (branch `cloud/sprint-1108`)
 
+## Result (final run on v26.11, 17:55 CST)
+
+| | v26.1 baseline | v26.11 |
+|---|---|---|
+| engine: prescriptions ≥1 step under what the lifter could do mid-range | 37.3% | **31.8%** (paired −5.5 ± 0.5 pts, z≈11) |
+| engine: mean \|steps off\| | 0.82 | **0.68** |
+| engine: over-loaded / unreachable per yr / flips per yr | 5.9% / 7.65 / 14.4 | 5.6% / 7.7 / 14.75 (noise) |
+| engine: sessions progressing / light-lift median weeks at one load | 50.4% / 11.0 | 51.6% / 9.65 (within ~1.5 se) |
+| rep-out landing (Use mode, target 85%) | 93.6% | 93.6% (shadow untouched) |
+| real log (owner's export, kept out of repo): calls changed / load agreement | — / 62% | 1 of 102 / 61% |
+| edit the session just finished | 5 taps, 2 scrolls | **3 taps, 0 scrolls** |
+| start / log a set / finish | 1 / 1 / 2 taps | unchanged (already minimal) |
+| active-workout controls < 24 px | 12 | **0** |
+| active-workout controls with effective hit < 44 px | (121 by box) | 64; 0 overlaps, 0 stolen taps |
+| critical axe (tabs + two sheets) | 4 + 9 | **0** |
+| colour-contrast nodes light Today/active/Progress/History/Plan | 7/18/61/69/26 | 2/9/1/2/1 (dark 0) |
+| offline after SW install | works | works |
+| suites | 23 / 1,029 checks | **27 / 1,139 checks, 0 failures** |
+
+Gym test plan: top of `ROADMAP.md`.
+
 Time-boxed sprint, 16:37–19:00 CST (22:37–01:00 UTC). Owner offline. Nothing
 here is on `main`; the phone still runs v26 until the owner merges.
 
@@ -145,6 +166,12 @@ than what he went on to make.
   - two steps when the rep-out is ≥ top+4 (OUT_JUMP2 in classic): behind +0.7 ± 0.3 pts, flips +0.4 ± 0.2 — worse.
   - let the target skip ahead to rep-out−2: behind −0.5 ± 0.1 pts. Real but tiny; not worth a behaviour change and a review cycle.
 
+## Wave 4 (17:30–17:55)
+- **Lane C merged as v26.9** after fresh Opus review (Important: 9 critical `label` violations in the editor and exercise-menu sheets the harness never opened — fixed, axe 0 critical on both; Minor: the stepper slop filled the "×" gutter so a tap there changed a value — now a ~5 px dead strip; switch slop 42.5 → 44+) and `/code-review high` (follow-ups below; rejected: brand-colour contrast on tinted chips — owner decision).
+- v26.10–v26.11: Finish, + Set / − Set and the editor's controls get vertical hit-slop (no row grows); editor rows 44 px; Edit pill readable (accent on white was 2.9:1). `/code-review` on each.
+- Harness fixes: DARK=0 meant dark; viewport not restored on error.
+- 18:00 handoff docs pushed (ROADMAP, PROJECT_STATE traps 20–23, NEXT_SESSION).
+
 ## Owner questions
 0. **`main` is v21.** GitHub Pages serves `main`, and `main` holds v21:
    v22–v26 were never merged, so your phone runs v21 (check the BUILD line at
@@ -159,3 +186,5 @@ than what he went on to make.
 - Wave 0 (16:37–16:50): baseline, plan, lanes A/B/C/D launched.
 - Wave 1 (16:50–17:00): lane B merged.
 - Wave 2 (17:00–17:25): lanes A and D merged after review; lane C in review.
+- Wave 3 (17:25–17:45): editor fixes, citations, two engine prototypes rejected.
+- Wave 4 (17:30–17:55): lane C merged, hit-area follow-ups, final run, handoff.
