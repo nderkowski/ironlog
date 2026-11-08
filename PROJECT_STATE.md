@@ -599,6 +599,32 @@ via `REC_RENAME`, runs `recomputePRs()`, and writes immediately. The
 replaced plan and rest go to `S.planBackup`; `switchBackPlan()` restores
 them.
 
+**v25 — failed jumps are remembered, from the log.** Both `prescribe()` and
+`shadowPrescribe()` read their own history for a jump that failed
+(`jumpAwayFrom()`, `repsAt()`).
+
+- **`prescribe()` steps back** when the best set at the load missed the
+  bottom of the range: straight after a jump to the load it came from, or at
+  an established load after two sessions running, by at most `MAX_CUT`. It
+  will not take that jump again until the best set has recovered what the
+  jump cost.
+- **The shadow does the same from rep-outs** (smoothed over up to three).
+  It caps +2 steps at 10% of the load actually moved, and one low rep-out at
+  an established load is a bad day, not a cut.
+- **While a jump is being earned the reps run past the top of the range.**
+  Rep progression builds muscle about as well as load (Plotkin 2022).
+- **No trend back-off straight after a step up that is being made**
+  (`steppedUpAndMaking()`). That reset is the sawtooth, not a decline; a
+  same-weight slide still gets its back-off.
+- **A deload week is followed by 21 days of quiet** (`DELOAD_QUIET`). Deload
+  sessions are excluded from every trend, so without it the check re-fires
+  the moment the week ends.
+- **There is no stall flag.** The v24 rule couldn't tell slow progress from
+  none.
+- **`settings.repOutDefault`** makes the shadow the prescription wherever a
+  rep-out exists. The session still records `shadow.used`, so
+  `repOutScore()` keeps judging it.
+
 There is **no load-jump check**, on purpose — read ROADMAP's v22 entry before
 adding one. Epley from a set stopped at its target is a lower bound, and on
 Nick's real log it would have blocked every jump he then made.
@@ -1117,6 +1143,13 @@ bite.
    old and new `prescribe()` and comparing each changed call with what he did
    next. Do that — ask for the export — for anything that changes a
    prescription.
+17d. **Judge a failed load by the best set at it, never the worst.** The last
+   set of three drops off with fatigue; that is not failure. A step-back
+   built on the worst set passed every simulation and then, replayed on the
+   real log, cut an incline press after 65×8,6,4 (next session: 65×8×3) and
+   halved a cable fly after 20×10,14,16. Simulated lifters fatigue the same
+   way every time, and real ones don't. The replay caught what the model
+   couldn't (17c, again).
 18. **A view that borrows another view's event listeners inherits its guard.**
     The `#view` click and input listeners early-return unless `TAB` is the one
     they were written for. Moving rows to a new screen without widening those

@@ -112,7 +112,7 @@ has(await text('.card.ex .shadow'), 'using it', 'Use: the line says it is in use
 for (const t of await page.$$('.card.ex .set .tick')) await t.click();
 await page.click('[data-act="finish"]'); await page.click('[data-x="save"]');
 st = await getState(page);
-eq(JSON.stringify(st.sessions[0].exercises[0].shadow), JSON.stringify({ w:110, r:8, why:'last set 17, well past 12 — two steps up', stall:false, used:true }),
+eq(JSON.stringify(st.sessions[0].exercises[0].shadow), JSON.stringify({ w:110, r:8, why:'last set 17, well past 12 — two steps up', stall:false, used:true, auto:false }),
   'saved: the shadow and used:true are kept for judging it later');
 await page.click('[data-tab="today"]');
 await start();
@@ -124,12 +124,12 @@ st = await getState(page);
 eq(st.sessions[0].exercises[0].shadow.used, false, 'not tapped: saved with used:false');
 eq(st.sessions[0].exercises[0].sets.map(s => s.w).join(), '100,100,100', 'not tapped: today\'s prescription was lifted');
 
-/* ---- 5. the stall flag is a labelled rule of thumb ---- */
+/* ---- 5. no stall flag (v25) ----
+   Simulated over a year, the v24 rule fired on ~35% of exposures while the
+   lifter was getting stronger. It returns with v26's coach, with a rule that
+   can tell slow progress from none. */
 await start(state(ROW, [ RO(100, [10, 10, 11]), RO(100, [10, 10, 11]), RO(100, [10, 10, 10]) ]));
-has(await text('.card.ex .shadow.stall'), 'rule of thumb', 'three rep-outs at one weight, no gain: stall flagged, labelled');
-await discard();
-await start(state(ROW, [ RO(100, [10, 10, 10]), RO(100, [10, 10, 11]), RO(100, [10, 10, 12]) ]));
-eq(await page.$('.card.ex .shadow.stall'), null, 'rep-outs climbing: no stall');
+eq(await page.$('.card.ex .shadow.stall'), null, 'three flat rep-outs: no stall line any more');
 await discard();
 
 /* ---- 6. the trend: one heavy set doesn't drive it; a drop you chose isn't a decline ---- */
@@ -148,7 +148,12 @@ ok(!/Already backed off/.test(why6), 'dropping 65 → 55 yourself: not held as "
 ok(!(await text('.card.ex .ex-meta')).includes('SLIPPING'), 'dropping 65 → 55 yourself: not "slipping"');
 await discard();
 await start(state(INC, h65.concat([ { sets:[[55,8],[55,8],[55,8]], kind:'deload' }, { sets:[[55,8],[55,8],[55,8]], kind:'hold' } ])));
-has(await text('.card.ex .why'), 'Already backed off', 'a drop the APP prescribed still counts as the decline it answered');
+/* The trend still sees a drop the app made (it is not reset like a chosen
+   one). Since v25 a lifter meeting the range after it gets ordinary
+   progression rather than the "already backed off" label — same 55 × 9. */
+has(await text('.card.ex .ex-meta'), 'SLIPPING', 'a drop the APP prescribed still counts as the decline it answered');
+eq(await page.inputValue('.card.ex .set input[data-f="w"]') + ' × ' + await page.inputValue('.card.ex .set input[data-f="r"]'),
+  '55 × 9', '...and the lifter meeting the range keeps climbing reps from there');
 await discard();
 
 /* ---- 7. closed loop: a lifter with reserve (trap 17b) ----
@@ -203,7 +208,7 @@ ok(v24.slice(-4).every(x => x.did[x.did.length - 1] >= 8), 'reserve lifter: sett
 /* ---- 8. fits a 320 px phone with every line showing ---- */
 await page.setViewportSize({ width:320, height:740 });
 await start(state(ROW, [ RO(100, [10, 10, 11]), RO(100, [10, 10, 11]), RO(100, [10, 10, 10]) ]));
-ok(await page.$('.card.ex .shadow.stall') !== null, '320 px: stall, shadow and rep-out lines all present');
+ok(await page.$('.card.ex .shadow') !== null && await page.$('.card.ex .outhint') !== null, '320 px: shadow and rep-out lines present');
 ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '320 px: no sideways scroll');
 await discard();
 await page.setViewportSize({ width:390, height:844 });

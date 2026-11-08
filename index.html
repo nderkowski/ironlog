@@ -688,7 +688,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v24.1";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v25";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -700,7 +700,7 @@ function defaultState(){
               sound:true, notify:false, rpe:false, keepTone:false,
               autoBackup:true, shareMode:"",
               doubleDefault:true,repLow:8,repHigh:12,rangeFixHidden:false,
-              bodyweight:0, deloadUntil:0, deloadSnooze:0,
+              bodyweight:0, deloadUntil:0, deloadSnooze:0, repOutDefault:false,
               bar:45, plates:defaultPlates("lb"),
               lastBackup:0},
     routines:[
@@ -909,7 +909,7 @@ function exSessions(name){
       if(normName(e.name)!==k) continue;
       var sets=working(e.sets).filter(function(x){ return x.done!==false&&num(x.r)>0; });
       if(sets.length) out.push({ts:s.ts,sets:sets,sessionId:s.id,deload:!!s.deload,bw:bwMode(e),metric:metricOf(e),
-                                kind:e.kind||""});
+                                kind:e.kind||"", lo:num(e.reps), top:num(e.repTop)});
     }
   }
   return out;
@@ -1219,12 +1219,22 @@ function deloadCheck(){
 
 /* ---- deliberate deload ---- */
 function inDeloadWeek(){ return Date.now()<(S.settings.deloadUntil||0); }
+/* Deload sessions are left out of every trend (exWorking), so the moment a
+   deload week ends deloadStatus() sees exactly the data that asked for it and
+   asks again — simulated after an illness, 10.8 deload weeks in a year, 8.8 of
+   them back to back. Stay quiet for three weeks after one, so there are new
+   working sessions to judge. */
+var DELOAD_QUIET=21*864e5;
 function startDeloadWeek(days){
   S.settings.deloadUntil=Date.now()+(days||7)*864e5;
-  S.settings.deloadSnooze=0;
+  S.settings.deloadSnooze=S.settings.deloadUntil+DELOAD_QUIET;
   writeNow();
 }
-function endDeloadWeek(){ S.settings.deloadUntil=0; writeNow(); }
+function endDeloadWeek(){
+  S.settings.deloadUntil=0;
+  S.settings.deloadSnooze=Date.now()+DELOAD_QUIET;
+  writeNow();
+}
 
 /* ============================ plates ============================
    `bar` on an exercise is the weight of the empty bar, and 0 means the
@@ -1741,6 +1751,39 @@ function droppedSets(sets,w,mode){
    Past this the slide is answered with a set, not with load. */
 var MAX_CUT=0.2;
 
+/* ---- v25: a jump that was tried and failed is remembered, read from the log ----
+   A fixed 5 lb step is 33% of a 15 lb raise and 50% of a 10 lb fly. Simulated
+   over a year, prescribe() took the raise to 20 and then said "fell short — run
+   it back" for a median 34 weeks, and the rep-out shadow flipped load up and
+   down 198 times. Both now (a) step back when a jump observably fails and
+   (b) don't retry it until the reps at the lighter load have recovered what
+   that jump cost — measured from what happened, not predicted from Epley,
+   which is what made the v22 jump check wrong on the real log. */
+function repsAt(h,w,mode,best){
+  var v=h.sets.filter(function(s){ return isAt(s,w,mode); }).map(function(s){ return num(s.r); });
+  if(!v.length) return 0;
+  return best?Math.max.apply(null,v):Math.min.apply(null,v);
+}
+/* True when the lifter stepped up to W and has met the bottom of the range at
+   every session since — the case where a "down" trend is the double-progression
+   reset, not a decline. */
+function steppedUpAndMaking(hist,W,mode,low){
+  for(var i=0;i<hist.length;i++){
+    var wi=workLoad(hist[i].sets,mode);
+    if(wi!==W) return i>0&&heavierLoad(W,wi,mode);
+    if(repsAt(hist[i],W,mode)<low) return false;
+  }
+  return false;
+}
+/* Newest exposure (index ≥ 1) heavier than W whose previous one was at W. */
+function jumpAwayFrom(hist,W,mode){
+  for(var i=1;i+1<hist.length;i++){
+    var Wi=workLoad(hist[i].sets,mode);
+    if(heavierLoad(Wi,W,mode)&&workLoad(hist[i+1].sets,mode)===W) return {i:i,w:Wi};
+  }
+  return null;
+}
+
 function prescribe(name,ex){
   var step=stepFor(ex);
   var met=metricOf(ex);
@@ -1767,7 +1810,12 @@ function prescribe(name,ex){
             why:"Deload week — light and short on purpose",kind:"deload"};
   }
 
-  if(trend(name).state==="down"){
+  /* Not straight after a step up that is being made. The trend is read from
+     sets stopped at their target, so after a long climb the reset that
+     follows a load step reads as a decline: since at least v23 a lifter
+     getting stronger every session, who made 190×8 and 190×9 at the new
+     load, was cut to 170 (t28). A same-weight slide still gets its back-off. */
+  if(trend(name).state==="down"&&!steppedUpAndMaking(hist,w,mode,low)){
     /* One cut, then hold and rebuild — and the two halves of that have to be
        measured over the SAME window, or they fight each other.
 
@@ -1832,12 +1880,40 @@ function prescribe(name,ex){
     if(minR>=top){
       if(noLoad) return {w:w,r:minR+rstep,sets:nsets,
               why:"Held "+amtText(top,met)+" on every set — go for "+(minR+rstep),kind:"up"};
+      /* The last jump from here failed? Not again until the reps here have
+         recovered what it cost, and let them run past the top meanwhile. */
+      var jf=jumpAwayFrom(hist,w,mode);
+      if(jf&&repsAt(hist[jf.i],jf.w,mode)<low-1){
+        var cost=repsAt(hist[jf.i+1],w,mode,true)-repsAt(hist[jf.i],jf.w,mode,true);
+        if(repsAt(last,w,mode,true)<low+cost)
+          return {w:w,r:minR+rstep,sets:nsets,
+                  why:"Building reps before "+fmt(jf.w)+" again (it cost "+cost+" reps last time) — go for "+(minR+rstep),kind:"reps"};
+      }
       return {w:harder(w,step,mode),r:low,sets:nsets,
               why:"Hit "+amtText(top,met)+" on every set — "+harderPhrase(step,mode),kind:"up"};
     }
     if(minR>=low)
       return {w:w,r:nextR,sets:nsets,
               why:(noLoad?"Same as last time":"Same weight")+" — go for "+nextR+" this time",kind:"reps"};
+    /* Out of reach for now — so step back, rather than "run it back" for
+       months. Judged on the BEST set at the load, not the worst: replayed on
+       the real log, judging by the worst set cut an incline press after
+       65×8,6,4 (fatigue, not failure — next session was 65×8×3) and halved a
+       cable fly after 20×10,14,16. Right after a jump, go back to the load
+       it came from whatever the percentage, since that load was being made.
+       At an established load, only after two sessions in a row and never by
+       more than MAX_CUT; a 10 lb step on a 20 lb fly holds instead. Plain
+       shortfalls only — never on top of the trend back-off above (17b). */
+    if(!noLoad&&hist[1]&&repsAt(last,w,mode,true)<low){
+      var w1=workLoad(hist[1].sets,mode), bk=0;
+      if(heavierLoad(w,w1,mode)) bk=w1;
+      else if(w1===w&&repsAt(hist[1],w,mode,true)<low&&last.lo===hist[1].lo){
+        bk=mode===2?w+step:Math.max(0,w-step);
+        if(mode!==2&&w-bk>w*MAX_CUT) bk=0;
+      }
+      if(bk&&bk!==w) return {w:bk,r:low,sets:nsets,
+        why:"Couldn't reach "+amtText(low,met)+" at "+fmt(w)+" — back to "+fmt(bk)+" and build up",kind:"deload"};
+    }
     return {w:w,r:low,sets:nsets,why:"Fell short of "+amtText(low,met)+" — run it back",kind:"hold"};
   }
 
@@ -1895,24 +1971,63 @@ function shadowPrescribe(name,ex){
   if(!o) return null;
   var W=blankW(o,mode)?workLoad(last.sets,mode):num(o.w), A=num(o.r);
   var k=A<low-1?-1:A<top?0:A<top+OUT_JUMP2?1:2;
+  var held="";
+  /* (b) Two steps only when two steps are a small jump: the +2 rule fired 142
+     times in 20 simulated years and every one was over 10% (10 → 20 on a fly).
+     Measured on the load actually moved — on assisted work that is bodyweight
+     minus the help, not the help. */
+  if(k===2&&2*step>0.10*effLoad(W,mode,num(S.settings.bodyweight))) k=1;
+  /* (a) The last jump from W failed: don't retry it until the mean of the
+     newest two rep-outs at W has recovered what it cost. The cost is smoothed
+     over up to three rep-outs before the jump — one noisy pair blocked a
+     curl for good in simulation. */
+  if(k>0){
+    for(var i=1;i+1<hist.length;i++){
+      var oh=repOutOf(hist[i]), op=repOutOf(hist[i+1]);
+      if(!oh||!op) continue;
+      if(heavierLoad(num(oh.w),W,mode)&&num(op.w)===W){
+        if(num(oh.r)<low-1){
+          var pre=[];
+          for(var y=i+1;y<hist.length&&pre.length<3;y++){
+            var q=repOutOf(hist[y]); if(!q||num(q.w)!==W) break; pre.push(num(q.r));
+          }
+          var cost=pre.reduce(function(a,b){ return a+b; },0)/pre.length-num(oh.r);
+          var o2=hist[1]&&repOutOf(hist[1]);
+          var now2=(o2&&num(o2.w)===W)?(A+num(o2.r))/2:A;
+          if(now2<low-1+cost){ k=0; held=num(oh.w); }
+        }
+        break;
+      }
+    }
+  }
+  /* (c) One low rep-out at an established load is a bad day, not a reason to
+     cut: step down only straight after a jump, or when the rep-out before
+     this one, at this load, was short too. 9.3 → 2.6 false compound cuts a
+     year in simulation. */
+  var bad=false;
+  if(k<0&&hist[1]){
+    var pw=workLoad(hist[1].sets,mode), po=repOutOf(hist[1]);
+    if(!heavierLoad(W,pw,mode)&&!(po&&num(po.w)===W&&num(po.r)<low)){ k=0; bad=true; }
+  }
   var w=W;
   if(k<0) w=mode===2?W+step:Math.max(0,W-step);
-  for(var i=0;i<k;i++) w=harder(w,step,mode);
+  for(var j=0;j<k;j++) w=harder(w,step,mode);
   if(k<0&&w===W) k=0;                        // nothing lighter to go to
-  var r=k===0?Math.max(low,Math.min(top,A)):low;
-  var why=k===2?"last set "+A+", well past "+top+" — two steps up":
+  /* While a jump is being earned the working sets follow the rep-out past
+     the top — rep progression grows muscle about as well as load (Plotkin
+     2022), and it is what earns the jump back. */
+  var r=k===0?(held!==""&&A>=top?A:Math.max(low,Math.min(top,A))):low;
+  var why=held!==""?"last set "+A+" — building reps before "+fmt(held)+" again":
+          bad?"last set "+A+", one low day — repeat it":
+          k===2?"last set "+A+", well past "+top+" — two steps up":
           k===1?"last set "+A+", at the top — one step up":
           k<0?"last set "+A+", under "+low+" — one step down":
           A<low?"last set "+A+" — repeat it":"last set "+A+" — same weight";
-  /* Three exposures at one load, all with rep-outs, and no gain from the
-     first to the newest. A rule of thumb: there is no validated stall rule
-     (Coleman 2024; Bell 2023 is coaches' opinion), and the card says so. */
-  var stall=false;
-  if(hist.length>=3&&k===0){
-    var outs=hist.slice(0,3).map(function(h){ var x=repOutOf(h); return x?{w:num(x.w),r:num(x.r)}:null; });
-    stall=outs.every(function(x){ return x&&x.w===outs[0].w; })&&outs[0].r<=outs[2].r;
-  }
-  return {w:w,r:r,sets:nsets,why:why,steps:k,stall:stall};
+  /* No stall flag (v25). Simulated, the v24 rule fired on ~35% of exposures
+     while strength was rising, and a stricter slope rule caught only 47% of
+     real plateaus. It comes back with v26's coach, with a rule that can tell
+     slow progress from none. */
+  return {w:w,r:r,sets:nsets,why:why,steps:k,stall:false};
 }
 
 /* ============================ sparkline ============================ */
@@ -2291,6 +2406,14 @@ function startSession(routine,vix){
    Warm-ups carry over from last time so you don't retype them. */
 function makeSessionEx(planEx,planId){
   var p=prescribe(planEx.name,planEx);
+  var sp=shadowPrescribe(planEx.name,planEx);
+  /* v25: once the rep-out method has earned it (repOutCard) and been made the
+     default, it is the prescription wherever there is a rep-out to read, and
+     still recorded as used so the scorecard keeps judging it. Lifts with no
+     rep-out yet stay on the classic engine. */
+  var auto=!!(S.settings.repOutDefault&&sp);
+  if(auto) p={w:sp.w, r:sp.r, sets:sp.sets, why:"Rep-out method · "+sp.why,
+              kind:sp.steps>0?"up":sp.steps<0?"deload":"reps"};
   var last=lastPerf(planEx.name);
   var raw=lastRawSets(planEx.name);
   var sets=[];
@@ -2305,7 +2428,7 @@ function makeSessionEx(planEx,planId){
     mg:planEx.mg||"", mg2:(planEx.mg2||[]).slice(),
     supplemental:!planId, note:"",
     why:p.why, kind:p.kind,
-    shadow:(function(sp){ return sp?{w:sp.w,r:sp.r,why:sp.why,stall:sp.stall,used:false}:null; })(shadowPrescribe(planEx.name,planEx)),
+    shadow:sp?{w:sp.w,r:sp.r,why:sp.why,stall:false,used:auto,auto:auto}:null,
     lastW:last?num(last.sets[0].w):null, lastR:last?num(last.sets[0].r):null,
     sets:sets
   };
@@ -2482,7 +2605,7 @@ function exerciseCard(ex,ei){
   var outSi=-1, outNo=0;
   if(repOutApplies(ex)) ex.sets.forEach(function(s,si){ if(!s.warm){ outSi=si; outNo++; } });
   var sh=ex.shadow;
-  if(sh){
+  if(sh&&!sh.auto){
     var same=String(sh.w)===String(working(ex.sets)[0]?working(ex.sets)[0].w:"")&&
              String(sh.r)===String(working(ex.sets)[0]?working(ex.sets)[0].r:"");
     html+='<div class="shadow" data-shadow="'+ei+'"><span>Rep-out method: '+esc(entryText({w:sh.w},mode))+' × '+sh.r+
@@ -2490,7 +2613,6 @@ function exerciseCard(ex,ei){
       (sh.used?'<span class="tiny muted" style="margin-left:auto">using it</span>':
        same?'<span class="tiny muted" style="margin-left:auto">same</span>':
        '<button class="use" data-act="use-shadow" data-ei="'+ei+'">Use</button>')+'</div>';
-    if(sh.stall) html+='<div class="shadow stall">Stalled 3 sessions at this weight — try a variation or a new range (a rule of thumb, not a proven one)</div>';
   }
   if(outSi>=0)
     html+='<div class="outhint">Set '+outNo+' is a rep-out: as many as you can — '+esc(repOutHint(ex.name))+'.</div>';
@@ -2585,6 +2707,15 @@ $("#view").addEventListener("click",function(e){
     S.settings.deloadSnooze=Date.now()+14*864e5; writeNow(); render(); toast("Muted for two weeks"); return;
   }
   if(t.closest('[data-act="end-deload"]')){ endDeloadWeek(); render(); toast("Back to normal"); return; }
+  if(t.closest('[data-act="repout-on"]')){
+    confirmSheet("Make the rep-out method the default?",
+      "Wherever a lift has a rep-out to read, its suggestion becomes the prescription. Lifts without one stay on the classic method. You can switch back here at any time.",
+      "Make it the default",function(){ S.settings.repOutDefault=true; writeNow(); render(); toast("Rep-out method is the default"); });
+    return;
+  }
+  if(t.closest('[data-act="repout-off"]')){
+    S.settings.repOutDefault=false; writeNow(); render(); toast("Back to the classic method"); return;
+  }
 
   var startBtn=t.closest('[data-act="start"]');
   if(startBtn){
@@ -3415,6 +3546,8 @@ function viewProgress(){
   '</div>';
 
   html+=weeklySetsCard(tw,lw);
+  html+=sinceStartCard();
+  html+=repOutCard();
 
   var names=trackedLifts();
   allExerciseNames().forEach(function(x){ if(names.indexOf(x.name)<0) names.push(x.name); });
@@ -3505,6 +3638,96 @@ function weeklySetsCard(tw,lw){
       plural(now.untagged,"set")+' this week aren\'t counted — those exercises have no muscles set.</div>';
   html+='</div>';
   return html;
+}
+
+/* ============================ v25: the scorecard and the look back ============================ */
+/* How the rep-out method has done when it was actually lifted: a tapped (or,
+   once default, automatic) suggestion counts as landed when that session's
+   rep-out reached the bottom of the range. The gate is ROADMAP's: at least
+   nine uses, at least 85% landed — the simulated year put it at 93%. */
+var OUT_GATE_N=9, OUT_GATE_SHARE=0.85;
+function repOutScore(){
+  var offered=0, used=0, landed=0;
+  S.sessions.forEach(function(x){
+    if(x.deload) return;
+    x.exercises.forEach(function(e){
+      if(!e.shadow) return;
+      offered++;
+      if(!e.shadow.used) return;
+      var o=null; working(e.sets).forEach(function(st){ if(st.out) o=st; });
+      if(!o) return;
+      used++; if(num(o.r)>=num(e.reps)) landed++;
+    });
+  });
+  return {offered:offered, used:used, landed:landed, share:used?landed/used:0,
+          ready:used>=OUT_GATE_N&&landed/used>=OUT_GATE_SHARE};
+}
+function repOutCard(){
+  var sc=repOutScore(), on=!!S.settings.repOutDefault;
+  if(!sc.offered&&!on) return "";
+  var pct=sc.used?Math.round(sc.share*100)+"%":"—";
+  var body;
+  if(on) body="It's your default wherever a lift has a rep-out to read. Used "+plural(sc.used,"time")+
+    ", and the last set landed in your range "+pct+" of the time.";
+  else if(sc.ready) body="You've used it "+plural(sc.used,"time")+" and the last set landed in your range "+pct+
+    " of the time — past the 85% it needs. It can take over from here.";
+  else body="Used "+sc.used+" of "+plural(sc.offered,"time")+" it was offered; the last set landed in your range "+pct+
+    " of the time. It can take over after "+OUT_GATE_N+" uses at 85% or better"+
+    (sc.used>=OUT_GATE_N?" — not there yet.":" ("+Math.max(0,OUT_GATE_N-sc.used)+" to go).");
+  return '<div class="eyebrow" style="margin-bottom:7px">Rep-out method</div>'+
+    '<div class="card" style="margin-bottom:12px"><div class="tiny" style="line-height:1.45">'+esc(body)+'</div>'+
+    (on?'<button class="btn sm ghost" style="margin-top:9px" data-act="repout-off">Go back to the classic method</button>':
+     sc.ready?'<button class="btn sm primary" style="margin-top:9px" data-act="repout-on">Make it the default</button>':"")+
+    '</div>';
+}
+/* The screen that has to answer "did it work?" a year from now: per lift in
+   the current plan, the first four weeks of its history against the latest
+   four, by best working weight and best trend score (e1RM, or the rep-out
+   when there is one). Lifts with under three weeks of history are left out
+   rather than shown as noise. */
+var LOOKBACK=28*864e5;
+function sinceStartCard(){
+  if(S.sessions.length<2) return "";
+  var t0=S.sessions[S.sessions.length-1].ts, t1=S.sessions[0].ts;
+  if(t1-t0<LOOKBACK) return "";
+  var rows=[];
+  trackedLifts().forEach(function(n){
+    var h=exWorking(n);
+    if(h.length<2||h[0].ts-h[h.length-1].ts<21*864e5) return;
+    var a=h[h.length-1].ts, z=h[0].ts;
+    var early=h.filter(function(x){ return x.ts<=a+LOOKBACK; }), late=h.filter(function(x){ return x.ts>=z-LOOKBACK; });
+    function best(list,f,lowWins){ var v=list.map(f); return lowWins?Math.min.apply(null,v):Math.max.apply(null,v); }
+    var mode=h[0].bw;
+    var w0=best(early,function(x){ return workLoad(x.sets,x.bw); },mode===2);
+    var w1=best(late,function(x){ return workLoad(x.sets,x.bw); },mode===2);
+    var e0=best(early,trendScore), e1=best(late,trendScore);
+    if(!e0) return;
+    rows.push({n:n, w0:w0, w1:w1, mode:mode, pct:(e1/e0-1)*100});
+  });
+  if(!rows.length) return "";
+  rows.sort(function(x,y){ return y.pct-x.pct; });
+  var weeks=Math.max(1,(t1-t0)/(7*864e5));
+  var months={};
+  S.sessions.forEach(function(x){ var d=new Date(x.ts), k=d.getFullYear()*12+d.getMonth(); months[k]=(months[k]||0)+1; });
+  var mk=Object.keys(months).map(Number).sort(function(x,y){ return x-y; });
+  var mline=mk.map(function(k){
+    return new Date(Math.floor(k/12),k%12,1).toLocaleDateString(undefined,{month:"short"})+" "+months[k];
+  }).join(" · ");
+  return '<div class="eyebrow" style="margin-bottom:7px">Since you started</div>'+
+    '<div class="card" style="padding:0;margin-bottom:12px">'+
+      '<div class="tiny" style="padding:10px var(--pad) 4px">Since '+esc(shortDate(t0))+': '+plural(S.sessions.length,"session")+
+        ' in '+Math.round(weeks)+' weeks, '+(S.sessions.length/weeks).toFixed(1)+' a week.</div>'+
+      '<div class="tiny muted" style="padding:0 var(--pad) 8px">'+esc(mline)+'</div>'+
+      rows.map(function(r){
+        var up=r.pct>=0.5, dn=r.pct<=-0.5;
+        return '<button class="prrow" data-lift="'+esc(r.n)+'">'+
+          '<span class="prn">'+esc(r.n)+'</span>'+
+          '<span class="prs">'+esc(entryText({w:r.w0},r.mode))+' → '+esc(entryText({w:r.w1},r.mode))+'</span>'+
+          '<span class="prd" style="color:'+(up?"var(--good)":dn?"var(--bad)":"var(--ink-2)")+'">'+
+            (r.pct>=0?"+":"")+Math.round(r.pct)+'%</span></button>';
+      }).join("")+
+      '<div class="tiny muted" style="padding:8px var(--pad) 10px">First four weeks of each lift against the latest four: best working weight, and change in estimated max.</div>'+
+    '</div>';
 }
 
 function prCard(){

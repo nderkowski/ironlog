@@ -140,7 +140,10 @@ ok(s.holds.length === 0 || s.holds.some(h => h.r > LOW),
 log = await loop(30, i => 250 - i * 1.7);
 s = shape(log);
 console.log('  real decline:  ' + log.map(x => x.w).join(' '));
-ok(s.backoffs >= 1, 'genuine decline: the app still backs off  [' + s.backoffs + ']');
+/* v25: a real decline now shows up as missed reps, and the step-back meets
+   it 5 lb at a time ("Couldn't reach 8 at 180 — back to 175") rather than a
+   10% trend cut. Count load reductions, whichever rule made them. */
+ok(s.cuts >= 1, 'genuine decline: the app still backs off  [' + s.cuts + ' reductions, ' + s.backoffs + ' trend cuts]');
 ok(s.gap >= 9, 'genuine decline: cuts never come closer than the trend window  [gap ' +
   s.gap + ', at ' + s.at.join(',') + ']');
 ok(s.last >= 150, 'genuine decline: tracks the true 8RM rather than burying it  [' + s.last + ']');

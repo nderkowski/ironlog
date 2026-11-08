@@ -57,7 +57,41 @@ lifts get stuck at loads that can't be done:
 8. *(Suspected, check it.)* Skipping the planned last set makes an ordinary
    set the "rep-out", which skews the v25 evidence.
 
-### 2. Engine (each fix tested in the year simulation; replay Nick's export before shipping, trap 17c)
+### 2. Engine ✅ *shipped in v25*
+
+Built into the functions directly, not as the simulation's wrappers, with
+three changes the checks forced:
+
+- **The step-back judges by the BEST set at the load, not the worst.**
+  Replayed on the real log, the worst-set rule cut the incline press after
+  65×8,6,4 (fatigue; the next session was 65×8×3) and halved a cable fly
+  after 20×10,14,16. After a jump it returns to the load the jump came
+  from. At an established load it needs two sessions in a row, the same
+  logged range, and a cut of at most `MAX_CUT`.
+- **No trend back-off straight after a step up that is being made.** The
+  trend reads sets stopped at their target, so the reset that follows a load
+  step can read as a decline. Since at least v23, t28's steady gainer was cut
+  190 → 170 after making 190×8 and 190×9. A same-weight slide still gets its
+  back-off. (A broader "only when reps are missed" rule also fixed it, but it
+  dropped the back-off for real slides that t26 and t30 rightly expect.)
+- **The +2-step cap measures the load actually moved** (bodyweight minus
+  help, on assisted work).
+
+Year simulation of the shipped code, 10 seeds:
+
+| | v24.1 | v25 |
+|---|---|---|
+| Following the main engine: sessions progressing | 40% | 53% |
+| Following the main engine: sessions at an unreachable load | 146 | 7 |
+| Always tapping Use: weight flips | 198 | 19 |
+| Always tapping Use: share landing in range | 81% | 93% |
+| Illness year: deload weeks | 10.8 | 2.9 |
+
+Replay of the real log: 1 of 102 calls changes, and only its label. `t35`
+keeps the simulated year as a regression suite (v24.1 fails 7 of its 9
+checks).
+
+The plan as written before building:
 
 | | Rule | Year sim, before → after |
 |---|---|---|
@@ -77,7 +111,12 @@ Two lessons from the simulation:
   builds muscle about as well as load (Plotkin 2022), but the card must say
   why. For example: "Building reps before the jump to 20 (+33%)".
 
-### 3. Hand over, and show it working
+### 3. Hand over, and show it working ✅ *shipped in v25*
+
+The scorecard and "Since you started" cards are on the Progress tab, and
+`settings.repOutDefault` is the one-tap takeover. `t36` covers both, and
+`t35` is the kept simulation.
+
 
 - **In-app scorecard:** tapped Use count, the share of rep-outs at or above
   `low`, and the per-lift result. At ≥9 tapped uses and ≥85%, offer "make
@@ -276,7 +315,7 @@ across slots with different rep ranges (it would have moved a cable fly from
 |---|---|
 | **v23** | **Automatic backup to a private GitHub gist** (Slice 4's "user-supplied cloud file", for one user). Token in Settings; backs up after every workout and on changes; restore with both session counts shown and the old log kept. A new phone can't bury the real backup under an empty one. Also asks the browser to keep the data (`storage.persist()`). Details in PROJECT_STATE's settled decisions |
 
-The suites are in `tools/test/` — fourteen of them now, `t20`–`t33`. Run them all
+The suites are in `tools/test/` — `t20`–`t36` (plus `t34` for v25 data safety), with `yearsim.js` as t35's helper. Run them all
 before and after any change and read the summary lines; assertion counts are
 deliberately not written down here, because they go stale and did.
 
