@@ -128,6 +128,10 @@ is evidence, not truth (the review found overrides in 37% of exposures).
  no real call gets more aggressive
 than what he went on to make.
 
+## Wave 1 results
+- **Lane B merged** (test-only, 817bdef): `t43-invariants` — 6 invariants over 8 seeds × 6 scenarios (39,760 exposures): no NaN/negative loads, loads always on the start+k·step grid, progress after a clean top, no double trend back-off, deload bounds/spacing, bounded step size. **All hold on v26.1**; five in-memory mutants each caught by the intended invariant. One documented exemption: during "Building reps before …" the target runs past the top (≈11% of prescriptions in prescribe mode, up to +9 reps on a 12–20 raise) — v25 behaviour, kept.
+- Review #6 (trend reads "down" 25% at 4 sessions on a flat lift): reproduces only with whole-session ±1 noise; closed-loop through the real engine it is 4.8% at 4 sessions, 0% at 8. **Not worth a change this sprint** — backlog.
+
 ## Owner questions
 0. **`main` is v21.** GitHub Pages serves `main`, and `main` holds v21:
    v22–v26 were never merged, so your phone runs v21 (check the BUILD line at
