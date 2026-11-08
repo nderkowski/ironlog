@@ -31,7 +31,16 @@ lifts get stuck at loads that can't be done:
 - The shadow misses its own v25 gate: 81% of tapped suggestions landed the
   rep-out at or above the bottom of the range, against the 85% gate.
 
-### 1. Data safety (reproduced bugs, worst first)
+### 1. Data safety ✅ *all eight fixed in v25* (`t34`)
+
+Two additions found while merging:
+
+- **A confirmed session delete moves the "fewer sessions" guard's count.**
+  Otherwise automatic backups stopped for good after deleting a duplicate,
+  with only a Settings line to say so.
+- **Paused backups show a banner on Today.**
+
+The list as found:
 
 1. **Erase everything pushes an empty log over the GitHub backup.**
    `gistTarget()`'s guard only runs without a gist id. Fix: never push a
@@ -127,6 +136,15 @@ The scorecard and "Since you started" cards are on the Progress tab, and
 - **Keep the year simulation as a regression suite** (shortened, as a new
   `t3x`), so no future change reintroduces the oscillation or the deload
   loop.
+
+### 4. Notes on a single lift ✅ *v25, from Nick*
+
+Each lift card has a quiet "+ Note on this lift" line that opens a box in
+place. It never re-renders mid-workout (trap 1). The note is saved on that
+session exercise, and the newest note on a lift shows as "Note from …" the
+next time it comes up. History shows it. Before this, the only note was the
+one at the foot of the whole session. These notes are what the v26/v27 coach
+will read. `t37`.
 
 ### Then — the coach (v26–v28)
 
@@ -315,7 +333,7 @@ across slots with different rep ranges (it would have moved a cable fly from
 |---|---|
 | **v23** | **Automatic backup to a private GitHub gist** (Slice 4's "user-supplied cloud file", for one user). Token in Settings; backs up after every workout and on changes; restore with both session counts shown and the old log kept. A new phone can't bury the real backup under an empty one. Also asks the browser to keep the data (`storage.persist()`). Details in PROJECT_STATE's settled decisions |
 
-The suites are in `tools/test/` — `t20`–`t36` (plus `t34` for v25 data safety), with `yearsim.js` as t35's helper. Run them all
+The suites are in `tools/test/` — `t20`–`t37`, with `yearsim.js` as t35's helper. Run them all
 before and after any change and read the summary lines; assertion counts are
 deliberately not written down here, because they go stale and did.
 

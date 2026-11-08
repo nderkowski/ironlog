@@ -637,6 +637,10 @@ them.
   rep-out exists. The session still records `shadow.used`, so
   `repOutScore()` keeps judging it.
 
+**Lift notes (v25).** `ex.note` on a session exercise, edited from the card's
+tap line (`exNoteBox()`, swapped in place). `lastNote(name)` puts the newest
+one into the next card's callout.
+
 There is **no load-jump check**, on purpose — read ROADMAP's v22 entry before
 adding one. Epley from a set stopped at its target is a lower bound, and on
 Nick's real log it would have blocked every jump he then made.

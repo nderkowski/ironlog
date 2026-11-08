@@ -249,6 +249,10 @@ h1,h2,h3{margin:0;text-wrap:balance}
 }
 .callout .shadow.stall{color:var(--bad);font-weight:600}
 .set.out .idx{color:var(--accent);font-weight:800}
+/* Per-lift notes: a quiet tap line until there is something to say. */
+.exnote{padding:2px var(--pad) 0}
+.exnote-add{font-size:12.5px;color:var(--ink-2);padding:6px 0;background:none;border:0}
+.exnote-txt{width:100%;min-height:44px;font-size:14px;margin:4px 0 2px;resize:vertical}
 
 .sets{display:flex;flex-direction:column}
 .set{
@@ -2521,6 +2525,7 @@ function todayIdle(){
   var html='<div class="eyebrow">'+esc(new Date().toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"}))+'</div>'+
            '<h1 class="view-title">Ready to lift</h1><div class="stack">';
 
+  html+=gistPausedBanner();
   if(!storageOK){
     html+='<div class="banner warn"><div class="bt">This browser is blocking storage</div>'+
       '<div class="bd">Your log won\'t survive a refresh. Open this page in your normal browser, not a private window.</div></div>';
@@ -2637,6 +2642,21 @@ function todayActive(){
   return html;
 }
 
+/* The newest note left on a lift, from any session — what he wrote about seat
+   height, grip or a sore elbow is worth seeing the next time it comes up. */
+function lastNote(name){
+  var k=normName(name);
+  for(var i=0;i<S.sessions.length;i++){
+    var e=S.sessions[i].exercises.find(function(x){ return normName(x.name)===k&&String(x.note||"").trim(); });
+    if(e) return {note:String(e.note).trim(), ts:S.sessions[i].ts};
+  }
+  return null;
+}
+function exNoteBox(ei,val){
+  return '<textarea class="txt exnote-txt" data-act="exnote" data-ei="'+ei+'" rows="2" '+
+    'placeholder="Seat height, grip, how it felt…">'+esc(val||"")+'</textarea>';
+}
+
 function exerciseCard(ex,ei){
   var best=bestScore(ex.name);
   var last=lastPerf(ex.name);
@@ -2676,6 +2696,8 @@ function exerciseCard(ex,ei){
   } else {
     html+='<div class="lastrow"><span>First time logging this one.</span></div>';
   }
+  var ln=lastNote(ex.name);
+  if(ln) html+='<div class="outhint">Note from '+esc(relDate(ln.ts))+': '+esc(ln.note)+'</div>';
   if(ex.why){
     var glyph=ex.kind==="up"?"↑":ex.kind==="reps"?"+1":ex.kind==="deload"?"↓":"=";
     html+='<div class="why '+esc(ex.kind)+'"><span class="mark">'+glyph+'</span><span>'+esc(ex.why)+'</span></div>';
@@ -2720,6 +2742,8 @@ function exerciseCard(ex,ei){
   });
   html+='</div>';
 
+  html+='<div class="exnote" data-note="'+ei+'">'+(ex.note?exNoteBox(ei,ex.note):
+    '<button class="exnote-add" data-act="ex-note" data-ei="'+ei+'">+ Note on this lift</button>')+'</div>';
   html+='<div class="ex-foot">'+
     '<button class="btn sm ghost" data-act="add-set" data-ei="'+ei+'">+ Set</button>'+
     (nWork>1?'<button class="btn sm ghost" data-act="del-set" data-ei="'+ei+'">− Set</button>':"")+
@@ -2776,6 +2800,8 @@ $("#view").addEventListener("click",function(e){
   var tabBtn=t.closest('[data-act="tab"]');
   if(tabBtn){ go(tabBtn.dataset.tab); return; }
   if(t.closest('[data-act="backup"]')){ backupSheet(); return; }
+  /* The paused-backup banner on Today (gistPausedBanner). */
+  if(TAB==="today"&&t.closest('[data-act="settings"]')){ go("settings"); return; }
   /* Also reachable from Today's empty state — the Plan listener never sees it. */
   if(t.closest('[data-act="import"]')){ doImport(); return; }
   if(t.closest('[data-act="start-deload"]')){
@@ -2840,6 +2866,14 @@ $("#view").addEventListener("click",function(e){
     return;
   }
 
+  var exn=t.closest('[data-act="ex-note"]');
+  if(exn){
+    /* Swapped in place, never a re-render mid-workout (trap 1). */
+    var wrap=exn.parentNode, ein=exn.dataset.ei;
+    wrap.innerHTML=exNoteBox(ein,"");
+    $("textarea",wrap).focus();
+    return;
+  }
   var use=t.closest('[data-act="use-shadow"]');
   if(use){
     var ex6=S.active.exercises[+use.dataset.ei], sh6=ex6.shadow;
@@ -2898,6 +2932,8 @@ $("#view").addEventListener("input",function(e){
     save();
   } else if(inp.matches('[data-act="snote"]')){
     S.active.note=inp.value; save();
+  } else if(inp.matches('[data-act="exnote"]')){
+    S.active.exercises[+inp.dataset.ei].note=inp.value; save();
   }
 });
 $("#view").addEventListener("keydown",function(e){
@@ -3953,7 +3989,8 @@ function sessionSheet(id){
       '<div class="num tiny" style="margin-top:4px;color:var(--ink-2)">'+
       e.sets.map(function(x){
         return (x.warm?"w ":"")+entryText(x,mode)+metricJoin(smet)+num(x.r)+metricSuffix(smet)+(x.pr?" ★":"");
-      }).join("   ")+'</div></div>';
+      }).join("   ")+'</div>'+
+      (String(e.note||"").trim()?'<div class="tiny" style="margin-top:5px">'+esc(String(e.note).trim())+'</div>':"")+'</div>';
   });
   if(s.note) html+='<div class="card" style="margin-bottom:12px"><div class="eyebrow">Note</div><div style="margin-top:4px">'+esc(s.note)+'</div></div>';
   html+='<div class="row" style="gap:8px;margin-top:8px">'+
@@ -3969,11 +4006,16 @@ function sessionSheet(id){
         if(i<0) return;
         var gone=S.sessions[i];
         S.sessions.splice(i,1);
+        /* A delete he confirmed is not data loss, so the backup guard (no push
+           with fewer sessions than the last) must not then refuse every
+           automatic backup in silence — it moves its count with him. */
+        gistSessionsMoved(-1);
         /* PRs are derived from the whole history, so both directions have to
            rebuild them or a deleted record leaves a ghost behind. */
         recomputePRs(); writeNow(); render();
         toastUndo("Session deleted",function(){
           S.sessions.splice(Math.min(i,S.sessions.length),0,gone);
+          gistSessionsMoved(1);
           recomputePRs(); writeNow(); render(); toast("Session restored");
         });
       },true);
@@ -5150,6 +5192,19 @@ function gistLog(){
    the backup without asking. Erase everything did exactly that 30 s after the
    wipe, and an empty log became the newest backup — the one Restore offers.
    Only "Back up now", confirmed (gistNowTap), passes {force:true}. */
+function gistSessionsMoved(d){
+  var g=gistLoad();
+  if(g.pushedSessions===undefined||g.pushedSessions===null) return;
+  gistPatch({pushedSessions:Math.max(0,num(g.pushedSessions)+d)});
+}
+/* Backups that have stopped are said where he looks, not only in Settings. */
+function gistPausedBanner(){
+  var g=gistLoad();
+  if(!g.token||!g.dirty||!g.lastError) return "";
+  return '<div class="banner warn"><div class="bt">GitHub backup paused</div>'+
+    '<div class="bd">'+esc(g.lastError)+'</div>'+
+    '<div class="acts"><button class="btn sm ghost" data-act="settings">Open Settings</button></div></div>';
+}
 function gistPush(opts){
   var g=gistLoad();
   if(!g.token) return Promise.resolve();

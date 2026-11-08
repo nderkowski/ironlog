@@ -157,6 +157,13 @@ await section('1b fewer', async () => {
   eq(gistSessions(gists.g1), 5, '1 fewer: the backup still holds 5');
   has(await page.textContent('#gist-status'), 'fewer sessions than your GitHub backup (3 vs 5)', '1 fewer: the status line says why');
   eq((await gistRecord(page)).dirty, true, '1 fewer: the change stays waiting');
+  /* Paused backups are said on Today too, not only in Settings. */
+  await page.click('[data-tab="today"]');
+  await page.waitForSelector('#view .view-title');
+  has(await text(page, '#view'), 'GitHub backup paused', '1 fewer: Today says the backup is paused');
+  await page.click('#view .banner [data-act="settings"]');
+  await page.waitForSelector('[data-act="gist-now"]');
+  ok(true, '1 fewer: the banner opens Settings');
 
   await page.click('[data-act="gist-now"]');
   await page.waitForSelector('.sheet [data-x="ok"]');
@@ -173,6 +180,30 @@ await section('1b fewer', async () => {
   eq(logOf(writes(calls)[0].body).sessions.length, 3, '1 fewer: ...with the 3-session log');
   ok(await until(async () => (await gistRecord(page)).dirty === false), '1 fewer: and the change is backed up');
   eq((await gistRecord(page)).pushedSessions, 3, '1 fewer: the push records its session count');
+});
+
+/* ================= 1c. a session deleted on purpose ================= */
+/* The fewer-sessions guard must not turn a confirmed delete into backups that
+   stop for good, with only a Settings line to say so. */
+await section('1c delete', async () => {
+  const { page } = await fresh(true);
+  const gists = { g1:curlLog(5) };
+  const calls = await mockGitHub(page, gists);
+  await boot(page, curlLog(5));
+  await setGist(page, { token:TOKEN, gistId:'g1', dirty:false, lastSync:Date.now(), pushedSessions:5 });
+  await page.reload(); await page.waitForSelector('#view');
+  await page.click('[data-tab="progress"]');
+  await page.click('#view .sess >> nth=0');
+  await page.click('.sheet [data-x="del"]');
+  await page.waitForSelector('.sheet [data-x="ok"]');
+  await page.click('.sheet [data-x="ok"]');
+  eq((await getState(page)).sessions.length, 4, '1c delete: the session is gone');
+  eq((await gistRecord(page)).pushedSessions, 4, '1c delete: the guard\'s count moves with a confirmed delete');
+  await page.clock.fastForward(35000);
+  ok(await until(() => writes(calls).length === 1 && writes(calls)[0].done), '1c delete: the automatic backup still goes');
+  eq(gistSessions(gists.g1), 4, '1c delete: ...with the 4 sessions he chose to keep');
+  await page.click('[data-tab="today"]');
+  ok(!(await text(page, '#view')).includes('GitHub backup paused'), '1c delete: no paused banner');
 });
 
 /* ================= 6. a change made during an upload ================= */
