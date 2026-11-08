@@ -641,6 +641,8 @@ nav.tabs .t.on{color:var(--accent);background:var(--accent-soft)}
 }
 /* editor Save/Cancel stay in reach: sticky to the bottom of the scrolling sheet,
    cancelling the sheet's own bottom padding so it sits flush above the safe area */
+/* a focused field scrolled into view must land above the sticky bar, not under it */
+.sheet:has(.sheet-foot){scroll-padding-bottom:84px}
 .sheet .sheet-foot{
   position:sticky;bottom:calc(-20px - env(safe-area-inset-bottom,0px));z-index:2;display:flex;gap:8px;
   margin:12px -14px calc(-20px - env(safe-area-inset-bottom,0px));
@@ -2781,13 +2783,13 @@ function todayIdle(){
   if(last){
     /* Calendar days, not 24-hour blocks: last Sunday 09:00 seen on Sunday
        08:00 is six blocks ago and would print "Sun", which reads as today. */
-    var d0=new Date(), d1=new Date(last.ts), lsets=0,
+    var d0=new Date(), d1=new Date(last.ts), lsets=0, lvol=0,
         ago=Math.round((new Date(d0.getFullYear(),d0.getMonth(),d0.getDate())-new Date(d1.getFullYear(),d1.getMonth(),d1.getDate()))/864e5);
-    last.exercises.forEach(function(e){ lsets+=working(e.sets).length; });
+    last.exercises.forEach(function(e){ lsets+=working(e.sets).length; lvol+=exVolume(e); });
     html+='<button class="lastsess" data-act="edit-last" data-id="'+esc(last.id)+'">'+
       '<span class="ls-t"><span class="ls-k">Last</span> <b>'+esc(last.name)+'</b> · '+
         esc(ago===0?"Today":ago===1?"Yesterday":ago>1&&ago<7?d1.toLocaleDateString(undefined,{weekday:"short"}):shortDate(last.ts))+
-        ' · '+plural(lsets,"set")+'</span>'+
+        ' · '+plural(lsets,"set")+(lvol>0?' · '+kfmt(lvol)+' '+unit():'')+(last.deload?' · deload':'')+'</span>'+
       '<span class="ls-edit">Edit</span></button>';
   }
 
