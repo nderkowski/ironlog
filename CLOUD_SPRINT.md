@@ -132,6 +132,11 @@ than what he went on to make.
 - **Lane B merged** (test-only, 817bdef): `t43-invariants` — 6 invariants over 8 seeds × 6 scenarios (39,760 exposures): no NaN/negative loads, loads always on the start+k·step grid, progress after a clean top, no double trend back-off, deload bounds/spacing, bounded step size. **All hold on v26.1**; five in-memory mutants each caught by the intended invariant. One documented exemption: during "Building reps before …" the target runs past the top (≈11% of prescriptions in prescribe mode, up to +9 reps on a 12–20 raise) — v25 behaviour, kept.
 - Review #6 (trend reads "down" 25% at 4 sessions on a flat lift): reproduces only with whole-session ±1 noise; closed-loop through the real engine it is 4.8% at 4 sessions, 0% at 8. **Not worth a change this sprint** — backlog.
 
+## Wave 2 results (17:00–17:25)
+- **Lane A merged — v26.2 near-miss jump** (922e081 + review fixes 9cc1c5e). Rule: step up when every set but the last is at the top and the last (the rep-out) is within min(2, ⌊range/2⌋) of it, every planned set logged, rep-counted loaded lifts only. 20 seeds, paired vs v26.1, follow prescribe(): **behind 37.3% → 31.8% (−5.5 ± 0.5 pts)**, mean |steps off| 0.82 → 0.68 (−0.14 ± 0.01); over −0.2 ± 0.5, unmeetable +0.05 ± 0.86, flips +0.35 ± 0.54 (all inside noise). Progressing 50.4 → 51.6%. Always-Use mode unchanged (shadow untouched). t43 invariants 37/37 on it; t42 34/34. Real log: 1/102 calls change (the curl jump he made a month later); load agreement 62% → 61%.
+  - Gate: fresh Opus review (no Important; fixed Minor 1 timed lifts, Minor 2 long assisted text) + `/code-review high` (fixed: skipped last set counted; narrow ranges 10,10,8 at 8–10 jumped; why length. Rejected: require the `out` flag — the one real-log case predates it; shadow disagreeing on the card — labelled as the other method, already disagrees elsewhere; helper refactor).
+- **Lane D merged — v26.4 edit last session from Today** (0987a79 + fixes). Edit just-finished session: **5 taps / 2 scrolls → 3 taps / 0 scrolls**; editor Save/Cancel sticky. Gate: Opus review (no Important; fixed calendar-day label "Today/Yesterday"), `/code-review high` (fixed: dropped volume/deload info restored; scroll-padding so focused fields don't sit under the sticky bar). Verified by real taps at 390×844 (labels, editor opens with Save in view, 0 page errors).
+
 ## Owner questions
 0. **`main` is v21.** GitHub Pages serves `main`, and `main` holds v21:
    v22–v26 were never merged, so your phone runs v21 (check the BUILD line at
@@ -143,3 +148,5 @@ than what he went on to make.
 
 ## Wave log
 - Wave 0 (16:37–16:50): baseline, plan, lanes A/B/C/D launched.
+- Wave 1 (16:50–17:00): lane B merged.
+- Wave 2 (17:00–17:25): lanes A and D merged after review; lane C in review.
