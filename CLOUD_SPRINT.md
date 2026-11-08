@@ -52,9 +52,30 @@ See `tools/sprint/runall.sh`. Baseline result: _(filled in below when the run la
 
 ### Gym usability
 
-Journey harness being built (lane C): taps/time for start, log, finish,
-coach card accept/undo, edit past session; touch targets; axe-core; offline.
-_(numbers below when it lands)_
+`PORT=8117 node tools/sprint/journeys.mjs` (390×844, real taps; full output in
+`tools/sprint/journeys-baseline.txt`).
+
+| journey | taps | scrolls |
+|---|---|---|
+| start today's workout (cold open) | 1 | 0 (Start bottom at 263 px) |
+| log a prefilled set | 1 | 0 |
+| log a set at +5 lb | 2 | 0 |
+| finish (header Finish → Save) | 2 | 0 |
+| whole 12-set workout | 15 | 4 |
+| deload card accept / undo | 1 / 1 | 0 (no Undo on the accept toast) |
+| **edit a past session** | **5** | **2** (History list starts at y≈2214 px; editor Save below the fold) |
+
+Touch targets: active workout **121 of 126** controls under 44 px, **12 under
+24 px** (warm-up index button 20×38 next to the 28×38 steppers — a mis-tap
+flips a set to warm-up and re-renders). Finish sheet buttons 42 px.
+axe-core: **4 critical** (Plan: unlabelled `.switch`, unlabelled repLow/repHigh
+inputs), label-content-name-mismatch ×12 (warm-up buttons), colour contrast
+serious on every screen (7 / 18 / 61 / 69 / 26 nodes on Today / active /
+Progress / History / Plan). Offline after SW install: **works** (boots, logs,
+persists).
+
+Taps on the core loop are already minimal (1–2). The usability gains are in
+hit size, a11y, and the past-session edit path.
 
 ## Plan: lanes
 
@@ -62,7 +83,8 @@ _(numbers below when it lands)_
 |---|---|---|---|
 | A engine | sonnet implementer (worktree) | behind ↓ > 2 paired se; over/unmeet/flips not worse | jump condition in `prescribe()` double-progression branch; BUILD/CACHE |
 | B harness | sonnet implementer (worktree) | invariants: no NaN/negative/off-grid loads, progress after success, no double cut, deload sanity, bounded steps | `tools/test/t43-invariants.mjs`, yearsim (back-compat) |
-| C usability | sonnet (worktree) → then fix lane | taps/time/targets/axe from journey script | measurement first; UI fixes after numbers |
+| C usability | sonnet (worktree) | <24 px → 0; stepper/warm/finish hit ≥44 px; 0 critical axe; contrast down | CSS tokens, set-row/stepper sizes, aria labels |
+| D usability | sonnet (worktree) | edit last session: 5 taps/2 scrolls → ≤3/0 | viewToday() last-session row, editSession() sticky Save |
 
 Why the jump rule beats patching symptoms: the stuck/slide/oscillation
 reports all come from one condition (`minR>=top` with a fatigued rep-out in
@@ -88,6 +110,10 @@ on the diff + `/code-review high` → Playwright run of the changed flow at
 - 17:00 Chose jump-rule redesign as lane A from a 3-variant prototype.
 
 ## Owner questions
+0. **`main` is v21.** GitHub Pages serves `main`, and `main` holds v21:
+   v22–v26 were never merged, so your phone runs v21 (check the BUILD line at
+   the foot of Plan). Everything this sprint measured is v26.1+. Merge when
+   you have reviewed it — nothing here touches `main`.
 1. Lane A changes when a lift steps up. Trap 17c says replay the real export
    before trusting a prescription change; the export is not in this public
    repo. Can you drop `ironlog-*.json` at the repo root (gitignored) for the
@@ -96,4 +122,4 @@ on the diff + `/code-review high` → Playwright run of the changed flow at
    strength/yr), not code. Want a sessions-per-week vs target line on Progress?
 
 ## Wave log
-- Wave 0 (16:37–17:10): baseline, plan, lanes A/B/C launched.
+- Wave 0 (16:37–16:50): baseline, plan, lanes A/B/C/D launched.
