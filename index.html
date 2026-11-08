@@ -739,7 +739,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v26";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v26.1";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -1917,6 +1917,28 @@ function jumpAwayFrom(hist,W,mode){
   return null;
 }
 
+/* v26.1 (independent review, tools/review): one lift, two ranges. The plan can
+   hold the same lift at different ranges on different days — Nick's lateral
+   raise is 4×12–20 on Day A and 3×8–12 on Day B — and both rows read one
+   history. Topping out the 12–20 day stepped the 8–12 day up; the 12–20 day
+   then missed its bottom at the new load and was cut back. Simulated over a
+   year, that was 9.9 load cuts per lifter-year on the raise and a cut-fail-cut
+   spiral in 96% of lifter-years; the real log bounces 10/15/20. When the plan
+   holds a lift at more than one range, each row reads the exposures done at
+   its own range, falling back to all of them until there is one. A range
+   changed for good (one range in the plan) keeps its whole history. */
+function rangeHist(hist,name,ex){
+  var k=normName(name), seen={}, n=0;
+  eachPlanEx(function(e){
+    if(normName(e.name)!==k) return;
+    var key=num(e.reps)+"-"+num(e.repTop); if(!seen[key]){ seen[key]=1; n++; }
+  });
+  if(n<2) return hist;
+  var lo=num(ex.reps), top=num(ex.repTop);
+  var same=hist.filter(function(h){ return h.lo===lo&&h.top===top; });
+  return same.length?same:hist;
+}
+
 function prescribe(name,ex){
   var step=stepFor(ex);
   var met=metricOf(ex);
@@ -1925,7 +1947,7 @@ function prescribe(name,ex){
   var top=num(ex.repTop)||0;
   var mode=bwMode(ex);
   var nsets=Math.max(1,num(ex.sets)||3);
-  var hist=exWorking(name);
+  var hist=rangeHist(exWorking(name),name,ex);
   var last=hist[0];
   if(!last){
     /* v26: a lift the coach swapped in has no history to read, so the plan row
@@ -2115,7 +2137,7 @@ function shadowPrescribe(name,ex){
   if(inDeloadWeek()||!repOutApplies(ex)) return null;
   var low=Math.max(1,num(ex.reps)), top=num(ex.repTop), mode=bwMode(ex);
   var step=stepFor(ex), nsets=Math.max(1,num(ex.sets)||3);
-  var hist=exWorking(name), last=hist[0];
+  var hist=rangeHist(exWorking(name),name,ex), last=hist[0];   // v26.1: own range's exposures (rangeHist)
   var o=last&&repOutOf(last);
   if(!o) return null;
   /* The rep-out has to be AT the working load to say anything about it.
