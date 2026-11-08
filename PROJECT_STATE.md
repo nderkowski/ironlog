@@ -533,6 +533,49 @@ training day. The session one re-runs `recomputePRs()` in **both** directions.
 Only the Undo pill takes pointer events; the toast body is `pointer-events: none`
 so a 10-second toast can't sit on top of "Finish workout".
 
+### Form check (v28)
+
+Active session → a lift's ⋯ menu → "Form check (video)". All of it is one block
+in `index.html` right after `exerciseMenu()` (search "form check (v28)"; every
+name starts `fc`/`FC`), plus one line in `sessionSheet()`. It uses `aiCall()` as
+given and touches nothing else.
+
+- **Without a key** the sheet says it needs Claude set up and offers "Open
+  Settings" (a button, never an automatic jump). `S.active` survives the trip.
+- **One file input**, `accept="video/*" capture="environment"`. "Choose a clip
+  that is already on the phone" removes `capture` from that same input and
+  clicks it, because with `capture` set Android Chrome opens the camera and
+  offers no gallery.
+- **Frames** (`fcFrames`/`fcPlan`): the clip goes into an offscreen `<video>`
+  (object URL, revoked afterwards); only the first `FC_MAX_SECS` = 60 s is used.
+  8–12 frames, about one per 3 s, evenly from 5% in (max 0.4 s) to 5% before the
+  end. Each is drawn to a canvas scaled so the long edge is at most 1024 px
+  (never scaled up) and exported as JPEG q0.8. MediaRecorder-made webm reports an
+  infinite duration until the end has been seen, so `fcDuration` seeks to 1e7
+  first. Clips under 2 s, non-video files, undecodable video, all-black frames and
+  seeks that never finish each give a plain message; nothing is sent.
+- **The request**: images first, then one text block (exercise, which set and its
+  weight × reps, the question, the frame times and whether the clip was cut).
+  `FC_SYSTEM` and `FC_SCHEMA` (all fields required, `additionalProperties:false`)
+  are constants beside the code; effort "high", max_tokens 16000.
+- **What is kept**: `ex.formCheck = {ts, verdict, summary, cues:[{cue,why,frame}],
+  model[, tip, safety, set]}` on the session exercise, written with `save()` and
+  no render. Frames and video exist only in the `FC` object while the result is
+  on screen and are dropped on Done. Nothing image-like is ever written to `S`
+  or localStorage (`t40` greps localStorage for it). The record rides along in
+  backups/exports like any other exercise field and survives the session editor.
+- **Re-entrancy.** One check at a time (`FC`, `FC.token`). The sheet can be
+  closed mid-request: the answer is saved, and a toast with "View" reopens it.
+  "Cancel this check" bumps the token, so a late answer is ignored. Saving looks
+  the exercise up by object, not index, so reordering or removing a lift while it
+  runs can't write to the wrong one.
+- **Cost line** is computed from the response's `usage` and priced only for models
+  in `FC_PRICES` (claude-opus-5-5: $4 in / $20 out per million tokens); any other
+  model name gets token counts and no dollar figure.
+- **Tests**: `t40` makes real webm clips in the browser (canvas + MediaRecorder,
+  including a 31 s and a 66 s one recorded in real time, so the suite takes about
+  a minute and a half) and drives the whole flow through the UI.
+
 ---
 
 ## The engine

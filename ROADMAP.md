@@ -227,7 +227,36 @@ will read. `t37`.
   v25 F4). It now needs three whole cycles. **The cost: a 12-week plateau
   (~9 exposures) is not caught.**
 - **v28, form check:** 8–12 frames from a side-on clip, 2–3 cues for the
-  next set, with honest limits.
+  next set, with honest limits. ✅ *Shipped, off until a key is saved* (`t40`).
+
+  Lift card ⋯ → "Form check (video)". Film one set (side-on, hip height, whole
+  body and the weight in frame, ideally ≤ 30 s), or pick a clip. On the phone:
+  8–12 JPEG frames (long edge ≤ 1024 px, q0.8) are cut from the first 60 s and
+  sent to Claude with the exercise, the set's weight × reps and an optional
+  question. The video is never sent or kept, and neither are the frames once the
+  result is closed. Back come a verdict (looks good / worth adjusting / can't
+  judge), a summary, at most 3 cues each tied to a frame, a filming tip, and a
+  safety line if anything looks risky. The text is saved on that lift
+  (`ex.formCheck`, no images), shown in the session's history and readable by the
+  coach later.
+
+  Limits, stated plainly:
+  - **Stills, not motion.** It can judge range of motion, depth, torso angle,
+    elbow position and swinging. It cannot judge tempo, bracing, or anything that
+    needs a second angle, and it can miss what happens between frames (one frame
+    about every 3 s is far coarser than a rep).
+  - **It can only be as good as the filming.** Front-on, dark, cropped or far
+    away clips come back "can't judge" with a re-filming tip, by design.
+  - **It is a second opinion from a model, not a coach or a clinician.** It gives
+    no diagnosis; a safety line says to stop and see a professional.
+  - **A clip over 60 s is read for its first 60 s only**, and says so.
+  - **Cost** is about 8 k input tokens (the frames) and a few thousand output
+    tokens at high effort: roughly 5–20 cents a check on Opus 5.5, shown exactly
+    from the response's usage after each one.
+  - **Not tried on a real phone yet.** Tests record real webm clips in headless
+    Chrome. Android Chrome's HEVC clips and the camera round trip (the page can
+    be reloaded while the camera app is in front) are unverified; the workout
+    itself is persisted before any of it starts.
 
 ## Previously — v24 shipped in shadow; v25 decides whether it takes over
 
