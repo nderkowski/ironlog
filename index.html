@@ -975,7 +975,8 @@ function exSessions(name){
       if(normName(e.name)!==k) continue;
       var sets=working(e.sets).filter(function(x){ return x.done!==false&&num(x.r)>0; });
       if(sets.length) out.push({ts:s.ts,sets:sets,sessionId:s.id,deload:!!s.deload,bw:bwMode(e),metric:metricOf(e),
-                                kind:e.kind||"", lo:num(e.reps), top:num(e.repTop)});
+                                kind:e.kind||"", lo:num(e.reps), top:num(e.repTop),
+                                tgt:(e.shadow&&e.shadow.used)?num(e.shadow.r):num(e.targetReps)});
     }
   }
   return out;
@@ -1515,7 +1516,12 @@ var MG_GUESS=[
   [/upright\s*row|lateral\s*raise|side\s*raise|front\s*raise/i,"delts",[]],
   [/rear\s*delt|face\s*pull|reverse\s*(fly|flye|pec)/i,   "delts",  ["back","traps"]],
   [/overhead\s*press|\bohp\b|shoulder\s*press|military|arnold/i,"delts",["triceps"]],
-  [/bench|chest\s*press|push.?up|\bdips?\b|\bfly\b|flye|\bpec\b/i,"chest",["triceps","delts"]],
+  /* A fly is shoulder horizontal adduction with the elbow fixed: chest, with
+     front delts helping, and no triceps. It shared the press row and handed
+     triceps half a set per set of flies (external review, Argon). After the
+     rear-delt row, so a reverse fly is still delts. */
+  [/\bfly\b|flye|pec\s*deck|\bpec\b/i,                 "chest",  ["delts"]],
+  [/bench|chest\s*press|push.?up|\bdips?\b/i,           "chest",  ["triceps","delts"]],
   /* Generic presses, but only after the overhead and leg variants above have
      had their turn — and only when the word "press" is actually there, so
      "incline dumbbell curl" still falls through to biceps. */
@@ -1920,8 +1926,17 @@ function prescribe(name,ex){
          bottom of the range every session meant an obedient lifter could never
          produce a rising e1RM — the hold suppressed exactly the evidence that
          would clear the verdict, so the verdict never cleared. */
+      /* Same hold either way; say who backed off. When the heavier sessions
+         in the window all predate a drop he chose (sinceChosenDrop), "already
+         backed off" credits the app with his decision. External review
+         (Argon) proposed reading the guard from sinceChosenDrop() instead —
+         on the real log that turns this hold into a 10% cut (55 → 50) off a
+         four-session dip after a 25-day gap, so only the words change. */
       return {w:w,r:climb,sets:nsets,
-              why:"Already backed off — beat this before adding",kind:"hold"};
+              why:sinceChosenDrop(hist).slice(1).some(function(h){ return heavierLoad(workLoad(h.sets,mode),w,mode); })||
+                  sinceChosenDrop(hist).length===hist.length?
+                  "Already backed off — beat this before adding":
+                  "You dropped to "+fmt(w)+" — build reps here before adding",kind:"hold"};
     if(mode===1&&w<=0)
       return {w:0,r:climb,sets:Math.max(1,nsets-1),
               why:"Sliding 3 sessions — drop a set rather than adding load",kind:"deload"};
@@ -2051,7 +2066,20 @@ function shadowPrescribe(name,ex){
   var hist=exWorking(name), last=hist[0];
   var o=last&&repOutOf(last);
   if(!o) return null;
-  var W=blankW(o,mode)?workLoad(last.sets,mode):num(o.w), A=num(o.r);
+  /* The rep-out has to be AT the working load to say anything about it.
+     External review (Argon), confirmed on the real log: after RDL
+     225×8, 185×8, 135×8 the shadow read the last set and suggested 135×8;
+     after Cable Row 75×8, 75×8, 65×10 it suggested 65. A set dropped after
+     the working load is a back-off, not a measurement — hold there exactly
+     as prescribe() does, and let the next real rep-out decide. */
+  var wl=workLoad(last.sets,mode);
+  var W=blankW(o,mode)?wl:num(o.w), A=num(o.r);
+  if(W!==wl||droppedSets(last.sets,wl,mode)>0){
+    var atW=last.sets.filter(function(x){ return isAt(x,wl,mode); });
+    var mr=atW.length?Math.min.apply(null,atW.map(function(x){ return num(x.r); })):low;
+    return {w:wl, r:Math.max(low,Math.min(top,mr)), sets:nsets, steps:0, stall:false,
+            why:"last set was lighter than "+fmt(wl)+" — hold there and get every set to it"};
+  }
   var k=A<low-1?-1:A<top?0:A<top+OUT_JUMP2?1:2;
   var held="";
   /* (b) Two steps only when two steps are a small jump: the +2 rule fired 142
@@ -2099,6 +2127,18 @@ function shadowPrescribe(name,ex){
      the top — rep progression grows muscle about as well as load (Plotkin
      2022), and it is what earns the jump back. */
   var r=k===0?(held!==""&&A>=top?A:Math.max(low,Math.min(top,A))):low;
+  /* A last set that reads exactly the prefilled target says "I ticked it",
+     not "that was all I had" — and half of Nick's logged exercises sit
+     exactly on target. Taken at face value the method then repeats the same
+     number for ever. If every set at the load made that target, ask for one
+     more, as double progression would. External review (Argon); simulated
+     year: sessions progressing 38% → 55%, and for a lifter who ticks the
+     prefill half the time 25% → 58%, with unreachable loads, flips and the
+     85% gate unchanged. (Its other two ideas — step compounds at top−1 twice,
+     and never lower the target on one low day — were simulated too: the first
+     changed nothing, the second made progress slower.) */
+  if(k===0&&held===""&&!bad&&A>=low&&last.tgt&&A===last.tgt&&last.tgt<top&&repsAt(last,W,mode)>=last.tgt)
+    r=Math.min(top,last.tgt+1);
   var why=held!==""?"last set "+A+" — building reps before "+fmt(held)+" again":
           bad?"last set "+A+", one low day — repeat it":
           k===2?"last set "+A+", well past "+top+" — two steps up":
@@ -2510,7 +2550,7 @@ function makeSessionEx(planEx,planId){
     mg:planEx.mg||"", mg2:(planEx.mg2||[]).slice(),
     supplemental:!planId, note:"",
     why:p.why, kind:p.kind,
-    shadow:sp?{w:sp.w,r:sp.r,why:sp.why,stall:false,used:auto,auto:auto}:null,
+    shadow:sp?{w:sp.w,r:sp.r,why:sp.why,steps:sp.steps,stall:false,used:auto,auto:auto}:null,
     lastW:last?num(last.sets[0].w):null, lastR:last?num(last.sets[0].r):null,
     sets:sets
   };
@@ -2880,6 +2920,12 @@ $("#view").addEventListener("click",function(e){
     if(!sh6) return;
     ex6.sets.forEach(function(s){ if(!s.done&&!s.warm){ s.w=String(sh6.w); s.r=String(sh6.r); } });
     sh6.used=true;
+    /* The card and the record follow what is actually being lifted: a
+       rep-out step-down taken this way is the app's decision ("deload"), not
+       a drop he chose, so sinceChosenDrop() must not restart the trend on
+       it (external review, Argon). */
+    ex6.kind=num(sh6.steps)>0?"up":num(sh6.steps)<0?"deload":"reps";
+    ex6.why="Rep-out method · "+sh6.why;
     save(); viewToday(); refreshSummary();
     toast("Using the rep-out method: "+entryText({w:sh6.w},bwMode(ex6))+" × "+sh6.r);
     return;
@@ -4597,6 +4643,11 @@ $("#view").addEventListener("click",function(e){
   }
   var pw=t.closest("[data-pw],[data-pn]");
   if(pw) return;                                  // let the input handler have it
+  if(t.closest('[data-act="plan-fixc"]')){
+    if(S.active){ toast("Finish or discard the workout first"); return; }
+    if(recFixDayC()){ viewSettings(); toast("Day C re-paired"); }
+    return;
+  }
   if(t.closest('[data-act="plan-rec"]')||t.closest('[data-act="plan-back"]')){
     var back=!!t.closest('[data-act="plan-back"]');
     if(S.active){ toast("Finish or discard the workout first"); return; }
@@ -5617,8 +5668,12 @@ var REC_PLAN={
        ["Hamstring Curls",8,12],["Lateral Raise",12,20,1],["DB Curl",8,12],["Tricep Pushdown",10,15,1]],
     B:[["Bulgarian Split Squat",8,11],["DB Overhead Press",8,12],["Lat Pulldown",8,12,1],
        ["Leg Extension",10,15],["Lateral Raise",12,20,1],["DB Curl",8,12],["Tricep Pushdown",10,15,1]],
+    /* Day C pairs hams with side delts and the chest fly with the rear delt
+       fly (opposite movements). It used to superset Lateral Raise straight
+       into Rear Delt Fly — two shoulder lifts back to back (external review,
+       Argon). recFixDayC() offers the same order to a plan already switched. */
     C:[["RDL",6,10],["Flat DB Press",8,12],["DB Row",8,12,1],
-       ["Hamstring Curls",8,12],["Low to high cable fly",12,16,1],["Lateral Raise",12,20],["Rear Delt Fly",12,20,1]]
+       ["Hamstring Curls",8,12],["Lateral Raise",12,20,1],["Low to high cable fly",12,16],["Rear Delt Fly",12,20,1]]
   }
 };
 /* Fixed in the history on switching, so the plan's lifts join what was
@@ -5640,6 +5695,35 @@ function recPlanEx(spec,old){
   e.sets=3; e.reps=spec[1]; e.repTop=spec[2]; e.link=!!spec[3];
   return e;
 }
+/* A plan switched before the Day C fix still has Lateral Raise superset into
+   Rear Delt Fly. Offer the new order once, by reordering the rows he already
+   has (ids, increments and history untouched) and setting the links. */
+function recDayCRows(){
+  var r=S.routines.find(function(x){ return x.key==="C"; });
+  var v=r&&variantsOf(r)[0];
+  return v?v.exercises:null;
+}
+function recDayCNeedsFix(){
+  var ex=recDayCRows(); if(!ex) return false;
+  var i=ex.findIndex(function(e){ return normName(e.name)==="lateral raise"; });
+  return i>=0&&ex[i+1]&&normName(ex[i+1].name)==="rear delt fly"&&!!ex[i+1].link;
+}
+function recFixDayC(){
+  var ex=recDayCRows(); if(!ex) return false;
+  var spec=REC_PLAN.days.C, out=[], used={};
+  spec.forEach(function(sp){
+    var j=ex.findIndex(function(e,k){ return !used[k]&&normName(e.name)===normName(sp[0]); });
+    if(j<0) return;
+    used[j]=1; ex[j].link=!!sp[3]; out.push(ex[j]);
+  });
+  ex.forEach(function(e,k){ if(!used[k]){ e.link=false; out.push(e); } });
+  if(out.length) out[0].link=false;
+  var r=S.routines.find(function(x){ return x.key==="C"; });
+  variantsOf(r)[0].exercises=out;
+  writeNow();
+  return true;
+}
+
 function recDayText(key){
   var out=[];
   REC_PLAN.days[key].forEach(function(sp){
@@ -5683,6 +5767,9 @@ function planSettingsHtml(){
     h+='<div class="fl">On the recommended plan<div class="fh">Switched '+esc(shortDate(b.ts))+
       '. Your previous plan is kept: switching back restores it and its '+esc(String(b.rest))+
       ' s rest. Logged sessions are never touched either way.</div></div></div>'+
+      (recDayCNeedsFix()?'<div class="tiny" style="margin:8px 0">Day C supersets Lateral Raise straight into Rear Delt Fly — two shoulder lifts back to back. '+
+        'The fix pairs Hamstring Curls with Lateral Raise, and the cable fly with Rear Delt Fly.</div>'+
+        '<button class="btn primary block" data-act="plan-fixc" style="margin-bottom:8px">Re-pair Day C</button>':"")+
       '<button class="btn block" data-act="plan-back">Switch back to my previous plan</button>';
   } else {
     h+='<div class="fl">Recommended: '+esc(REC_PLAN.name)+

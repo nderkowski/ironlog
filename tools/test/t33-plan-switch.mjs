@@ -53,7 +53,7 @@ const card = (await page.textContent('#view')).replace(/\s+/g, ' ');
 has(card, 'Recommended: 3-day full body, about 45 min', 'Settings has the recommended plan card');
 has(card, 'A Leg Press · Incline DB Press + Cable Row · Hamstring Curls + Lateral Raise · DB Curl + Tricep Pushdown',
   'Day A is listed with its supersets');
-has(card, 'Lateral Raise + Rear Delt Fly', 'Day C ends with rear delt flies, not face pulls');
+has(card, 'Hamstring Curls + Lateral Raise · Low to high cable fly + Rear Delt Fly', 'Day C pairs hams with side delts and the fly with rear delts');
 const dayLines = await page.$$eval('#view .tiny', els => els.map(e => e.textContent).filter(t => /^[ABC] /.test(t)));
 eq(dayLines.length, 3, 'three day lines');
 ok(!dayLines.some(t => /face/i.test(t)), 'face pulls are not in any day of the recommended plan');
@@ -77,8 +77,8 @@ const day = k => st.routines.find(r => r.key === k).variants[0].exercises;
 eq(day('A').map(e => (e.link ? '+' : '') + e.name).join('|'),
   'Leg Press|Incline DB Press|+Cable Row|Hamstring Curls|+Lateral Raise|DB Curl|+Tricep Pushdown', 'Day A: lifts and supersets');
 eq(day('C').map(e => (e.link ? '+' : '') + e.name).join('|'),
-  'RDL|Flat DB Press|+DB Row|Hamstring Curls|+Low to high cable fly|Lateral Raise|+Rear Delt Fly', 'Day C: lifts and supersets');
-eq(day('C').map(e => e.reps + '-' + e.repTop).join(), '6-10,8-12,8-12,8-12,12-16,12-20,12-20', 'Day C ranges');
+  'RDL|Flat DB Press|+DB Row|Hamstring Curls|+Lateral Raise|Low to high cable fly|+Rear Delt Fly', 'Day C: lifts and supersets, no shoulder-to-shoulder pair');
+eq(day('C').map(e => e.reps + '-' + e.repTop).join(), '6-10,8-12,8-12,8-12,12-20,12-16,12-20', 'Day C ranges');
 ok(st.routines.every(r => r.variants[0].exercises.every(e => e.sets === 3)), 'every lift is 3 sets');
 eq(day('C').find(e => e.name === 'Low to high cable fly').inc, 10, 'the cable fly keeps its 10 lb increment');
 eq(st.settings.rest, 120, 'rest becomes 120 s');
@@ -87,6 +87,31 @@ const logged = st.sessions.flatMap(s => s.exercises.map(e => e.name));
 ok(!logged.includes('Lateral Riase'), 'the typo is fixed in the history');
 eq(logged.filter(n => /face/i.test(n)).join(), 'Face Pull,Face Pull', 'both face-pull spellings merged');
 ok(!!st.planBackup && st.planBackup.routines.length === 3, 'the old plan is kept in the state (so it rides in backups)');
+
+/* ---- 2b. a plan switched before the Day C fix is offered the re-pairing ----
+   Put Day C back in the old order (Lateral Raise superset into Rear Delt Fly)
+   and check the card offers the fix, applies it to his own rows, and goes. */
+await page.evaluate(() => {
+  const st = JSON.parse(localStorage.getItem('ironlog.v1'));
+  const v = st.routines.find(r => r.key === 'C').variants[0];
+  const by = n => v.exercises.find(e => e.name === n);
+  const old = [['RDL',0],['Flat DB Press',0],['DB Row',1],['Hamstring Curls',0],['Low to high cable fly',1],['Lateral Raise',0],['Rear Delt Fly',1]];
+  v.exercises = old.map(([n, l]) => Object.assign(by(n), { link: !!l }));
+  localStorage.setItem('ironlog.v1', JSON.stringify(st));
+});
+await page.reload(); await page.waitForSelector('#view');
+await openSettings(page);
+const beforeFix = JSON.parse(await page.evaluate(() => localStorage.getItem('ironlog.v1'))).routines.find(r => r.key === 'C').variants[0].exercises;
+has(await page.textContent('#view'), 'two shoulder lifts back to back', 'old Day C pairing: the card explains the fix');
+await page.click('[data-act="plan-fixc"]');
+await page.waitForSelector('[data-act="plan-back"]');
+const afterFix = JSON.parse(await page.evaluate(() => localStorage.getItem('ironlog.v1'))).routines.find(r => r.key === 'C').variants[0].exercises;
+eq(afterFix.map(e => (e.link ? '+' : '') + e.name).join('|'),
+  'RDL|Flat DB Press|+DB Row|Hamstring Curls|+Lateral Raise|Low to high cable fly|+Rear Delt Fly', 'Re-pair Day C: the new order and links');
+eq(afterFix.map(e => e.id).sort().join(), beforeFix.map(e => e.id).sort().join(), 'Re-pair Day C: the same rows, ids kept');
+eq(afterFix.find(e => e.name === 'Low to high cable fly').inc, 10, 'Re-pair Day C: per-lift settings kept (10 lb fly increment)');
+ok(!(await page.textContent('#view')).includes('two shoulder lifts back to back'), 'Re-pair Day C: the offer goes away once applied');
+st = await getState(page);
 
 /* ---- 3. Today: the rotation carries on, and history joins the new rows ---- */
 await page.click('[data-tab="today"]');

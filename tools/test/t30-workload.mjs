@@ -156,6 +156,20 @@ ok(log.some(x => x.n < 4), 'light loop: the sick day did register as a slide (a 
 ok(log[log.length - 1].n === 4, 'light loop: and the set comes back once he recovers');
 ok(log[log.length - 1].w >= 15, 'light loop: ends at or above where he started  [' + log[log.length - 1].w + ']');
 
+/* ---- 8. who backed off: a hold after a drop he chose says so ----
+   The real log before 6 Nov: four sessions at 65, his own drop to 55, then
+   10s, 10/11/9, 8s after a 25-day gap, 9s. The trend since the drop reads
+   down (−4.6%) and the guard holds — but it was his decision, not the app's.
+   External review (Argon) suggested reading the guard from sinceChosenDrop();
+   that turns this hold into a cut to 50, so only the words change. */
+const INC = { name:'Incline DB Press', reps:8, repTop:12, mg:'chest' };
+const inc = state(INC, [ [[65,9],[65,8],[65,7]], [[65,8],[65,8],[65,6]], [[65,8],[65,8],[65,7]], [[65,9],[65,9],[65,7]],
+  [[55,10],[55,10],[55,10]], [[55,10],[55,11],[55,9]], [[55,8],[55,8],[55,8]], [[55,9],[55,9],[55,9]] ]);
+inc.sessions.forEach((x, i) => { x.exercises[0].kind = i === 3 ? 'hold' : 'reps'; });   // newest first: index 3 is the 65 → 55 session
+c = await card(inc);
+has(c.why, 'You dropped to 55', 'a hold after his own 65 → 55 drop says so, not "already backed off"');
+eq(c.w, 55, '...and still holds the 55s: no extra cut');
+
 ok(errors.length === 0, 'no page errors  ' + errors.join(' | '));
 report('t30 working load');
 await browser.close();

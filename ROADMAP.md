@@ -137,6 +137,24 @@ The scorecard and "Since you started" cards are on the Progress tab, and
   `t3x`), so no future change reintroduces the oscillation or the deload
   loop.
 
+### External review (Argon), 8 Nov — what held up
+
+An outside model reviewed the engine and the coach design from a package of the code, docs, simulation and Nick's log. Every claim was checked against the code, the real log and the year simulation before anything was adopted.
+
+| Claim | Verdict | Evidence | Done |
+|---|---|---|---|
+| `shadowPrescribe()` reads the rep-out set's own weight, so back-off sets corrupt it | **True** | Real log: after RDL 225/185/135 it suggested 135×8; after 225/225/185, 185; after Cable Row 75/75/65, 65. The classic engine holds at 225 and 75. | It holds at the working load whenever the last set wasn't at it (`t32` §9) |
+| The `alreadyDown` guard looks past a drop he chose ("Already backed off" on incline) | **Diagnosis true, fix harmful** | The proposed fix (read the guard from `sinceChosenDrop`) turns the hold into a 10% cut, 55 → 50, off a 4-session dip after a 25-day gap. | Same hold, honest words: "You dropped to 55 — build reps here before adding" (`t30` §8) |
+| Tapping Use leaves the card's `kind` and `why` as the classic engine's | **True** | A rep-out step-down then read as a chosen drop and reset the trend. | Use sets `kind` and `why` from the shadow; the shadow stores `steps` (`t32` §9) |
+| A last set that echoes the prefilled target freezes the rep-out method | **True** | Year sim: sessions progressing 38% → 55%; with a lifter who ticks the prefill half the time, 25% → 58%. Unreachable loads, flips and the 85% gate unchanged. | +1 rep when the rep-out equals last target and every set made it (`t32` §9) |
+| Step compounds at `top−1` twice | **Rejected** | Year sim: no measurable change (RDL load +4% before and after). | — |
+| Never lower the working-set target on one low day | **Rejected** | Year sim: progress *slower* (38% → 31%). | — |
+| `MG_GUESS` gives chest flies triceps credit | **True** for flies the guesser tags (e.g. "Pec Deck") | `/\bfly\b/` shared the press row. | Own row: chest + delts |
+| Day C supersets Lateral Raise into Rear Delt Fly | **True** | Two shoulder lifts back to back. | `REC_PLAN` re-paired; plans already switched get a one-tap "Re-pair Day C" (`t33` §2b) |
+| Unlink the press/row compound pairs | **Not adopted** | Agonist–antagonist pairs are the superset that holds up best, and they're what keeps a day near 45 min. | — |
+| Coach: Rule 2 durations break on late ticking; Rule 3's < 10 sets fires on every muscle; a stall should first try sets or range; measure the coach | **True** (data checked: Day C 11/06 spans 25.5 h; `REC_PLAN` gives chest and quads 7.5/wk at 2.5 sessions) | — | Sent to the coach build before it finished: active time with ≤ 15-min gaps at 75 min; Rule 3 only for programmed muscles at < 6; stall ladder (set, then range, then swap); history-aware swaps; outcome tally |
+| Bridge sets for coarse jumps (top set heavier, back-offs at the old weight) | **Plausible, not built** | Needs `droppedSets()` to know a planned back-off, and a sim with a steeper high-rep fatigue curve. | Candidate for after v26 |
+
 ### 4. Notes on a single lift ✅ *v25, from Nick*
 
 Each lift card has a quiet "+ Note on this lift" line that opens a box in

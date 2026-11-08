@@ -112,7 +112,7 @@ has(await text('.card.ex .shadow'), 'using it', 'Use: the line says it is in use
 for (const t of await page.$$('.card.ex .set .tick')) await t.click();
 await page.click('[data-act="finish"]'); await page.click('[data-x="save"]');
 st = await getState(page);
-eq(JSON.stringify(st.sessions[0].exercises[0].shadow), JSON.stringify({ w:110, r:8, why:'last set 17, well past 12 — two steps up', stall:false, used:true, auto:false }),
+eq(JSON.stringify(st.sessions[0].exercises[0].shadow), JSON.stringify({ w:110, r:8, why:'last set 17, well past 12 — two steps up', steps:2, stall:false, used:true, auto:false }),
   'saved: the shadow and used:true are kept for judging it later');
 await page.click('[data-tab="today"]');
 await start();
@@ -212,6 +212,34 @@ ok(await page.$('.card.ex .shadow') !== null && await page.$('.card.ex .outhint'
 ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '320 px: no sideways scroll');
 await discard();
 await page.setViewportSize({ width:390, height:844 });
+
+/* ---- 9. external review (Argon): the parts that held up on the real log ---- */
+/* A set dropped after the working load is a back-off, not a measurement. */
+await start(state({ name:'RDL', reps:8, repTop:11 }, [ { sets:[[225,8],[185,8],[135,8,1]] } ]));
+has(await text('.card.ex .shadow'), 'Rep-out method: 225 × 8', 'back-off sets: the shadow holds at the working weight, not 135');
+await discard();
+await start(state({ name:'Cable Row', reps:8, repTop:12 }, [ { sets:[[75,8],[75,8],[65,10,1]] } ]));
+has(await text('.card.ex .shadow'), 'Rep-out method: 75 × 8', 'weight dropped on the last set: holds at 75, not 65');
+await discard();
+/* Use: the card's reason and the record follow what is being lifted. */
+await start(state(ROW, [ RO(100, [9, 9, 6]), RO(100, [8, 8, 5]) ]));
+await page.click('[data-act="use-shadow"]');
+has(await text('.card.ex .why'), 'Rep-out method', 'Use: the reason line becomes the rep-out method\'s');
+for (const t of await page.$$('.card.ex .set .tick')) await t.click();
+await page.click('[data-act="finish"]'); await page.click('[data-x="save"]');
+eq((await getState(page)).sessions[0].exercises[0].kind, 'deload', 'Use on a step down: recorded as the app\'s decision, so the trend is not reset as a chosen drop');
+await page.click('[data-tab="today"]');
+/* A last set that reads exactly the prefilled target asks for one more next time. */
+const echo = state(ROW, [ RO(100, [10, 10, 10]) ]);
+echo.sessions[0].exercises[0].targetReps = 10;
+await start(echo);
+has(await text('.card.ex .shadow'), 'Rep-out method: 100 × 11', 'last set exactly on the prefilled target: ask for one more (100 × 11)');
+await discard();
+const pushed = state(ROW, [ RO(100, [10, 10, 11]) ]);
+pushed.sessions[0].exercises[0].targetReps = 10;
+await start(pushed);
+has(await text('.card.ex .shadow'), 'Rep-out method: 100 × 11', 'a real rep-out of 11 still sets 11 (the nudge only acts on an exact echo)');
+await discard();
 
 ok(errors.length === 0, 'no page errors  ' + errors.join(' | '));
 report('t32 rep-out');
