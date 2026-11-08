@@ -10,7 +10,82 @@ Ship in slices; each slice should leave the app fully usable.
 
 ---
 
-## Next session starts here — from a few days of real use
+## Next session starts here — v24: measure effort, then progress from it
+
+**Why.** v22's replay and the research (RESEARCH.md) agree: the engine's limit
+is not its rules but its input. Half of Nick's logged exercises stop exactly
+on target, so the log records the prescription back and never the reps in
+reserve; 20–33% load jumps he made cleanly prove the reserve is large. The
+evidence says the scheme (load vs reps) matters little and **effort** matters
+most: hypertrophy improves as sets end closer to failure, and 1–2 reps short
+is about as good as failure (Robinson 2024, Refalo 2023/2024). RPE ratings
+are least accurate exactly here — high reps, far from failure (Zourdos 2021,
+Halperin 2022). So measure it instead: **the last set of each exercise is a
+rep-out**, and that number drives the next session (APRE-style, Mann 2010 —
+evidence is strength in barbell athletes, so it ships in shadow first).
+
+**The routine it runs on** (imported by Nick as a plan file on 8 Nov, v23):
+three full-body days, about 45 min each at 120 s rest. Each day is one main
+lift, then three supersets (`link`). Lateral Raise is 12–20 everywhere, so
+its slots no longer disagree. The week-2 variants are gone. Why: Day A ran
+about 80 min as written and was done 3 of 7 exercises three times; face
+pulls were never done after 9 Aug.
+
+### v24 — rep-out last set, shadow prescriptions
+
+1. **The last set is a rep-out.**
+   - On the card, the last working set reads "As many as you can". Compounds
+     add "stop 1 short of form breaking"; isolation (from `movementClass()`)
+     adds "to failure".
+   - Prefill stays the target. The logged set gets `out:true`.
+2. **Shadow prescription, shown, never applied automatically.** A second line
+   under `why`, for example "New method: 60 × 10". One tap copies it into the
+   set inputs; that is the only way it changes what gets lifted. Store
+   `shadow:{w,r,used}` on the session exercise so the outcome can be judged.
+3. **The rule.** Let `A` be the rep-out reps at working load `W`, range
+   `[low, top]`, and step the exercise's own increment. No e1RM anywhere, so
+   it is valid at 12–20 reps.
+
+   | Rep-out `A` | Next `W` | Next working sets |
+   |---|---|---|
+   | `A < low − 1` | −1 step | `low` |
+   | `low − 1 ≤ A < low` | hold | `low` |
+   | `low ≤ A ≤ top` | hold | `clamp(A − 2, low, top)` |
+   | `top < A ≤ top + 4` | +1 step | `low` |
+   | `A > top + 4` | +2 steps (cap) | `low` |
+
+   The rep-out is always "as many as you can". The `+4` boundary is a
+   starting guess. After about 4 jumps per lift, compare it with the actual
+   rep drop per step seen in his own rep-outs.
+4. **Trend from rep-outs.** Score a session by its rep-out set when there is
+   one, otherwise by `workLoad()` sets. That removes the single-outlier
+   problem: a July 170×8 still holds Lat Pulldown. A load drop **he** chose,
+   not one the app prescribed, starts a new trend window, so it doesn't read
+   as a decline (Incline 65→55 has said "Already backed off" for about 9
+   sessions).
+5. **Stall flag, labelled a heuristic.** Three exposures at one load with no
+   rep-out gain gives "Stalled — try a variation or a new range". There is
+   no evidence for any stall rule (Coleman 2024; Bell 2023 is opinion), so
+   say so.
+6. **Tests.**
+   - `t32` closed loop with a lifter who has reserve: working sets stop at
+     target, the rep-out goes to capacity −1. Assert the shadow progresses
+     faster than v23 in the same sim, never prescribes a load whose true
+     capacity is under `low − 1`, and doesn't oscillate.
+   - Replay of the real log, which has no rep-outs: shadow must equal today's
+     prescription.
+   - UI: the rep-out label, the shadow line and tap-to-use, and 320 px overflow.
+
+**Promote it (v25) only if, after ≥3 weeks and ≥9 sessions**, the shadow
+suggestions he tapped "use" on landed a rep-out ≥ `low` in ≥85% of cases and
+no lift regressed. Then the rule replaces double progression for any lift
+with rep-out data. Lifts without it keep double progression. Replay before
+and after, as trap 17c says.
+
+**Out of scope for v24:** the RPE-gated jump check (superseded by this),
+exercise types beyond the rep-out instruction, and top set + back-offs.
+
+## Shipped from real use — v12–v23
 
 Six items. Four are Nick's, from actually training with the app; two I found
 while diagnosing those. Each has been reproduced or explicitly not reproduced —
