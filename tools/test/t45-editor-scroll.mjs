@@ -17,6 +17,16 @@ const after = await page.locator('.sheet').evaluate(e => e.scrollTop);
 const sets5 = await page.locator('.sheet .card').nth(4).locator('input[data-k]').count();
 ok(bt > 300 && Math.abs(after - bt) <= 2, 'editor keeps its scroll position after + Set  [' + bt + ' -> ' + after + ']');
 ok(sets5 === 8, 'and the set was added (4 sets x 2 inputs)  [' + sets5 + ']');
+// + Add exercise goes through the picker sheet: come back showing the new exercise
+{
+  await page.locator('[data-x="addex"]').scrollIntoViewIfNeeded(); await page.locator('[data-x="addex"]').tap(); await page.waitForTimeout(250);
+  const opt = page.locator('.backdrop button').filter({ hasText: /Squat|Row|Curl|Press|Raise/ }).first();
+  const picked = await opt.count();
+  if (picked) { await opt.tap(); await page.waitForTimeout(300);
+    const v = await page.locator('.sheet .card').last().evaluate(e => { const r = e.getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; });
+    ok(v, 'after + Add exercise the new exercise is on screen'); }
+  else ok(false, 'picker offered an exercise to tap');
+}
 // first open still animates from top: close and reopen
 await page.locator('[data-x="cancel"]').tap(); await page.waitForTimeout(200);
 await page.locator('.lastsess').tap(); await page.waitForTimeout(300);
