@@ -48,7 +48,7 @@ That is 37% — the real structural bottleneck — and it is caused by:
 
 ### Correctness — t20–t41
 
-See `tools/sprint/runall.sh`. Baseline result: _(filled in below when the run lands)_
+`tools/sprint/runall.sh` on v26.1: **23 suites, 1,029 checks, 0 failures** (t20–t41 incl. t39b).
 
 ### Gym usability
 

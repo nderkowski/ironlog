@@ -6,4 +6,4 @@ for f in tools/test/t*.mjs; do
   line=$(echo "$out" | grep -E "passed, [0-9]+ failed" | tail -1)
   echo "$(basename $f) rc=$rc ${line:-NO SUMMARY}"
   [ $rc -ne 0 ] && echo "$out" | grep -E "FAIL|Error" | head -5 | sed 's/^/    /'
-done
+done; true
