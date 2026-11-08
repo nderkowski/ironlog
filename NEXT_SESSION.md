@@ -29,17 +29,27 @@ not a toy.
 - **Test by driving the real UI with Playwright, not by calling functions.**
   Chromium is at `/opt/pw-browsers`, Playwright at
   `/opt/node22/lib/node_modules/playwright`. Serve with
-  `npx http-server -p 8117 -s -c-1 .` and use a 390×844 mobile context. Most of
+  `npx http-server -p 8117 -s -c-1 .` and use a 390×844 mobile context
+  (another tree already on 8117? serve on your own port and set
+  `IRONLOG_PORT`, or the tests pass against the wrong build — trap 21). Most of
   the genuine bugs in this codebase were invisible to function-level tests and
   obvious the moment a real click drove them. **The suites live in
-  `tools/test/`** — `t20`–`t37`, run with
-  `node tools/test/tNN-….mjs` against that server. Run them before you change
+  `tools/test/`** — `t20`–`t45`, run them all with `tools/sprint/runall.sh`
+  against that server. The engine's simulated year with load-accuracy
+  numbers is `node tools/sprint/yearbase.mjs 20`; gym-usability numbers
+  (taps, touch targets, axe, offline) are `node tools/sprint/journeys.mjs`. Run them before you change
   anything and after; add to them for whatever you touch.
 - Ask before merging to `main`.
 
-**The queue.** The items under "Next session starts here" in `ROADMAP.md`
-are all shipped (v12–v18) and stay there as the record of what the bugs were —
-don't redo them, but do read item 2's write-up, because the lesson in it
+**State on 8 Nov 2026:** `main` is v21. The cloud sprint left v26.11 on
+branch `cloud/sprint-1108` (unmerged, reviewed, all suites green) — see the
+top of `ROADMAP.md` and `CLOUD_SPRINT.md`. First job: help me check it on the
+phone and merge it.
+
+**The queue.** "Next session starts here" in `ROADMAP.md` is the 8 Nov
+sprint: what shipped, what was measured and rejected (don't redo those), a
+backlog in order, and a gym test plan. Older sections below it are the record
+of v12–v25. Do read the v12–v18 "item 2" write-up, because the lesson in it
 (a setting that only applied at creation time, invisible to the user for weeks)
 is the kind of thing this codebase keeps producing.
 

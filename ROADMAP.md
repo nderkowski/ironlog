@@ -10,7 +10,64 @@ Ship in slices; each slice should leave the app fully usable.
 
 ---
 
-## Next session starts here — v25: stop spinning wheels, then hand over
+## Next session starts here — the 8 Nov cloud sprint (v26.1 → v26.11)
+
+Branch `cloud/sprint-1108`, **not merged**. `main` is still **v21** — v22–v26
+were never merged either, so the phone has been running v21. Review, then
+merge; nothing in the sprint touched `main`. Full log, decisions and every
+measurement: [CLOUD_SPRINT.md](CLOUD_SPRINT.md).
+
+### Before / after (measured, not copied)
+
+| | v26.1 | v26.11 | how |
+|---|---|---|---|
+| prescriptions ≥1 step lighter than the lifter could do mid-range | 37.3% | **31.8%** (paired −5.5 ± 0.5 pts) | `node tools/sprint/yearbase.mjs 20` |
+| mean \|steps off\| that load | 0.82 | **0.68** | same |
+| over-loaded / unreachable loads / flips per year | 5.9% / 7.65 / 14.4 | 5.6% / 7.7 / 14.75 (inside noise) | same |
+| sessions progressing | 50.4% | 51.6% | same |
+| real log: calls changed / load agreement | — / 62% | 1 of 102 / 61% | `tools/review/replay.mjs` (export outside repo) |
+| edit the session just finished | 5 taps, 2 scrolls | **3 taps, 0 scrolls** (from Today) | `tools/sprint/journeys.mjs` |
+| active-workout controls under 24 px | 12 | **0** | same |
+| active-workout controls with effective hit area < 44 px | 121 (bounding boxes) | 64, 0 overlapping, 0 stolen taps | same |
+| critical axe violations (tabs + editor + exercise menu) | 4 + 9 | **0** | same + sheet check |
+| offline after SW install | works | works | same |
+| colour-contrast nodes, light (Today/active/Progress/History/Plan) | 7/18/61/69/26 | 3/9/1/2/1 (dark: 0) — the rest is accent/good on tinted chips | same |
+| suites | 23 suites, 1,029 checks | **27 suites, 1,139 checks, 0 failures** | `tools/sprint/runall.sh` |
+
+### What shipped
+- **v26.1** (from `review/independent`): a lift planned at two rep ranges reads its own range's history.
+- **v26.2** near-miss step: every set but the rep-out at the top, rep-out within min(2, ⌊range/2⌋) → add the step. PROJECT_STATE "The near-miss step".
+- **v26.3** thumb sizing and accessibility: set-row controls 44 px tall, nothing under 24 px, a ~5 px dead strip on the "×" (trap 23), labelled switches/inputs, darker ink tokens.
+- **v26.4** "Last … Edit" row on Today opens the editor; editor Save/Cancel sticky.
+- **v26.5–v26.8** editor keeps its place after + Set and shows a newly added exercise; coach citations fixed (review #8); dates by calendar day.
+- **v26.10–v26.11** Finish, + Set / − Set and the editor's controls get 44 px hit areas; editor rows 44 px; Today's Edit is a filled pill (contrast).
+- Tests: `t42` near-miss, `t43` engine invariants over 39,760 simulated exposures (with mutants), `t44` last-session row, `t45` editor scroll. `harness.mjs` honours `IRONLOG_PORT`.
+
+### Measured and rejected (don't redo without new evidence)
+- Target never slides below set 1: load accuracy −0.5 pts (noise).
+- Two steps when the rep-out is ≥ top+4: worse (+0.7 pts behind).
+- Target skips ahead to rep-out−2: −0.5 pts; too small for a behaviour change.
+- A relative-step gate on the near-miss (strict on big jumps): worse at 10% and 20%.
+- Review #6 (trend reads "down" 25% at 4 sessions): 4.8% closed-loop through the real engine.
+
+### Backlog, in order
+1. Remaining under-loading is on heavy lifts with small relative steps (Leg Press, RDL, Pulldown, Ham Curl ≈90–100% of exposures behind by the sprint metric, light lifts 0%). It is double progression's one-rep-per-session climb plus the metric's mid-range definition — decide whether that is a problem before engineering it.
+2. Contrast on tinted chips (accent/good/bad on their *-soft backgrounds, 2.6–3.4:1) — a brand-colour decision.
+3. Still under 44 px wide: outer steppers and warm toggle (38 px effective at 390, the width budget), "+ Note on this lift" (31 tall), "Keep N×R" revert (25 tall box). Plate-editor ✕ 34×34.
+4. Coach stall rule latency (review #7): misses 89% of injected plateaus, median 153 days.
+5. Unit conversion snapping 5 lb ↔ 2.5 kg (review #9).
+
+### Gym test plan (v26.9, after merging)
+1. Plan tab foot shows **v26.11**. If not, reload twice (service worker).
+2. A lift where you did e.g. 12, 12, 11 last time at 8–12: card says "Hit 12, rep-out 11 — add 5 lb". Do it; if the heavier load lands under the bottom of the range, note the lift — that is the case to replay.
+3. Log a full session with sweaty hands: count mis-taps on − / + / the set number (warm-up toggle). A tap on the "×" should do nothing.
+4. Finish, then on Today tap **Last … Edit**, change one rep, Save — no scrolling needed.
+5. In the editor on a long session, tap + Set at the bottom: the sheet should stay put.
+6. Export a backup afterwards so the next session can replay it.
+
+---
+
+## Earlier: v25: stop spinning wheels, then hand over
 
 Written 8 Nov 2026 from two independent checks of v24.1:
 
