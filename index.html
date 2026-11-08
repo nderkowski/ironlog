@@ -2077,11 +2077,15 @@ function prescribe(name,ex){
      and trend back-off have already returned above. Real lifters stop at the
      target (trap 17c), so real logs rarely show this; a replay of the
      owner's log changed 1 of 102 prescriptions (25x12,12,11 on a curl). */
-  var nm=false, nmR=0;
-  if(top>low&&minR<top&&!noLoad&&at.length>=2&&w>0){
+  /* Sprint review: only rep-counted lifts (a timed or distance lift has no
+     rep-out, and 2 s is not a fatigue margin); every planned set logged at the
+     load (12, 11 and a skipped third set is a short session, not a rep-out);
+     and the slack shrinks on narrow ranges, so 10, 10, 8 at 8–10 — a last
+     set on the floor — does not count (slack is at most half the range). */
+  var nm=false, nmR=0, nmSlack=Math.min(NEAR_SLACK,Math.floor((top-low)/2));
+  if(top>low&&met===0&&!noLoad&&at.length>=Math.max(2,nsets)&&w>0){
     nmR=num(at[at.length-1].r);
-    nm=nmR>=Math.max(low,top-NEAR_SLACK)&&
-       Math.min.apply(null,at.slice(0,-1).map(function(s){ return num(s.r); }))>=top;
+    nm=nmR>=Math.max(low,top-nmSlack)&&at.slice(0,-1).every(function(s){ return num(s.r)>=top; });
   }
 
   if(top>low){                                        // double progression
@@ -2098,9 +2102,8 @@ function prescribe(name,ex){
                   why:"Building reps before "+fmt(jf.w)+" again (it cost "+cost+" reps last time) — go for "+(minR+rstep),kind:"reps"};
       }
       return {w:harder(w,step,mode),r:low,sets:nsets,
-              why:nm?"Hit "+(met===0?top:amtText(top,met))+" on "+(at.length-1)+" of "+at.length+", "+nmR+
-                     (at[at.length-1].out?" on the rep-out":" on the last")+" — "+harderPhrase(step,mode)
-                    :"Hit "+amtText(top,met)+" on every set — "+harderPhrase(step,mode),kind:"up"};
+              why:(minR>=top?"Hit "+amtText(top,met)+" on every set":
+                     "Hit "+top+", "+(at[at.length-1].out?"rep-out ":"last set ")+nmR)+" — "+harderPhrase(step,mode),kind:"up"};
     }
     if(minR>=low)
       return {w:w,r:nextR,sets:nsets,

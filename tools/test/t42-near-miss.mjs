@@ -26,7 +26,7 @@ const row = (name, sets, reps, repTop, inc) => ({ id: 'x1', name, sets, reps, re
 function state(ex, sessions) {
   const ss = sessions.map(([d, sets, out], i) => ({
     id: 's' + i, ts: T0 + d * DAY, date: '', routineId: 'A', name: 'A', variantId: 'Av', deload: false, note: '',
-    exercises: [{ name: ex.name, reps: ex.reps, repTop: ex.repTop, targetReps: ex.reps, kind: 'reps', bw: 0, metric: 0,
+    exercises: [{ name: ex.name, reps: ex.reps, repTop: ex.repTop, targetReps: ex.reps, kind: 'reps', bw: 0, metric: ex.metric || 0,
       sets: sets.map(([w, r], j) => Object.assign({ w: String(w), r: String(r), done: true }, out !== false && j === sets.length - 1 ? { out: true } : {})) }]
   })).reverse();
   return { version: 5, settings: { unit: 'lb', inc: 5, repLow: 8, repHigh: 12, doubleDefault: true, deloadUntil: 0, deloadSnooze: 0 },
@@ -41,13 +41,19 @@ async function ask(ex, sessions) {
 }
 
 const PRESS = row('Test Press', 3, 8, 12);
+// Review fix: a loaded timed lift has no rep-out, so no near-miss
+{
+  const carry = Object.assign(row('Test Carry', 3, 30, 60, 5), { metric: 1 });
+  const p = await ask(carry, [[0, [[50, 60], [50, 60], [50, 58]]]]);
+  eq(p.w, 50, 'timed carry 60,60,58 s at 50 lb holds: no rep-out on a timed lift');
+}
 // 1. The headline: 12, 12, 11 on the rep-out jumps
 {
   const p = await ask(PRESS, [[0, [[60, 12], [60, 12], [60, 11]]]]);
   eq(p.w, 65, '12,12,11 at 8–12 on a 60 lb press → 65');
   eq(p.kind, 'up', 'and it is an "up"');
   eq(p.r, 8, 'back to the bottom of the range at the new load');
-  has(p.why, '12 on 2 of 3, 11 on the rep-out', 'the why says what happened');
+  has(p.why, 'Hit 12, rep-out 11', 'the why says what happened');
   has(p.why, 'add 5 lb', 'and what to do');
   ok(p.why.length <= 50, 'and stays inside the row width budget  [' + p.why.length + ' chars]');
 }
@@ -74,7 +80,7 @@ const PRESS = row('Test Press', 3, 8, 12);
 {
   const p = await ask(PRESS, [[0, [[60, 12], [60, 12], [60, 11]], false]]);
   eq(p.w, 65, 'no rep-out flag: still jumps');
-  has(p.why, '11 on the last', 'and says "the last", not "the rep-out"');
+  has(p.why, 'last set 11', 'and says "last set", not "rep-out"');
 }
 // 5. Never below the bottom of the range
 {
@@ -82,7 +88,10 @@ const PRESS = row('Test Press', 3, 8, 12);
   const p = await ask(narrow, [[0, [[100, 6], [100, 6], [100, 4]]]]);
   eq(p.w, 100, '6,6,4 at 5–6 holds: a miss of the bottom is not a near-miss');
   const q = await ask(narrow, [[0, [[100, 6], [100, 6], [100, 5]]]]);
-  eq(q.w, 105, '6,6,5 at 5–6 jumps');
+  eq(q.w, 100, '6,6,5 at 5–6 holds: a 1-rep range has no slack (review: slack is at most half the range)');
+  const n8 = row('Test Eight', 3, 8, 10);
+  eq((await ask(n8, [[0, [[100, 10], [100, 10], [100, 8]]]])).w, 100, '10,10,8 at 8–10 holds: a last set on the floor is not a near-miss');
+  eq((await ask(n8, [[0, [[100, 10], [100, 10], [100, 9]]]])).w, 105, '10,10,9 at 8–10 jumps (slack 1)');
 }
 // 6. A big relative step is allowed (measured: the gain/harm does not track step size)
 {
@@ -106,7 +115,7 @@ const PRESS = row('Test Press', 3, 8, 12);
   const c = await ask(PRESS, [[0, [[60, 11]]]]);
   eq(c.w, 60, 'a 3-set exercise that logged only one set of 11 holds');
   const d = await ask(PRESS, [[0, [[60, 12], [60, 11]]]]);
-  eq(d.w, 65, 'two sets, 12 then 11: that is two sets at the load, so it jumps');
+  eq(d.w, 60, 'a 3-set plan that logged 12 then 11 and skipped the third holds: a short session, not a rep-out');
 }
 // 9. Unloaded lift: the near-miss does not apply (a +5 lb jump from nothing is no step)
 {
