@@ -21,8 +21,8 @@ const SET = { unit:'lb', rest:120, autoRest:false, buzz:false, inc:5, sound:fals
   bar:45, plates:[{w:45,n:4},{w:25,n:2},{w:10,n:2},{w:5,n:2},{w:2.5,n:2}], lastBackup:0 };
 
 const px = (id, name, reps, top, extra) => Object.assign({ id, name, sets:3, reps, repTop:top, inc:null }, extra || {});
-/* One logged session. exs: [name, w, reps (number or list), sets, note]. `minutes` stamps the
-   sets so the first-to-last-set time is that long. Newest-first order is restored by state(). */
+/* One logged session. exs: [name, w, reps (number or list), sets, note]. `minutes` spreads
+   the sets' timestamps evenly over that many minutes (gaps of 15 min or less are "active"). Newest-first order is restored by state(). */
 function sess(id, rid, key, vid, daysAgo, exs, o = {}) {
   const ts = NOW - daysAgo * DAY;
   const total = exs.reduce((a, e) => a + (e[3] || 3), 0);
@@ -256,22 +256,35 @@ const longHist = (mins, extra) => [
   sess('c3','rC','C','vC',22, lifts([['Face Pull',10,12]]), { minutes:mins[2] }), sess('c4','rC','C','vC',29, lifts([['Face Pull',10,12]]), { minutes:mins[3] }),
   sess('a1','rA','A','vA',5, [['Leg Press',190,10],['Lateral Raise',15,14]]), sess('a2','rA','A','vA',12, [['Leg Press',190,10],['Lateral Raise',15,14]]) ].concat(extra || []);
 // Day C: RDL | Flat DB Press + DB Row | Face Pull + Cable fly -> everything paired, so the trim is the offer
-await boots(state(longHist([75, 70, 68, 64])));
+await boots(state(longHist([95, 90, 88, 84])));
 await finishDay('rC', ['RDL']);                          // the saved one is untimed; 3 timed of 4 is enough
 let lg = (await ofKind('long'))[0];
 ok(lg && lg.status === 'open' && lg.rid === 'rC', 'long: Day C raised when its last sessions ran over an hour');
-has(lg.reason, 'median of', 'long: the reason gives the minutes'); has(lg.reason, '70 minutes', 'long: median of 75, 70, 68');
+has(lg.reason, 'median of 90 active minutes', 'long: the reason gives the ACTIVE minutes (median of 95, 90, 88)');
 eq(lg.options.map(o => o.act).join(), 'trim', 'long: all accessories paired already -> trim is the only choice');
 eq(lg.options[0].lift, 'Low to high cable fly', 'long: trims the last accessory (lowest priority), never the main lift');
 ok(/convention/i.test(lg.evidence), 'long: labelled as convention');
 await boots(state(longHist([55, 52, 50, 48])));
 await finishDay('rC', ['RDL']);
-eq((await ofKind('long')).length, 0, 'long: median under an hour -> silent');
+eq((await ofKind('long')).length, 0, 'long: median 53 minutes -> silent');
+await boots(state(longHist([74, 72, 70, 68])));
+await finishDay('rC', ['RDL']);
+eq((await ofKind('long')).length, 0, 'long: median 71 minutes is inside the 45-75 he said is fine -> silent');
+await boots(state(longHist([80, 78, 76, 74])));
+await finishDay('rC', ['RDL']);
+eq((await ofKind('long')).length, 1, 'long: median 77 minutes -> raised (threshold 75)');
+/* the real log: last sets ticked hours or days later. First-to-last would read 10 hours; active time reads next to nothing. */
+await boots(state(longHist([600, 700, 900, 2000])));
+await finishDay('rC', ['RDL']);
+eq((await ofKind('long')).length, 0, 'long: sets ticked hours apart are not a long session (breaks over 15 min do not count)');
+await boots(state(longHist([95, 90, 88, 84]).map(s => s.id === 'c1' || s.id === 'c2' ? Object.assign(s, { exercises:s.exercises.map(e => Object.assign(e, { sets:e.sets.map(x => { const y = Object.assign({}, x); delete y.ts; return y; }) })) }) : s)));
+await finishDay('rC', ['RDL']);
+eq((await ofKind('long')).length, 0, 'long: only 2 of the last 4 can be timed -> silent');
 // unpaired accessories: pair them
 {
   const C = [px('c1','RDL',6,10), px('c2','Flat DB Press',8,12), px('c3','DB Row',8,12), faceC(), px('c5','Low to high cable fly',12,16,{ inc:10, mg:'chest' })]
     .map(e => Object.assign(e, { link:false }));
-  const hist = longHist([75, 70, 68, 64]);
+  const hist = longHist([95, 90, 88, 84]);
   await boots(state(hist, { routines:routines({ C }) }));
   await finishDay('rC', ['RDL']);
   lg = (await ofKind('long'))[0];
@@ -287,7 +300,7 @@ eq((await ofKind('long')).length, 0, 'long: median under an hour -> silent');
   same(JSON.stringify((await getState(page)).routines), planBefore2, 'long: pair undone exactly');
 }
 // trim a set
-await boots(state(longHist([75, 70, 68, 64])));
+await boots(state(longHist([95, 90, 88, 84])));
 await finishDay('rC', ['RDL']);
 lg = (await ofKind('long'))[0];
 const planB4 = JSON.stringify((await getState(page)).routines);
@@ -304,7 +317,7 @@ function weekSessions(chestSets, o = {}) {
   const out = [];
   [1, 2, 3].forEach(w => [1, 3].forEach((d, j) => {                    // Tuesday and Thursday of each of the last 3 weeks
     const ts = wkStart(w) + d * DAY + 18 * 36e5, id = 'w' + w + j;
-    const s = sess(id, 'rC', 'C', 'vC', (NOW - ts) / DAY, [['Flat DB Press', 45, 10, chestSets], ['DB Row', 50, 10, 3], ['Face Pull', 10, 12, 3]]);
+    const s = sess(id, 'rC', 'C', 'vC', (NOW - ts) / DAY, [['Flat DB Press', 45, 10, chestSets], ['DB Row', 50, 10, 3], ['Face Pull', 10, 12, 3]], { minutes:o.minutes });
     s.deload = !!(o.deload && w === 2 && j === 0);
     out.push(s);
   }));
@@ -315,7 +328,7 @@ const chestRows = () => routines({ C:[px('c1','RDL',6,10), px('c2','Flat DB Pres
 await boots(state(weekSessions(2).concat([sess('a1','rA','A','vA',40,[['Leg Press',190,10]])]), { routines:chestRows() }));
 await finishDay('rC', ['RDL']);
 let vol = (await ofKind('volume'))[0];
-ok(vol && vol.status === 'open' && /Chest/.test(vol.title), 'volume: chest under 10 sets a week is raised');
+ok(vol && vol.status === 'open' && /Chest/.test(vol.title), 'volume: chest at 4 sets a week (under 6) is raised');
 has(vol.reason, 'sets a week over the last 3 weeks', 'volume: the reason gives the average'); has(vol.reason, '1 for the main muscle, ½ for a helper', 'volume: ...and how a set is counted');
 eq(vol.options.length, 1, 'volume: one offer'); eq(vol.options[0].lift, 'Low to high cable fly', 'volume: the isolation lift gets the set');
 ok(/Schoenfeld 2017/.test(vol.evidence) && /Pelland 2026/.test(vol.evidence), 'volume: cites the volume dose-response work');
@@ -325,9 +338,22 @@ await page.click('[data-co="opt"][data-id="' + vol.id + '"][data-oi="0"]');
 eq((await getState(page)).routines[1].variants[0].exercises.map(e => e.sets).join(), '3,3,3,3,4', 'volume: accepting adds one set to that lift');
 await page.click('.toast.act button');
 same(JSON.stringify((await getState(page)).routines), planB5, 'volume: undone exactly');
+await boots(state(weekSessions(3).concat([sess('a1','rA','A','vA',40,[['Leg Press',190,10]])]), { routines:chestRows() }));
+await finishDay('rC', ['RDL']);
+eq((await ofKind('volume')).filter(p => /Chest/.test(p.title)).length, 0, 'volume: 6 chest sets a week is not under 6 (10 would have fired; this is rare on purpose)');
+{
+  const C = [px('c1','RDL',6,10,{ sets:4 }), px('c2','Flat DB Press',8,12,{ mg:'chest', mg2:[], sets:4 }), px('c3','DB Row',8,12,{ mg:'back', sets:4 }),
+    px('c4','Face Pull',12,16,{ mg:'delts', sets:4 }), px('c5','Low to high cable fly',12,16,{ mg:'chest', link:true, sets:4 }), px('c6','Cable Curl',12,16,{ mg:'biceps', sets:1 })];
+  await boots(state(weekSessions(2).concat([sess('a1','rA','A','vA',40,[['Leg Press',190,10]])]), { routines:routines({ C }) }));
+  await finishDay('rC', ['RDL']);
+  eq((await ofKind('volume')).filter(p => /Chest/.test(p.title)).length, 0, 'volume: never on a day already planned at 21 working sets');
+}
+await boots(state(weekSessions(2, { minutes:60 }).concat([sess('a1','rA','A','vA',40,[['Leg Press',190,10]])]), { routines:chestRows() }));
+await finishDay('rC', ['RDL']);
+eq((await ofKind('volume')).filter(p => /Chest/.test(p.title)).length, 0, 'volume: never on a day already running 60 active minutes (over 55)');
 await boots(state(weekSessions(8).concat([sess('a1','rA','A','vA',40,[['Leg Press',190,10]])]), { routines:chestRows() }));
 await finishDay('rC', ['RDL']);
-eq((await ofKind('volume')).filter(p => /Chest/.test(p.title)).length, 0, 'volume: 8 chest sets at 2 sessions a week is plenty -> silent for chest');
+eq((await ofKind('volume')).filter(p => /Chest/.test(p.title)).length, 0, 'volume: 16 chest sets a week is plenty -> silent for chest');
 await boots(state(weekSessions(2, { deload:true }).concat([sess('a1','rA','A','vA',40,[['Leg Press',190,10]])]), { routines:chestRows() }));
 await finishDay('rC', ['RDL']);
 eq((await ofKind('volume')).length, 0, 'volume: a deload inside the three weeks -> silent (low on purpose)');
@@ -338,34 +364,82 @@ await boots(state(weekSessions(2).filter(s => /1$/.test(s.id) === false).concat(
 await finishDay('rC', ['RDL']);
 eq((await ofKind('volume')).length, 0, 'volume: one session a week is not "training 2x a week" -> silent');
 
-/* ================= 6. stalled lift ================= */
+/* ================= 6. stalled lift: a ladder ================= */
 const stall = (rowsFor) => Array.from({ length:7 }, (_, i) => sess('r' + i, 'rA', 'A', 'vA', 4 + 7 * i, rowsFor(i)));
-const A2 = routines();
-await boots(state(stall(() => [['Cable Row', 65, 8], ['Leg Press', 190, 10]]).concat([sess('c1','rC','C','vC',9,lifts()), sess('c2','rC','C','vC',16,lifts())])));
+const cRows = [sess('c1','rC','C','vC',9,lifts()), sess('c2','rC','C','vC',16,lifts())];
+const flat = () => [['Cable Row', 65, 8], ['Leg Press', 190, 10]];
+const cableOf = async () => (await ofKind('stall')).filter(p => p.lift === 'Cable Row');
+await boots(state(stall(flat).concat(cRows)));
 await finishDay('rA', ['Leg Press']);
-let stl = (await ofKind('stall')).find(p => p.lift === 'Cable Row');
-ok(stl && stl.status === 'open', 'stall: 7 sessions at 65 x 8 with nothing gained -> raised');
+let stl = (await cableOf())[0];
+ok(stl && stl.status === 'open' && stl.stage === 1, 'stall: 7 sessions at 65 x 8 with nothing gained -> raised, as step one');
 has(stl.reason, 'sessions in a row at 65', 'stall: the reason counts sessions at the load');
 ok(/rule of thumb/i.test(stl.evidence) && /validated/i.test(stl.evidence), 'stall: labelled a rule of thumb, no validated test');
-eq(stl.options.map(o => o.act).join(), 'swap,swap,swap', 'stall: only swaps');
-eq(stl.options.map(o => o.to).join(), 'Chest-supported Row,Machine Row,T-Bar Row', 'stall: close variations from the family, minus DB Row, which Day C already has');
-await boots(state(stall(i => [['Cable Row', 65, i < 4 ? 10 : 8], ['Leg Press', 190, 10]])));       // i=0 is the newest: reps are climbing
+eq(stl.options.map(o => o.act).join(), 'add,shift_range,unpair', 'stall: step one keeps the lift (and its history): a set, a lower range, out of its superset - no swap');
+eq(stl.options[1].label, "Lower Cable Row's range by 2 reps (8–12 → 6–10)", 'stall: ...and says what the range becomes');
+eq(coachSwaps(stl), '', 'stall: no swap offered yet');
+function coachSwaps(p) { return p.options.filter(o => o.act === 'swap').map(o => o.to).join(); }
+{
+  const planB = JSON.stringify((await getState(page)).routines);
+  await toProgress();
+  await page.click('[data-co="opt"][data-id="' + stl.id + '"][data-oi="1"]');
+  await page.waitForSelector('.toast.act');
+  const cr = planExercises(await getState(page)).find(e => e.name === 'Cable Row');
+  ok(cr.reps === 6 && cr.repTop === 10 && cr.sets === 3 && cr.id === 'a3', 'stall: lowering the range is 8-12 -> 6-10 on the same row (history kept: same name, same id)');
+  has(await text(), '1 suggestion accepted · 0 led to progress within 4 sessions (1 still being measured)', 'measure: the Coach section keeps a tally');
+  const h = (await coachOf()).history.find(x => x.type === 'accepted');
+  ok(h && h.kind === 'stall' && h.lift === 'Cable Row' && h.baseline.score > 0 && h.baseline.skip === 0.25 && h.result === '', 'measure: the accepted suggestion is recorded with its baseline');
+  // four more Day A sessions with every lift done: the range is 6-10, last time 8, so the card asks for 9
+  for (let k = 0; k < 4; k++) await finishDay('rA', () => true);
+  has(await text(), '1 suggestion accepted · 1 led to progress within 4 sessions', 'measure: after 4 more exposures, progress is counted');
+  eq((await coachOf()).history.find(x => x.type === 'accepted').result, 'helped', 'measure: ...as helped');
+  void planB;
+}
+// undo takes the measurement away with it
+await boots(state(stall(flat).concat(cRows)));
 await finishDay('rA', ['Leg Press']);
-eq((await ofKind('stall')).filter(p => p.lift === 'Cable Row').length, 0, 'stall: reps still climbing at the same load -> silent');
+stl = (await cableOf())[0];
+await toProgress();
+await page.click('[data-co="opt"][data-id="' + stl.id + '"][data-oi="0"]');
+await page.waitForSelector('.toast.act');
+eq(planExercises(await getState(page)).find(e => e.name === 'Cable Row').sets, 4, 'stall: +1 set is on the same row');
+await page.click('.toast.act button');
+ok(!(await coachOf()).history.some(x => x.type === 'accepted'), 'measure: an undone change is not counted');
+// rung two: a pain note in a recent session, at once
+await boots(state(stall(i => [['Cable Row', 65, 8, 3, i === 1 ? 'left elbow pinch on the last set' : ''], ['Leg Press', 190, 10]]).concat(cRows)));
+await finishDay('rA', ['Leg Press']);
+stl = (await cableOf())[0];
+eq(stl.stage, 2, 'stall: a recent note about a pinch skips the ladder');
+eq(stl.options.map(o => o.to).join(), 'Chest-supported Row,Machine Row,T-Bar Row', 'stall: ...to swaps from the family, minus DB Row, which Day C already has');
+has(stl.reason, 'left elbow pinch', 'stall: ...and quotes the note');
+// rung two: it stalled again after a change was accepted
+const prior = (daysAgo) => ({ coach:{ lastCheck:0, history:[], proposals:[ { id:'pr1', ts:NOW - (daysAgo + 1) * DAY, decided:NOW - daysAgo * DAY, source:'rules', kind:'stall', key:'stall|cable row', stage:1,
+  lift:'Cable Row', rid:'', title:'x', reason:'x', evidence:'', status:'accepted', chosen:'Add a set to Cable Row', options:[{ act:'add', lift:'Cable Row', n:1, label:'Add a set to Cable Row' }] } ] } });
+await boots(state(stall(flat).concat(cRows), prior(45)));
+await finishDay('rA', ['Leg Press']);
+stl = (await cableOf()).find(p => p.status === 'open');
+ok(stl && stl.stage === 2 && coachSwaps(stl).startsWith('Chest-supported Row'), 'stall: stalled again 45 days after step one was accepted (6 exposures since) -> swaps');
+has(stl.reason, 'stalled again after the change', 'stall: ...and says why');
+await boots(state(stall(flat).concat(cRows), prior(10)));
+await finishDay('rA', ['Leg Press']);
+eq((await cableOf()).filter(p => p.status === 'open').length, 0, 'stall: step one accepted only 10 days ago -> no second rung yet');
+await boots(state(stall(i => [['Cable Row', 65, i < 4 ? 10 : 8], ['Leg Press', 190, 10]]).concat(cRows)));
+await finishDay('rA', ['Leg Press']);
+eq((await cableOf()).length, 0, 'stall: reps still climbing at the same load -> silent');
 await boots(state(stall(i => [['Cable Row', i < 3 ? 70 : 65, 8], ['Leg Press', 190, 10]])));
 await finishDay('rA', ['Leg Press']);
-eq((await ofKind('stall')).filter(p => p.lift === 'Cable Row').length, 0, 'stall: load went up recently -> not 6 at one load -> silent');
-await boots(state(Array.from({ length:5 }, (_, i) => sess('r' + i, 'rA', 'A', 'vA', 4 + 7 * i, [['Cable Row', 65, 8], ['Leg Press', 190, 10]]))));
+eq((await cableOf()).length, 0, 'stall: load went up recently -> not 6 at one load -> silent');
+await boots(state(Array.from({ length:5 }, (_, i) => sess('r' + i, 'rA', 'A', 'vA', 4 + 7 * i, flat()))));
 await finishDay('rA', ['Leg Press']);
-eq((await ofKind('stall')).filter(p => p.lift === 'Cable Row').length, 0, 'stall: only 5 sessions (6 with today\'s Leg Press-only one) -> silent');
-await boots(state(Array.from({ length:7 }, (_, i) => sess('r' + i, 'rA', 'A', 'vA', 2 + 2 * i, [['Cable Row', 65, 8], ['Leg Press', 190, 10]]))));
+eq((await cableOf()).length, 0, 'stall: only 5 exposures -> silent');
+await boots(state(Array.from({ length:7 }, (_, i) => sess('r' + i, 'rA', 'A', 'vA', 2 + 2 * i, flat()))));
 await finishDay('rA', ['Leg Press']);
-eq((await ofKind('stall')).filter(p => p.lift === 'Cable Row').length, 0, 'stall: six sessions inside two weeks is not a plateau -> silent');
+eq((await cableOf()).length, 0, 'stall: six sessions inside two weeks is not a plateau -> silent');
 
 /* ================= 7. never more than two open ================= */
 {
   // Skipped (Face Pull), skipped (DB Row, not done lately) and long would all qualify.
-  const hist = longHist([75, 70, 68, 64]).map(s => s.routineId === 'rC' ? Object.assign(s, { exercises:s.exercises.filter(e => e.name !== 'Face Pull' && e.name !== 'DB Row') }) : s)
+  const hist = longHist([95, 90, 88, 84]).map(s => s.routineId === 'rC' ? Object.assign(s, { exercises:s.exercises.filter(e => e.name !== 'Face Pull' && e.name !== 'DB Row') }) : s)
     .concat([sess('c0','rC','C','vC',70,lifts([['Face Pull',10,12]]))]);
   await boots(state(hist));
   await finishDay('rC', ['RDL']);
@@ -394,9 +468,8 @@ await page.waitForSelector('[data-act="start"]');
 
 /* ================= 9. a swapped-in lift's first card ================= */
 {
-  const hist = [sess('r0','rA','A','vA',4,[['Cable Row',65,8],['Lateral Raise',15,14],['Leg Press',190,10]])];
-  const stalled = Array.from({ length:7 }, (_, i) => sess('r' + i, 'rA', 'A', 'vA', 4 + 7 * i, [['Cable Row', 65, 8], ['Lateral Raise', 15, 14], ['Leg Press', 190, 10]]));
-  await boots(state(stalled.concat([sess('c1','rC','C','vC',9,lifts()), sess('c2','rC','C','vC',16,lifts())]),
+  const stalled = Array.from({ length:7 }, (_, i) => sess('r' + i, 'rA', 'A', 'vA', 4 + 7 * i, [['Cable Row', 65, 8, 3, i === 0 ? 'elbow pain on rows' : ''], ['Lateral Raise', 15, 14], ['Leg Press', 190, 10]]));
+  await boots(state(stalled.concat(cRows),
     { routines:routines({ A:[px('a1','Leg Press',8,12), px('a3','Cable Row',8,12,{ inc:5 }), px('a5','Lateral Raise',12,20,{ link:true })] }) }));
   await finishDay('rA', ['Leg Press']);
   stl = (await ofKind('stall')).find(p => p.lift === 'Cable Row');
@@ -404,7 +477,7 @@ await page.waitForSelector('[data-act="start"]');
   await page.click('[data-co="opt"][data-id="' + stl.id + '"][data-oi="0"]');          // Chest-supported Row
   await page.waitForSelector('.toast.act');
   const row = planExercises(await getState(page)).find(e => e.name === 'Chest-supported Row');
-  eq(row.startW, 45, 'swap-in: start weight = 65 x 0.9 x 0.85, rounded down to the 5 lb step, erring light');
+  eq(row.startW, 45, 'swap-in: never-done lift: start weight = 65 x 0.9 x 0.85, rounded down to the 5 lb step, erring light');
   ok(row.reps === 8 && row.repTop === 12 && row.inc === 5, 'swap-in: ...with the old slot\'s range and increment');
   await page.click('[data-tab="today"]'); await page.click('[data-act="start"][data-id="rA"]'); await page.waitForSelector('.card.ex');
   const card = page.locator('.card.ex', { hasText: 'Chest-supported Row' });
@@ -412,6 +485,25 @@ await page.waitForSelector('[data-act="start"]');
   eq(await card.locator('.set input[data-f="w"]').first().inputValue(), '45', 'swap-in: ...and the weight box is filled with it');
   const old = page.locator('.card.ex', { hasText: 'Lateral Raise' });
   ok(!/First time/.test(await old.textContent()), 'swap-in: lifts with history are unaffected');
+  await page.click('[data-act="discard"]'); await page.click('[data-x="ok"]');
+  await page.waitForSelector('[data-act="start"]');
+}
+/* a swap-in that HAS history keeps it: no guessed weight; after 4 weeks away it starts a step lighter */
+for (const [daysAgo, lighter] of [[60, true], [10, false]]) {
+  const open1 = { id:'px', ts:NOW - DAY, source:'rules', kind:'skipped', key:'skipped|lateral raise|rA', lift:'Lateral Raise', rid:'rA', title:'Lateral Raise keeps getting skipped',
+    reason:'x', evidence:'', status:'open', options:[{ act:'swap', lift:'Lateral Raise', to:'Cable Lateral Raise', label:'Swap for Cable Lateral Raise' }] };
+  await boots(state(skipHistory([22]).concat([sess('old','rA','A','vA',daysAgo,[['Cable Lateral Raise',10,14]]), sess('lr','rA','A','vA',40,[['Lateral Raise',15,14]])]),
+    { coach:{ lastCheck:NOW - DAY, history:[], proposals:[open1] }, routines:routines({ A:[px('a1','Leg Press',8,12), px('a5','Lateral Raise',12,20)] }) }));
+  await toProgress();
+  await page.click('[data-co="opt"][data-id="px"][data-oi="0"]');
+  await page.waitForSelector('.toast.act');
+  const r2 = planExercises(await getState(page)).find(e => e.name === 'Cable Lateral Raise');
+  ok(!('startW' in r2) && r2.stepBack === true, 'swap-in with history (' + daysAgo + ' d ago): no guessed start weight');
+  await page.click('[data-tab="today"]'); await page.click('[data-act="start"][data-id="rA"]'); await page.waitForSelector('.card.ex');
+  const c2 = page.locator('.card.ex', { hasText: 'Cable Lateral Raise' });
+  const w0 = await c2.locator('.set input[data-f="w"]').first().inputValue();
+  eq(w0, lighter ? '5' : '10', 'swap-in with history (' + daysAgo + ' d ago): the engine\'s own answer' + (lighter ? ', one step lighter' : ''));
+  eq(/one step lighter/.test(await c2.textContent()), lighter, 'swap-in with history (' + daysAgo + ' d ago): ' + (lighter ? 'the card says why' : 'no note when it was recent'));
   await page.click('[data-act="discard"]'); await page.click('[data-x="ok"]');
   await page.waitForSelector('[data-act="start"]');
 }
@@ -441,7 +533,9 @@ reply = { summary:'Training looks steady at about two sessions a week. Day C run
     { kind:'add_set', lift:'Flat DB Press', replacement:'', sets:9, reason:'absurd number of sets' },
     { kind:'delete_everything', lift:'RDL', replacement:'', sets:0, reason:'not an allowed kind' },
     { kind:'pair', lift:'Flat DB Press', replacement:'Low to high cable fly', sets:0, reason:'not adjacent' },
-    { kind:'swap', lift:'DB Row', replacement:'Flat DB Press', sets:0, reason:'already in the plan' } ],
+    { kind:'swap', lift:'DB Row', replacement:'Flat DB Press', sets:0, reason:'already in the plan' },
+    { kind:'shift_range', lift:'Leg Press', replacement:'', sets:9, reason:'shifting a range by nine reps' },
+    { kind:'unpair', lift:'Leg Press', replacement:'', sets:0, reason:'it is not in a superset' } ],
   questions:['Is the shoulder twinge from the face pulls, or from pressing?', 'Do you want to keep training 3 days?', 'A third question that should be cut'] };
 const before10 = await getState(page);
 const callsBefore = calls.length;
@@ -455,11 +549,11 @@ ok(c0.body.output_config.format && c0.body.output_config.format.type === 'json_s
 const sch = c0.body.output_config.format.schema;
 ok(sch.additionalProperties === false && sch.required.join() === 'summary,proposals,questions', 'ai: schema is closed, every field required');
 ok(sch.properties.proposals.items.additionalProperties === false && sch.properties.proposals.items.required.join() === 'kind,lift,replacement,sets,reason', 'ai: ...proposals too');
-eq(sch.properties.proposals.items.properties.kind.enum.join(), 'swap,trim_sets,remove,add_set,pair', 'ai: kinds are the fixed action list');
+eq(sch.properties.proposals.items.properties.kind.enum.join(), 'swap,trim_sets,remove,add_set,pair,shift_range,unpair', 'ai: kinds are the fixed action list');
 ok(/never set|never.*weights/i.test(c0.body.system) && /at most 3/i.test(c0.body.system) && /similar exercise/i.test(c0.body.system), 'ai: the system prompt forbids weights, caps at 3, asks for a similar exercise');
 const sent = c0.body.messages[0].content;
 ok(typeof sent === 'string' && sent.length < 24000, 'ai: the summary is compact  [' + sent.length + ' chars]');
-for (const frag of ['PLAN', 'Face Pull', 'SKIPPED in last 4 sessions of the day: Day C 2/4', 'Shoulder twinged on the last rep', 'WEEKLY SETS PER MUSCLE', 'SESSIONS', 'Slept badly', 'THE APP\'S OWN RULE SUGGESTIONS'])
+for (const frag of ['PLAN', 'SUPERSETS NOW: ', 'Incline DB Press + Cable Row', 'every ~', 'GAP over 14 d', 'min active', 'min first-to-last-set', 'Face Pull', 'SKIPPED in last 4 sessions of the day: Day C 2/4', 'Shoulder twinged on the last rep', 'WEEKLY SETS PER MUSCLE', 'SESSIONS', 'Slept badly', 'THE APP\'S OWN RULE SUGGESTIONS'])
   has(sent, frag, 'ai: the summary includes ' + frag);
 ok(!c0.raw.includes(KEY) && !JSON.stringify(c0.headers).includes(TOKEN) && !c0.raw.includes(TOKEN), 'ai: neither the AI key nor the GitHub token is in the request body');
 ok(!sent.includes('sk-ant') && !sent.includes('ghp_'), 'ai: ...nor anything shaped like one in the summary');
@@ -487,7 +581,7 @@ ok(planExercises(await getState(page)).some(e => e.name === 'Face Pull'), 'ai: .
 ok(!/a check-in is due/.test(await text()), 'ai: a check-in made today is not "due"');
 
 /* offered, not run, after 14 days; errors show their message */
-await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('ironlog.v1')); s.coach.history[0].ts -= 20 * 864e5; localStorage.setItem('ironlog.v1', JSON.stringify(s)); });
+await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('ironlog.v1')); s.coach.history.find(h => h.type === 'claude').ts -= 20 * 864e5; localStorage.setItem('ironlog.v1', JSON.stringify(s)); });
 const nCalls = calls.length;
 await page.reload(); await page.waitForSelector('#view'); await toProgress();
 has(await text(), 'a check-in is due', 'ai: 20 days on, a check-in is offered');

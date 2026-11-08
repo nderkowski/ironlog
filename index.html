@@ -2522,6 +2522,13 @@ function makeSessionEx(planEx,planId){
   if(auto) p={w:sp.w, r:sp.r, sets:sp.sets, why:"Rep-out method · "+sp.why,
               kind:sp.steps>0?"up":sp.steps<0?"deload":"reps"};
   var last=lastPerf(planEx.name);
+  /* A lift the coach swapped in that has been done before but not for 4+ weeks
+     starts one step lighter. Here and not in prescribe(): it is a prefill, not
+     a progression rule. */
+  if(planEx.stepBack&&last&&p.w!==""&&p.kind!=="deload"&&bwMode(planEx)===0&&metricOf(planEx)===0&&Date.now()-last.ts>28*864e5){
+    var lighter=num(p.w)-stepFor(planEx);
+    if(lighter>0){ p.w=lighter; p.why=(p.why?p.why+" · ":"")+"back after "+Math.round((Date.now()-last.ts)/864e5/7)+" weeks — one step lighter"; }
+  }
   var raw=lastRawSets(planEx.name);
   var sets=[];
   if(raw) raw.forEach(function(s){ if(s.warm) sets.push({w:String(s.w),r:String(s.r),warm:true,done:false}); });
@@ -3628,7 +3635,7 @@ function commitSession(){
   /* The coach's two-weekly look at the log. It may add cards; it can't change
      the plan, and a fault in it must never stand between the workout and the
      save. */
-  try{ coachRun(false); }catch(e){ if(window.console) console.error("coach:",e); }
+  try{ coachMeasure(); coachRun(false); }catch(e){ if(window.console) console.error("coach:",e); }
   writeNow();
   /* Still inside the tap on "Save workout", which is the whole trick: a
      download needs user activation, and finishing a workout is the one moment
@@ -5757,6 +5764,10 @@ var COACH_EVERY=14*864e5, COACH_OPEN_MAX=2, COACH_MIN_SESSIONS=6, COACH_EXPIRE=2
    three or more "Keep it"s. Kept once is a no for now; kept twice is a no. */
 var COACH_COOL=[42,126,365];
 var COACH_ACCEPT_COOL=42*864e5;
+var COACH_LONG=75;          // active minutes; over this a day is "running long"
+var COACH_BUSY=55;          // a day already this long (active) doesn't get another set
+var COACH_BUSY_SETS=21;     // ...nor one already planned at this many working sets
+var COACH_MIN_WEEKLY=6;     // weekly sets per muscle under which the volume rule speaks
 var COACH_UI={busy:false, err:""};
 
 function coachShape(c){
@@ -5883,7 +5894,11 @@ function coachNewRow(old,to){
     ne.bar=(num(old.bar)>0&&num(ne.bar)>0)?old.bar:ne.bar;
   }
   if(old.mg||(old.mg2&&old.mg2.length)){ ne.mg=old.mg||""; ne.mg2=(old.mg2||[]).slice(); }
+  /* Never-done lift: guess a light start (coachStartW). A lift with history
+     keeps it: the engine reads it, and makeSessionEx() starts a step lighter if
+     the last exposure was over 28 days ago (ne.stepBack). */
   if(!known){ var sw=coachStartW(old.name,to,ne); if(sw) ne.startW=sw; }
+  else ne.stepBack=true;
   return ne;
 }
 
@@ -5898,15 +5913,35 @@ function coachDone(s,name){
     return normName(e.name)===k&&working(e.sets).some(function(x){ return x.done!==false&&num(x.r)>0; });
   });
 }
-/* Minutes from the first to the last logged set; null when the log can't say
-   (sets ticked after the fact, an old import with no timestamps, a session left
-   open overnight). */
-function coachDurMin(s){
+/* Timestamps of a session's logged working sets, sorted. */
+function coachSetTimes(s){
   var ts=[];
-  s.exercises.forEach(function(e){ (e.sets||[]).forEach(function(x){ if(x.done!==false&&num(x.ts)>0) ts.push(num(x.ts)); }); });
+  s.exercises.forEach(function(e){ working(e.sets).forEach(function(x){ if(x.done!==false&&num(x.ts)>0) ts.push(num(x.ts)); }); });
+  return ts.sort(function(a,b){ return a-b; });
+}
+/* ACTIVE minutes: the sum of the gaps between consecutive logged sets that are
+   15 minutes or less. First-to-last is wrong for this log — sets get ticked
+   hours or days later (real sessions spanning 17 h and 4 days), so a span reads
+   a 45-minute workout as a marathon. A longer gap is a break in the app, not in
+   the lifting, and counts for nothing. Null when the log can't say (fewer than
+   4 stamped sets). */
+var COACH_GAP=15*60e3;
+function coachActiveMin(s){
+  var ts=coachSetTimes(s);
   if(ts.length<4) return null;
-  var span=Math.max.apply(null,ts)-Math.min.apply(null,ts);
-  return (span<10*60e3||span>4*3600e3)?null:span/60000;
+  var sum=0;
+  for(var i=1;i<ts.length;i++) if(ts[i]-ts[i-1]<=COACH_GAP) sum+=ts[i]-ts[i-1];
+  return sum/60000;
+}
+/* The raw first-to-last span, for the summary only (it is what the old rule used). */
+function coachSpanMin(s){
+  var ts=coachSetTimes(s);
+  return ts.length<4?null:(ts[ts.length-1]-ts[0])/60000;
+}
+/* Median active minutes of a day's last 4 sessions; null unless 3 can be timed. */
+function coachDayActive(r){
+  var d=coachDaySessions(r).slice(0,4).map(coachActiveMin).filter(function(x){ return x!==null; });
+  return d.length>=3?coachMedian(d):null;
 }
 /* A day's sessions, newest first, deloads left out (they are short on purpose).
    For a lift in only some of a day's weeks, only the weeks it is planned in. */
@@ -5956,8 +5991,9 @@ function coachRuleSkipped(){
   return out.map(function(x){ return x.p; });
 }
 
-/* RULE 2 — long sessions. Median first-to-last-set time of a day's last 4
-   sessions over 60 minutes (needs 3 that can be timed). Offers to trim one set
+/* RULE 2 — long sessions. Median ACTIVE time (coachActiveMin) of a day's last
+   4 sessions over 75 minutes (needs 3 that can be timed); he has said 45–75 is
+   fine. Offers to trim one set
    from the lowest-priority accessory — the last lift after the main one with
    3+ sets; plan order is priority — or to pair two unpaired accessories as a
    superset. */
@@ -5966,9 +6002,9 @@ function coachRuleLong(){
   S.routines.forEach(function(r){
     var last4=coachDaySessions(r).slice(0,4);
     if(last4.length<4) return;
-    var d=last4.map(coachDurMin).filter(function(x){ return x!==null; });
+    var d=last4.map(coachActiveMin).filter(function(x){ return x!==null; });
     if(d.length<3) return;
-    var med=coachMedian(d); if(med<=60) return;
+    var med=coachMedian(d); if(med<=COACH_LONG) return;
     var v=variantsOf(r).filter(function(x){ return x.id===last4[0].variantId; })[0]||variantAt(r,0);
     var ex=v.exercises, trim=-1, pair=-1, i;
     for(i=ex.length-1;i>=1;i--) if(num(ex[i].sets)>=3){ trim=i; break; }
@@ -5981,23 +6017,28 @@ function coachRuleLong(){
     if(!opts.length) return;
     out.push(coachMk({kind:"long", key:"long|"+r.id, lift:opts[0].lift, rid:r.id,
       title:r.name+" is running long",
-      reason:"The last "+d.length+" timed "+r.name+" sessions took a median of "+Math.round(med)+" minutes, first set to last.",
-      evidence:"Convention, not a trial result: there is no studied cutoff, but sessions that drag past an hour "+
-        "are the ones that get cut short. Pairing two lifts as a superset saves their rest time; "+
+      reason:"The last "+d.length+" timed "+r.name+" sessions had a median of "+Math.round(med)+" active minutes (time between sets; breaks over 15 minutes left out).",
+      evidence:"Convention, not a trial result: there is no studied cutoff. 45–75 minutes is fine; past 75 is where "+
+        "sessions get cut short. Pairing two lifts as a superset saves their rest time; "+
         "trimming a set from the last accessory saves a few minutes and costs little.",
       options:opts}));
   });
   return out;
 }
 
-/* RULE 3 — too few weekly sets. Weekly sets per muscle (tagsOf(), a helper
-   muscle's sets at ½) averaged over the last 3 complete weeks, under 10, for a
-   muscle the plan trains as a MAIN muscle, while he trains ≥2 times a week.
-   Skipped when any of the three weeks had a deload or no session at all
-   (volume was low on purpose or by absence, not by plan). Offers one more set
-   on that muscle's isolation lift. */
+/* RULE 3 — too few weekly sets. RARE on purpose. Weekly sets per muscle
+   (tagsOf(), a helper's sets at ½) averaged over the last 3 complete weeks,
+   under COACH_MIN_WEEKLY (6), for a muscle the plan trains with a primary (mg)
+   lift, while he trains ≥2 times a week. Under 10 would fire on nearly every
+   muscle of the recommended plan at 2.5 sessions a week (chest and quads ≈ 7.5,
+   biceps and triceps ≈ 8.75), so the bar is "thin", not "short of the review's
+   10". Skipped when any of the three weeks had a deload or no session (volume
+   was low on purpose or by absence), and never offered a set on a day that is
+   already long (active median over COACH_BUSY minutes) or planned at
+   COACH_BUSY_SETS working sets or more. Offers one more set on that muscle's
+   isolation lift. */
 function coachRuleVolume(){
-  var wk=[1,2,3].map(weekBounds), tot={}, n=0, sess=0;
+  var wk=[1,2,3].map(weekBounds), tot={}, sess=0;
   if(!S.sessions.length||Math.min.apply(null,S.sessions.map(function(s){ return s.ts; }))>wk[2].start) return [];
   for(var i=0;i<3;i++){
     var inWk=S.sessions.filter(function(s){ return s.ts>=wk[i].start&&s.ts<wk[i].end; });
@@ -6008,32 +6049,40 @@ function coachRuleVolume(){
   }
   if(sess<6) return [];
   var idx=mgIndex(), rows={};
-  eachPlanEx(function(e,r){
+  eachPlanEx(function(e,r,v){
     var t=tagsOf(e,idx); if(!isMuscle(t.mg)) return;
-    (rows[t.mg]=rows[t.mg]||[]).push({e:e,r:r});
+    (rows[t.mg]=rows[t.mg]||[]).push({e:e,r:r,v:v});
   });
-  var worst=null;
+  var low=[];
   MUSCLES.forEach(function(m){
     var avg=tot[m.k]/3;
-    if(!rows[m.k]||avg>=10||avg<=0) return;      // a muscle not trained at all lately is a missed day, not a thin plan
-    if(!worst||avg<worst.avg-1e-9) worst={m:m,avg:avg};
+    if(rows[m.k]&&avg<COACH_MIN_WEEKLY&&avg>0) low.push({m:m,avg:avg});   // avg 0: a missed day, not a thin plan
   });
-  if(!worst) return [];
-  var cand=rows[worst.m.k].filter(function(x){ return num(x.e.sets)<5; });
-  if(!cand.length) return [];
-  cand.sort(function(a,b){
-    var ia=movementClass(a.e.name)==="iso"?0:1, ib=movementClass(b.e.name)==="iso"?0:1;
-    return ia-ib||num(a.e.sets)-num(b.e.sets);
-  });
-  var pick=cand[0];
-  return [coachMk({kind:"volume", key:"volume|"+worst.m.k, lift:pick.e.name, rid:pick.r.id,
-    title:worst.m.n+" is under 10 sets a week",
-    reason:worst.m.n+" averaged "+fmt(round(worst.avg,1))+" sets a week over the last 3 weeks (a set counts 1 for the main muscle, "+
-      "½ for a helper), while you trained "+(sess/3).toFixed(1)+" times a week.",
-    evidence:"More weekly sets grow more muscle, with diminishing returns, and about 10 or more a week is the usual "+
-      "floor in the reviews (Schoenfeld 2017; Pelland 2026; ACSM 2026). Those are short trials, mostly 6–12 weeks, "+
-      "so it is a guide, not a target.",
-    options:[{act:"add", lift:pick.e.name, n:1, label:"Add a set to "+pick.e.name+" ("+pick.r.name+")"}]})];
+  low.sort(function(a,b){ return a.avg-b.avg; });
+  for(var k=0;k<low.length;k++){
+    var cand=rows[low[k].m.k].filter(function(x){
+      if(num(x.e.sets)>=5) return false;
+      var planned=x.v.exercises.reduce(function(a,e){ return a+num(e.sets); },0);
+      if(planned>=COACH_BUSY_SETS) return false;
+      var act=coachDayActive(x.r);
+      return !(act!==null&&act>COACH_BUSY);
+    });
+    if(!cand.length) continue;
+    cand.sort(function(a,b){
+      var ia=movementClass(a.e.name)==="iso"?0:1, ib=movementClass(b.e.name)==="iso"?0:1;
+      return ia-ib||num(a.e.sets)-num(b.e.sets);
+    });
+    var pick=cand[0], worst=low[k];
+    return [coachMk({kind:"volume", key:"volume|"+worst.m.k, lift:pick.e.name, rid:pick.r.id,
+      title:worst.m.n+" gets few sets",
+      reason:worst.m.n+" averaged "+fmt(round(worst.avg,1))+" sets a week over the last 3 weeks (a set counts 1 for the main muscle, "+
+        "½ for a helper), while you trained "+(sess/3).toFixed(1)+" times a week.",
+      evidence:"More weekly sets grow more muscle, with diminishing returns; about 10 or more a week is the usual floor "+
+        "in the reviews (Schoenfeld 2017; Pelland 2026; ACSM 2026). This only speaks under "+COACH_MIN_WEEKLY+", well short of that, "+
+        "and only on a day with room. Those are short trials, mostly 6–12 weeks, so a guide, not a target.",
+      options:[{act:"add", lift:pick.e.name, n:1, label:"Add a set to "+pick.e.name+" ("+pick.r.name+")"}]})];
+  }
+  return [];
 }
 
 /* RULE 4 — stalled lift. Deliberately hard to trigger: a naive stall rule
@@ -6041,7 +6090,21 @@ function coachRuleVolume(){
    no validated plateau rule exists (RESEARCH.md). Needs ≥6 exposures in a row
    at the SAME working load (workLoad()) spanning ≥4 weeks, the best set
    (rep-out if present) of the newest 3 no better than the earlier ones, and
-   trend() not "up". Only action: swap for a close variation. */
+   trend() not "up".
+
+   A LADDER, history first. A swap throws away a lift's history, so it is the
+   second rung, not the first:
+     1. on the same lift: +1 working set, or the range down 2 reps (heavier
+        for the same reps), or out of its superset if it is paired;
+     2. a swap for a close variation — only if it stalls AGAIN after a rung-1
+        change was accepted (≥42 days and ≥4 exposures later), or at once when
+        one of its last three notes mentions pain, soreness or a pinch. */
+var COACH_PAIN=/pain|hurt|ache|pinch|tweak|sore/i;
+function coachNoteOf(x,name){
+  var se=S.sessions.filter(function(s){ return s.id===x.sessionId; })[0];
+  var ex=se&&se.exercises.filter(function(e){ return normName(e.name)===normName(name); })[0];
+  return ex?String(ex.note||"").trim():"";
+}
 function coachRuleStall(){
   var out=[];
   trackedLifts().forEach(function(name){
@@ -6053,17 +6116,46 @@ function coachRuleStall(){
     var sc=run.map(trendScore);
     if(Math.max.apply(null,sc.slice(0,3))>Math.max.apply(null,sc.slice(3))) return;
     if(trend(name).state==="up") return;
-    var opts=coachSwapOpts(name,3); if(!opts.length) return;
+    var key="stall|"+normName(name), tg=coachTargets(name); if(!tg.length) return;
+    var row=tg[0].e;
+    var prior=coachState().proposals.filter(function(q){ return q.key===key&&q.status==="accepted"&&q.stage===1; })
+      .sort(function(a,b){ return num(b.decided)-num(a.decided); })[0];
+    var pain=h.slice(0,3).map(function(x){ return {ts:x.ts, n:coachNoteOf(x,name)}; }).filter(function(x){ return COACH_PAIN.test(x.n); })[0];
+    var stage=2, why="";
+    var rung1=[];
+    if(!prior&&!pain){
+      stage=1;
+      var sets=num(row.sets)||3, lo=num(row.reps), top=num(row.repTop);
+      if(sets<6) rung1.push({act:"add", lift:name, n:1, label:"Add a set to "+name});
+      if(lo-2>=3) rung1.push({act:"shift_range", lift:name, n:2, label:"Lower "+name+"'s range by 2 reps ("+lo+(top>lo?"–"+top:"")+" → "+(lo-2)+
+        (top>lo?"–"+Math.max(lo-1,top-2):"")+")"});
+      if(row.link||(tg[0].v.exercises[tg[0].ei+1]&&tg[0].v.exercises[tg[0].ei+1].link))
+        rung1.push({act:"unpair", lift:name, label:"Take "+name+" out of its superset"});
+      if(!rung1.length) stage=2;
+    }
+    if(stage===2){
+      if(prior){
+        var since=h.filter(function(x){ return x.ts>num(prior.decided); }).length;
+        if(since<4||Date.now()-num(prior.decided)<COACH_ACCEPT_COOL) return;
+        why="It stalled again after the change you made on "+shortDate(prior.decided)+".";
+      } else if(pain) why="Your note on "+shortDate(pain.ts)+" says: \""+pain.n.slice(0,120)+"\".";
+    }
+    var opts=stage===1?rung1:coachSwapOpts(name,3);
+    if(!opts.length) return;
     var best=Math.max.apply(null,run.map(function(x){ return Math.max.apply(null,x.sets.map(function(s){ return num(s.r); })); }));
-    out.push(coachMk({kind:"stall", key:"stall|"+normName(name), lift:name,
-      title:name+" has stopped moving",
+    var p=coachMk({kind:"stall", key:key, lift:name,
+      title:name+(stage===1?" has stopped moving":" — time for a variation"),
       reason:run.length+" sessions in a row at "+entryText({w:W},mode)+" "+unit()+", over "+
         Math.round((run[0].ts-run[run.length-1].ts)/864e5/7)+" weeks, with the best set no better than before "+
-        "(most reps in a set: "+best+").",
+        "(most reps in a set: "+best+")."+(why?" "+why:""),
       evidence:"Rule of thumb, not a validated test — no plateau rule has one (Bell 2023 is coach opinion), "+
-        "so this waits for six sessions at one load with nothing gained. A close variation can restart progress; "+
-        "a deload week or more food or sleep might too.",
-      options:opts}));
+        "so this waits for six sessions at one load with nothing gained. "+
+        (stage===1?"The lift's history stays with it: a small change first, a swap only if it stalls again. "
+                  :"A swap starts the new lift's history from zero. ")+
+        "A deload week or more food or sleep might help too.",
+      options:opts});
+    p.stage=stage;
+    out.push(p);
   });
   return out;
 }
@@ -6093,7 +6185,8 @@ function coachPrune(){
     keep=keep.filter(function(p){ return drop.indexOf(p)<0; });
   }
   c.proposals=keep;
-  c.history=c.history.slice(0,12);
+  var nC=0, nA=0;                    // check-ins and measured suggestions are kept apart
+  c.history=c.history.filter(function(h){ return h.type==="accepted"?(++nA<=60):(++nC<=12); });
 }
 /* An open card nobody answered in four weeks stops being a prompt and starts
    being furniture: it is closed as a "Keep it" (which also cools it down). */
@@ -6174,7 +6267,70 @@ function coachUndoOps(ops){
 function coachActWord(o){
   return o.act==="swap"?"Swapped "+o.lift+" for "+o.to:o.act==="remove"?"Took "+o.lift+" out":
          o.act==="trim"?"Trimmed a set from "+o.lift:o.act==="add"?"Added a set to "+o.lift:
+         o.act==="shift_range"?"Lowered "+o.lift+"'s range by "+(o.n||2):
+         o.act==="unpair"?"Took "+o.lift+" out of its superset":
          "Paired "+o.lift+" + "+o.with;
+}
+
+/* ---- does it help? (v26 measurement) ----
+   Every accepted suggestion leaves an entry in S.coach.history with a baseline,
+   and after FOUR further exposures of its slot is marked helped or not:
+   - swap / add a set / lower the range: progression earned — for a swap, a
+     later one of the four sessions beat the first; for the others, one of the
+     four beat the lift's best set before (trendScore, so the rep-out counts);
+   - trim / pair / unpair / remove: the day got shorter (≥3 active minutes off
+     the median) or fewer of its lifts were missed.
+   The Coach section shows the tally in one line, so "is this coach any use?"
+   has an answer a year from now. */
+function coachDayMiss(r,sessions){
+  var tot=0, miss=0;
+  (sessions||coachDaySessions(r).slice(0,4)).forEach(function(s){
+    var v=variantsOf(r).filter(function(x){ return x.id===s.variantId; })[0]||variantAt(r,0);
+    v.exercises.forEach(function(e){ tot++; if(!coachDone(s,e.name)) miss++; });
+  });
+  return tot?miss/tot:0;
+}
+function coachBaseline(p,o,r){
+  var lift=o.lift||p.lift, b={act:o.act, from:lift, rid:r?r.id:"", skip:0, score:0, min:null};
+  if(o.act==="swap"||o.act==="add"||o.act==="shift_range"){
+    var last=lastPerf(lift);
+    b.mode="exposure"; b.lift=o.act==="swap"?o.to:lift; b.score=last?Math.round(trendScore(last)*10)/10:0;
+    if(r){ var ss=coachDaySessions(r,lift).slice(0,4); b.skip=ss.length?ss.filter(function(x){ return !coachDone(x,lift); }).length/ss.length:0; }
+  } else {
+    b.mode="day"; b.lift=lift;
+    if(r){ b.min=coachDayActive(r); b.skip=coachDayMiss(r); }
+  }
+  return b;
+}
+function coachMeasure(){
+  var c=coachState(), changed=false;
+  c.history.forEach(function(h){
+    if(h.type!=="accepted"||h.result) return;
+    var res=null;
+    if(h.mode==="exposure"){
+      var ex=exWorking(h.lift).filter(function(x){ return x.ts>h.ts; }).reverse();
+      if(ex.length<4) return;
+      var sc=ex.slice(0,4).map(trendScore);
+      res=(h.act==="swap"?Math.max.apply(null,sc.slice(1))>sc[0]:Math.max.apply(null,sc)>num(h.baseline.score));
+    } else {
+      var r=S.routines.filter(function(x){ return x.id===h.rid; })[0];
+      var after=S.sessions.filter(function(s){ return s.routineId===h.rid&&!s.deload&&s.ts>h.ts; })
+        .sort(function(a,b){ return a.ts-b.ts; }).slice(0,4);
+      if(!r||after.length<4) return;
+      var d=after.map(coachActiveMin).filter(function(x){ return x!==null; });
+      var med=d.length>=3?coachMedian(d):null;
+      res=coachDayMiss(r,after)<num(h.baseline.skip)-1e-9||(med!==null&&h.baseline.min!==null&&med<h.baseline.min-3);
+    }
+    h.result=res?"helped":"not"; h.checked=Date.now(); changed=true;
+  });
+  return changed;
+}
+function coachTally(){
+  var acc=coachState().history.filter(function(h){ return h.type==="accepted"; });
+  if(!acc.length) return "";
+  var done=acc.filter(function(h){ return h.result; }), good=done.filter(function(h){ return h.result==="helped"; }).length;
+  return plural(acc.length,"suggestion")+" accepted · "+good+" led to progress within 4 sessions"+
+    (acc.length>done.length?" ("+(acc.length-done.length)+" still being measured)":"");
 }
 function coachApply(id,oi){
   if(S.active){ toast("Finish or discard the workout first"); return false; }
@@ -6186,6 +6342,7 @@ function coachApply(id,oi){
     c.proposals=c.proposals.filter(function(x){ return x!==p; });
     writeNow(); coachRefresh(); toast(lift+" isn't in your plan any more"); return false;
   }
+  var base=coachBaseline(p,o,tg[0].r);
   var vs=[];
   tg.forEach(function(t){
     if(!vs.some(function(x){ return x.v===t.v; })) vs.push({r:t.r, v:t.v, before:coachCopy(t.v.exercises)});
@@ -6213,12 +6370,25 @@ function coachApply(id,oi){
     } else if(o.act==="pair"){
       for(i=0;i+1<ex.length;i++)
         if(normName(ex[i].name)===k&&normName(ex[i+1].name)===normName(o.with)&&!ex[i+1].link) ex[i+1].link=true;
+    } else if(o.act==="shift_range"){
+      ex.forEach(function(e){
+        if(normName(e.name)!==k) return;
+        var nr=Math.max(1,num(e.reps)-(o.n||2));
+        if(num(e.repTop)>0) e.repTop=Math.max(nr+1,num(e.repTop)-(o.n||2));
+        e.reps=nr;
+      });
+    } else if(o.act==="unpair"){
+      for(i=0;i<ex.length;i++) if(normName(ex[i].name)===k){
+        if(ex[i].link) ex[i].link=false; else if(ex[i+1]&&ex[i+1].link) ex[i+1].link=false;
+      }
     }
   });
   var ops=vs.map(function(x){ return {rid:x.r.id, vid:x.v.id, d:coachDiff(x.before,x.v.exercises)}; })
     .filter(function(x){ return x.d.added.length||x.d.changed.length||x.d.removed.length; });
   if(!ops.length){ toast("Nothing to change — the plan already matches"); return false; }
   p.status="accepted"; p.decided=Date.now(); p.chosen=o.label; p.undo={ops:ops};
+  c.history.unshift({type:"accepted", ts:p.decided, pid:p.id, kind:p.kind, act:o.act, lift:base.lift, from:base.from,
+    rid:base.rid, mode:base.mode, baseline:{score:base.score, skip:base.skip, min:base.min}, result:"", checked:0});
   writeNow(); coachRefresh();
   toastUndo(coachActWord(o),function(){ coachUndo(id); });
   return true;
@@ -6229,6 +6399,7 @@ function coachUndo(id){
   if(!p) return false;
   coachUndoOps(p.undo.ops);
   p.status="skipped"; p.undone=true; delete p.undo;
+  coachState().history=coachState().history.filter(function(h){ return h.pid!==id; });   // an undone change is not a result
   writeNow(); coachRefresh(); toast("Put back how it was");
   return true;
 }
@@ -6272,7 +6443,7 @@ function coachSection(){
     .sort(function(a,b){ return (num(b.decided)||b.ts)-(num(a.decided)||a.ts); }).slice(0,5);
   var html='<div class="row" style="margin-bottom:7px"><div class="eyebrow">Coach</div>'+
     '<span class="tiny muted" style="margin-left:auto">'+(c.lastCheck?"rules checked "+esc(relDate(c.lastCheck)):"rules not run yet")+'</span></div>';
-  if(!open.length&&!recent.length&&!ready&&!ai){
+  if(!open.length&&!recent.length&&!ready&&!ai&&!coachTally()){
     return html+'<div class="tiny muted" style="margin:-2px 0 12px">Nothing to suggest right now. '+
       (S.sessions.length<COACH_MIN_SESSIONS?"The coach starts after "+COACH_MIN_SESSIONS+" sessions.":
         "It looks at the log every two weeks and suggests, never changes, your plan.")+'</div>';
@@ -6296,6 +6467,9 @@ function coachSection(){
     html+='<div class="co-o"><button class="btn sm '+(due?"primary":"")+'" data-co="ask"'+(COACH_UI.busy?' disabled':"")+'>'+
       (COACH_UI.busy?"Asking Claude…":"Ask Claude for a check-in")+'</button></div></div>';
   }
+  var tally=coachTally();
+  if(tally) html+='<div class="co-p"><div class="co-r" data-coach-tally>'+esc(tally)+'</div>'+
+    '<div class="co-e">Swaps, extra sets and lower ranges count when a lift progressed; trims and supersets when the day got shorter or fewer lifts were missed.</div></div>';
   if(recent.length){
     html+='<div class="co-p"><div class="eyebrow" style="margin-bottom:6px">Recent decisions</div>'+
       recent.map(function(p){
@@ -6329,28 +6503,29 @@ var COACH_SYSTEM=
 "He trains for muscle size, mostly with dumbbells, cables and machines, on a 3-day full-body A/B/C rotation: "+
 "about 45 minutes a session, usually 2 to 3 sessions a week. The app (Iron Log) already progresses his weights and reps by itself.\n\n"+
 "What you may and may not do:\n"+
-"- You never set, change or suggest weights, reps, rep ranges, percentages or progression. The app's engine owns all of that.\n"+
+"- You never set, change or suggest weights, rep targets, percentages or progression. The app's engine owns all of that. The one exception is the fixed action shift_range below, which only moves a lift's whole rep range down.\n"+
 "- You may only propose changes from this fixed list: swap (replace a lift with a close variation), trim_sets (drop 1 or 2 sets from a lift), "+
-"remove (take a lift out of its day), add_set (add 1 or 2 sets to a lift), pair (make two adjacent, currently unpaired lifts on the same day a superset). "+
+"remove (take a lift out of its day), add_set (add 1 or 2 sets to a lift), pair (make two adjacent, currently unpaired lifts on the same day a superset), "+
+"unpair (take a lift out of its superset), shift_range (move a lift's rep range down by 1 to 3 reps, which makes the same reps heavier; use it, or add_set, before swap for a lift that has stalled). "+
 "Nothing else: no new training days, no schedule, diet or supplement advice.\n"+
 "- Propose at most 3 changes, and usually fewer. Quality over quantity. Nick confirms each one by hand; nothing is applied automatically.\n"+
 "- When you suggest trimming sets or removing a lift, also name a similar exercise in `replacement` that he could swap in instead: "+
 "a close variation that trains the same muscle with similar equipment. For swap, `replacement` is the new exercise. "+
 "For pair, `replacement` is the partner lift's exact name from the plan. Otherwise leave it empty.\n"+
-"- Use lift names exactly as they appear in the plan. `sets` is the number of sets to drop (trim_sets) or add (add_set), 1 or 2; use 0 for the other kinds.\n\n"+
+"- Use lift names exactly as they appear in the plan. `sets` is the number of sets to drop (trim_sets) or add (add_set), 1 or 2, or the number of reps to shift down (shift_range), 1 to 3; use 0 for the other kinds.\n\n"+
 "How to judge:\n"+
 "- Cite the evidence from the summary in every `reason`: dates, counts, minutes, sets per week, his own notes. Never invent data that is not in the summary.\n"+
 "- Weekly sets per muscle: the summary counts a set as 1 for the main muscle and 0.5 for a helper. Roughly 10 to 20 hard sets a week is the usual range associated with growth, "+
 "with diminishing returns; below 10 is worth a look. That evidence comes from short trials, so call it guidance, not a target.\n"+
-"- Be sceptical about stalls. Each lift is trained about once every 9 days and moves slowly in 8-12 or 12-20 rep ranges, so a few flat sessions are normal. "+
-"No validated plateau rule exists; say so if you lean on one.\n"+
+"- Be sceptical about stalls. Each lift is trained about once every 9 days and moves slowly in 8-12 or 12-20 rep ranges, so a few flat sessions are normal, and a long gap is not a plateau. "+
+"No validated plateau rule exists; say so if you lean on one. A swap throws away a lift's history, so for a stall try add_set or shift_range first, and swap only when it has stalled again after that or a note mentions pain.\n"+
 "- Read his per-lift and session notes closely. Pain, setup problems, equipment, boredom or \"hated this\" matter more than any number.\n"+
 "- Do not repeat anything he already declined or that the rules already have open; both are listed in the summary.\n"+
 "- Where you rely on coaching convention rather than trial evidence, say that plainly.\n"+
 "- If nothing is worth changing, say so plainly: return no proposals and make the summary say that nothing needs changing.\n"+
 "- You may ask him 1 or 2 short questions in `questions` if an answer would change your advice; otherwise return an empty list.\n"+
 "- `summary` is 2 to 5 plain sentences about how training looks overall. No hype, no markdown.";
-var COACH_KINDS=["swap","trim_sets","remove","add_set","pair"];
+var COACH_KINDS=["swap","trim_sets","remove","add_set","pair","shift_range","unpair"];
 var COACH_SCHEMA={
   type:"object", additionalProperties:false, required:["summary","proposals","questions"],
   properties:{
@@ -6400,6 +6575,15 @@ function coachSummaryText(per){
       }).join(" | "));
     });
   });
+  var ss=[];
+  S.routines.forEach(function(r){ variantsOf(r).forEach(function(v){
+    var cur=null;
+    v.exercises.forEach(function(e){
+      if(e.link&&cur) cur.push(e.name); else { if(cur&&cur.length>1) ss.push(r.name+": "+cur.join(" + ")); cur=[e.name]; }
+    });
+    if(cur&&cur.length>1) ss.push(r.name+": "+cur.join(" + "));
+  }); });
+  L.push("SUPERSETS NOW: "+(ss.length?ss.join("; "):"none"));
   L.push("");
   L.push("LIFTS (last "+per+" exposures, newest first; format date load: reps per set, * = the last-set rep-out; then his note):");
   trackedLifts().forEach(function(name){
@@ -6411,7 +6595,13 @@ function coachSummaryText(per){
       var l4=coachDaySessions(r,name).slice(0,4);
       if(l4.length===4){ var n=l4.filter(function(s){ return !coachDone(s,name); }).length; if(n) sk.push(r.name+" "+n+"/4"); }
     });
-    L.push(name+" ["+days.join(",")+"] trend "+(t.state==="new"?"too new":t.state+" "+(t.pct>=0?"+":"")+t.pct.toFixed(1)+"%")+
+    var all=exSessions(name), gaps=[];
+    for(var gi=0;gi+1<all.length&&gi<14;gi++) gaps.push({d:(all[gi].ts-all[gi+1].ts)/864e5, a:all[gi+1].ts, b:all[gi].ts});
+    var longGaps=gaps.filter(function(g){ return g.d>14; }).slice(0,2)
+      .map(function(g){ return coachYmd(g.a)+" to "+coachYmd(g.b)+" ("+Math.round(g.d)+" d)"; });
+    var cadence=gaps.length?"every ~"+Math.round(coachMedian(gaps.map(function(g){ return g.d; })))+" d"+
+      (longGaps.length?", GAP over 14 d: "+longGaps.join(", "):""):"";
+    L.push(name+" ["+days.join(",")+"] "+cadence+"; trend "+(t.state==="new"?"too new":t.state+" "+(t.pct>=0?"+":"")+t.pct.toFixed(1)+"%")+
       (sk.length?"; SKIPPED in last 4 sessions of the day: "+sk.join(", "):"")+(h.length?"":"; no history"));
     h.forEach(function(x){
       var se=byId[x.sessionId], ex=se&&se.exercises.filter(function(e){ return normName(e.name)===k; })[0];
@@ -6428,11 +6618,12 @@ function coachSummaryText(per){
     L.push("  "+m.n+": "+v.slice(0,4).join(", ")+"  (this week "+v[4]+")");
   });
   L.push("");
-  L.push("SESSIONS (newest first; minutes = first to last logged set, ? if unknown):");
+  L.push("SESSIONS (newest first; active = minutes between logged sets with breaks over 15 min left out, the reliable one; first-to-last-set is often inflated because he ticks sets later; ? if unknown):");
   S.sessions.slice(0,8).forEach(function(s){
-    var d=coachDurMin(s), n=0;
+    var d=coachActiveMin(s), sp=coachSpanMin(s), n=0;
     s.exercises.forEach(function(e){ n+=working(e.sets).length; });
-    L.push("  "+coachYmd(s.ts)+" "+s.name+(s.deload?" (deload)":"")+": "+(d===null?"?":Math.round(d))+" min, "+n+" working sets");
+    L.push("  "+coachYmd(s.ts)+" "+s.name+(s.deload?" (deload)":"")+": "+(d===null?"?":Math.round(d))+" min active, "+
+      (sp===null?"?":Math.round(sp))+" min first-to-last-set, "+n+" working sets");
   });
   var notes=S.sessions.filter(function(s){ return now-s.ts<21*864e5&&String(s.note||"").trim(); });
   if(notes.length){
@@ -6488,6 +6679,15 @@ function coachValidate(list){
       if(rep&&normName(rep)!==normName(lift)&&!coachInPlan(rep)) opts.push({act:"swap", lift:lift, to:rep, label:"Swap for "+rep});
       else opts=opts.concat(coachSwapOpts(lift,2));
       title="Take "+lift+" out";
+    } else if(kind==="shift_range"){
+      if(n<1||n>3) return no("bad shift");
+      if(tg.some(function(t){ return num(t.e.reps)-n<3; })) return no("range would go below 3 reps");
+      opts=[{act:"shift_range", lift:lift, n:n, label:"Lower "+lift+"'s range by "+plural(n,"rep")}];
+      title="Lower "+lift+"'s rep range by "+n;
+    } else if(kind==="unpair"){
+      if(!tg.some(function(t){ var ex=t.v.exercises; return ex[t.ei].link||(ex[t.ei+1]&&ex[t.ei+1].link); })) return no("not in a superset");
+      opts=[{act:"unpair", lift:lift, label:"Take "+lift+" out of its superset"}];
+      title="Take "+lift+" out of its superset";
     } else if(kind==="add_set"){
       if(n<1||n>2) return no("bad number of sets");
       if(tg.some(function(t){ return num(t.e.sets)+n>6; })) return no("too many sets");
