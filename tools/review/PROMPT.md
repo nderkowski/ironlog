@@ -25,10 +25,10 @@ This is a pre-registered, falsifiable review. It is not a code-style review and 
 3. **`git log -p -- index.html`.** The commit messages record what was tried, measured and reverted.
 4. **`tools/test/`**: 22 suites, about 1,018 checks, plus `tools/test/yearsim.js`. Treat yearsim's lifter model as suspect, because the engine's authors wrote it.
 
-**Do not read** `ROADMAP.md`, `PROJECT_STATE.md`, `NEXT_SESSION.md`, `RESEARCH.md` or any review/history doc until Phase 3. They hold earlier conclusions, including an external review and the verdicts on it, and would anchor you.
+**Do not read** `ROADMAP.md`, `PROJECT_STATE.md`, `NEXT_SESSION.md`, `RESEARCH.md`, `PRODUCT.md`, the root `REVIEW.md`, `REVIEW_PROMPT.md`, `IMPLEMENT_PROMPT.md` or any other review/history doc until Phase 3. They hold earlier conclusions, including an external review and the verdicts on it, and would anchor you.
 
 ## Phase 0 — pre-register before any analysis
-On your working branch (never `main`), write `REVIEW.md` §0: the metrics you will judge the engine by, how each is computed, and the pass/fail thresholds. At minimum:
+Create and work on the branch `review/independent` (never `main`). All your output goes in `tools/review/`; the root `REVIEW.md` is an older review, so leave it alone. Write `tools/review/REVIEW.md` §0: the metrics you will judge the engine by, how each is computed, and the pass/fail thresholds. At minimum:
 - the per-lift strength slope over 52 simulated weeks (e1RM, or load at fixed reps)
 - the share of sessions that progress (load, or reps at the same load)
 - the longest stall
@@ -112,10 +112,10 @@ Classify every number in the engine and coach as **trial evidence** (primary sou
 - forecast skill against naive on real sessions
 - property tests passing or failing on the real code
 - the existing suites as regression
-- **`PREDICTIONS.md`**: for each main lift, a dated prediction of load × reps 8 weeks out under the current engine, and under your proposed change if you make one, so his future log can score you
+- **`tools/review/PREDICTIONS.md`**: for each main lift, a dated prediction of load × reps 8 weeks out under the current engine, and under your proposed change if you make one, so his future log can score you
 
 ## Output
-**`REVIEW.md`**, led by a one-paragraph verdict: is this engine reliably better than plain double progression for Nick — yes, no or unclear — and why. Sections:
+**`tools/review/REVIEW.md`**, led by a one-paragraph verdict: is this engine reliably better than plain double progression for Nick — yes, no or unclear — and why. Sections:
 - §0 pre-registration
 - §1 real-log findings
 - §2 simulation table (engine vs baselines vs ablations)
@@ -124,4 +124,4 @@ Classify every number in the engine and coach as **trial evidence** (primary sou
 - §5 ranked recommendations, each with expected effect size and its evidence
 - §6 reconciliation with past decisions
 
-Also commit `PREDICTIONS.md` and your scripts under `tools/review/`. Push your branch, and don't open a PR unless Nick asks.
+Also commit `tools/review/PREDICTIONS.md` and your scripts in `tools/review/`. Push your branch, and don't open a PR unless Nick asks.
