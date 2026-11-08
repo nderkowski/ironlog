@@ -48,24 +48,33 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET" || new URL(req.url).origin !== location.origin) return;
 
   // Navigations: network first so a deploy lands promptly, cache as the fallback.
+  // Only a good response becomes the app shell. A 404 from a mistyped URL, or a
+  // 5xx from the host, used to be stored as ./index.html, and the next offline
+  // launch was a blank page. A bad response shows the cached shell instead,
+  // when there is one.
   if (req.mode === "navigate") {
+    const shell = () => caches.match("./index.html").then((r) => r || caches.match("./"));
     e.respondWith(
       fetch(req)
         .then((res) => {
+          if (!res.ok) return shell().then((r) => r || res);
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put("./index.html", copy));
           return res;
         })
-        .catch(() => caches.match("./index.html").then((r) => r || caches.match("./")))
+        .catch(shell)
     );
     return;
   }
 
-  // Everything else: cache first, it never changes within a version.
+  // Everything else: cache first, it never changes within a version. Errors
+  // are passed through but never cached.
   e.respondWith(
     caches.match(req).then((hit) => hit || fetch(req).then((res) => {
-      const copy = res.clone();
-      caches.open(CACHE).then((c) => c.put(req, copy));
+      if (res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy));
+      }
       return res;
     }).catch(() => hit))
   );

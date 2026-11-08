@@ -483,6 +483,18 @@ too, so a damaged state is fixed in storage rather than re-repaired every boot.
 `load()` no longer falls back to a stock split when `routines` is damaged
 either — that discarded the entire log to fix half of it.
 
+### A second window takes the other's save; it never writes over it (v25)
+
+The installed app and a browser tab share `ironlog.v1`, and `writeNow()`
+writes the whole of `S`. A tab opened before a workout was saved elsewhere
+used to put the old log back with its next change of any kind. Now a
+`storage` event on that key reloads `S` through `load()`/`normalize()` and
+re-renders — **unless this window has an active session that is on screen
+or has unsaved edits** (`S` differs from `mineJSON`, what it last wrote or
+read). Then a blocking veil says "This log changed in another window —
+reload", `STALE` makes `writeNow()` refuse, and only the Reload button
+re-renders, so trap 1 holds. `t34` §2.
+
 ### Settings is a screen, not a tab
 
 Session, Barbell and Data used to sit at the foot of the Plan tab, below the
@@ -1180,9 +1192,28 @@ bite.
     over one holding more sessions than the phone ("Restore it first"). Without
     that, the near-empty phone log became the newest gist and Restore — which
     picks the newest — offered it. `gistTarget()`; `t31` section 9.
+  - **Never fewer sessions than the last push, without asking (v25).** Each
+    successful push records `pushedSessions` in `ironlog.gist` (a restore
+    records the restored count). `gistPush()` refuses a log with fewer, keeps
+    `dirty`, and says "This log has fewer sessions than your GitHub backup
+    (N vs M). Restore it, or tap Back up now to replace it." Only "Back up
+    now", confirmed in a sheet showing both counts, passes `{force:true}`.
+    Deleting a session therefore needs that tap too — deliberate. `t34` §1.
+  - **Erase everything detaches from the gist** (`gistDetach()`: id, count and
+    `dirty` cleared, token kept) and its confirm says the backup is kept. It
+    used to push the empty log over the backup 30 s later.
+  - **`dirty` clears only if nothing changed during the upload.** `gistGen`
+    counts changes in memory; a push notes it when it reads the log, and if it
+    moved, `dirty` stays and another push is scheduled. Pushes read the log
+    from storage, not `S`, so a window that went stale still sends the newest.
   - Restore keeps the phone's log under `ironlog.v1.before-restore` (one slot)
     before replacing, and goes through `replaceLog()` — the same path as file
     import, so `normalize()` and `recomputePRs()` always run (traps 8, 15).
+    Settings offers **"Put back the log from before the restore"** while that
+    key exists (confirm with both counts → `replaceLog()` → key removed).
+  - **Restore and file Import refuse while a workout is active** ("Finish or
+    discard the workout first", as the plan switch does): both replace `S`
+    wholesale, `S.active` included.
   - `navigator.storage.persist()` is requested on every load; Settings shows
     whether the browser agreed.
 - **Data is keyed to the origin.** Moving hosts means export-then-import. There is

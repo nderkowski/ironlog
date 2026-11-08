@@ -374,6 +374,14 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .banner .bd{font-size:13px;color:var(--ink-2)}
 .banner.warn .bd{color:var(--bad);opacity:.85}
 .banner .acts{display:flex;gap:8px;margin-top:10px}
+/* Another window saved the log: covers everything until Reload (writeNow refuses meanwhile). */
+.stale-veil{
+  position:fixed;inset:0;z-index:90;background:rgba(10,12,14,.55);
+  display:flex;align-items:flex-start;justify-content:center;
+  padding:calc(16px + env(safe-area-inset-top,0px)) 16px 16px;
+}
+.stale-veil .banner{width:100%;max-width:520px;box-shadow:var(--shadow);border-color:var(--bad)}
+.stale-veil .bt{color:var(--bad)}
 
 /* ---- weekly sets by muscle ---- */
 .mrow{
@@ -772,9 +780,16 @@ function load(){
   }catch(e){ return defaultState(); }
 }
 var saveTimer=null;
+/* STALE: another window saved this log after this one last read it, and this
+   window can't take the new copy without losing something (see otherWrote()).
+   Nothing more is written from here until the user reloads. mineJSON is the
+   log as this window last wrote or read it, so "unsaved edits" is a compare. */
+var STALE=false, mineJSON=null;
 function writeNow(){
   clearTimeout(saveTimer); saveTimer=null;
-  try{ localStorage.setItem(KEY,JSON.stringify(S)); }
+  if(STALE){ staleVeil(); return; }   // writing now would put a stale log over a newer one
+  var out=JSON.stringify(S);
+  try{ localStorage.setItem(KEY,out); mineJSON=out; }
   catch(e){ toast("Couldn't save — storage is full"); }
   gistChanged();                      // GitHub backup, debounced; see below
 }
@@ -791,6 +806,53 @@ document.addEventListener("visibilitychange",function(){ if(document.hidden) flu
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
 var S=load();
+mineJSON=JSON.stringify(S);
+
+/* ---- a second window ----
+   The installed app and a browser tab share this log. Each used to write its
+   own in-memory copy wholesale, so a tab opened before a workout was saved
+   elsewhere put the old log back with its next change of any kind. Now a write
+   from another window is taken in at once: S is reloaded through load() and
+   normalize(), and the screen is redrawn.
+   Except mid-workout. Re-rendering on the set-logging path is trap 1, and a
+   session with edits this window hasn't saved can't be merged with someone
+   else's. Then a blocking veil asks for a reload, and writeNow() refuses until
+   it is given, so the stale copy can never land. */
+window.addEventListener("storage",function(e){
+  if(e.storageArea&&e.storageArea!==window.localStorage) return;
+  if(e.key!==KEY&&e.key!==null) return;          // null: the whole store was cleared
+  otherWrote();
+});
+function otherWrote(){
+  if(STALE) return;                              // already waiting for the reload
+  var unsaved=JSON.stringify(S)!==mineJSON;
+  var logging=TAB==="today"&&!document.hidden;   // the session screen is in front of someone
+  if(S.active&&(unsaved||logging)){
+    STALE=true; clearTimeout(saveTimer); saveTimer=null;
+    staleVeil();
+    return;
+  }
+  reloadLog();
+}
+function reloadLog(){
+  STALE=false;
+  S=load(); mineJSON=JSON.stringify(S);
+  var veil=document.querySelector(".stale-veil"); if(veil) veil.remove();
+  if(!S.active) stopRest();
+  closeSheet(); render();
+}
+function staleVeil(){
+  if(document.querySelector(".stale-veil")) return;
+  var d=document.createElement("div");
+  d.className="stale-veil";
+  d.innerHTML='<div class="banner calm" role="alertdialog" aria-labelledby="stale-t">'+
+    '<div class="bt" id="stale-t">This log changed in another window — reload</div>'+
+    '<div class="bd">It was saved in another tab or in the installed app. Nothing more is saved from this window until you reload it, '+
+      'so the newer log can\'t be overwritten. Anything entered here since that save is not kept.</div>'+
+    '<div class="acts"><button class="btn primary" data-act="stale-reload">Reload</button></div></div>';
+  d.querySelector('[data-act="stale-reload"]').onclick=reloadLog;
+  document.body.appendChild(d);
+}
 
 /* ============================ helpers ============================ */
 function $(sel,root){ return (root||document).querySelector(sel); }
@@ -1012,10 +1074,18 @@ function nextVariantIx(r){
    asks "what lifts am I training" — muscle tags, tracked lifts, renames, the
    straight-sets count — has to span variants or it judges the block on half
    the plan. */
-function eachPlanEx(fn){
-  S.routines.forEach(function(r){
+/* `opts.backup` also walks the plan kept by Settings → Workout plan
+   (S.planBackup), for the edits that must reach it too — a rename or a unit
+   conversion that skipped it made "Switch back" restore a lift cut off from
+   its history, or a 45 kg bar. Everything that asks what is being trained
+   now leaves it out, which is why it is opt-in. */
+function eachPlanEx(fn,opts){
+  var days=S.routines;
+  if(opts&&opts.backup&&S.planBackup&&Array.isArray(S.planBackup.routines))
+    days=days.concat(S.planBackup.routines);
+  days.forEach(function(r){
     variantsOf(r).forEach(function(v,vi){
-      v.exercises.forEach(function(e,ei){ fn(e,r,v,vi,ei); });
+      (v.exercises||[]).forEach(function(e,ei){ fn(e,r,v,vi,ei); });
     });
   });
 }
@@ -1275,7 +1345,15 @@ function convertUnits(to){
     if(!n) return n;
     return (n===oldBar||n===defaultBar(to==="kg"?"lb":"kg"))?defaultBar(to):cv(n);
   }
-  function cvEx(e){ e.inc=e.inc?cv(e.inc):e.inc; e.bar=cvBar(e.bar); }
+  /* A session exercise also carries weights that aren't sets: the shadow
+     prescription and last time's first set, behind "Use" and "Keep". Left
+     behind, a mid-workout switch to kg made Use fill 65 kg where 65 lb was
+     meant, and the shadow outcome in history read against the wrong unit. */
+  function cvEx(e){
+    e.inc=e.inc?cv(e.inc):e.inc; e.bar=cvBar(e.bar);
+    if(e.shadow&&num(e.shadow.w)) e.shadow.w=cv(e.shadow.w);
+    if(e.lastW) e.lastW=cv(e.lastW);
+  }
   function cvSets(sets){
     (sets||[]).forEach(function(s){
       if(s.w!==""&&s.w!==null&&s.w!==undefined) s.w=String(cv(s.w));
@@ -1290,7 +1368,7 @@ function convertUnits(to){
     S.active.bw=cv(S.active.bw);
     S.active.exercises.forEach(function(e){ cvEx(e); cvSets(e.sets); });
   }
-  eachPlanEx(cvEx);
+  eachPlanEx(cvEx,{backup:true});                 // the kept plan too, or Switch back brings a 45 kg bar
   S.settings.bodyweight=cv(S.settings.bodyweight);
   S.settings.inc=cv(S.settings.inc)||defaultInc(to);
 }
@@ -3291,8 +3369,8 @@ function planNameCount(name){
 }
 /* Two identical rows in one day is a plan you can't train — you'd do the lift
    twice. Renaming onto a lift already in the same week produced exactly that. */
-function dedupePlanNames(){
-  S.routines.forEach(function(r){
+function dedupePlanNames(routines){
+  (routines||S.routines).forEach(function(r){
     variantsOf(r).forEach(function(v){
       var seen={};
       v.exercises=v.exercises.filter(function(e){
@@ -3308,12 +3386,16 @@ function dedupePlanNames(){
    today either way. */
 function applyRename(oldName,newName,history){
   var k=normName(oldName);
-  eachPlanEx(function(e){ if(normName(e.name)===k) e.name=newName; });
+  /* When the history is renamed, the kept plan is too: otherwise Switch back
+     restores the old name, cut off from the history it was just renamed with.
+     A plan-only rename leaves it, since the old name keeps its own past. */
+  eachPlanEx(function(e){ if(normName(e.name)===k) e.name=newName; },{backup:!!history});
   if(history) S.sessions.forEach(function(s){
     s.exercises.forEach(function(e){ if(normName(e.name)===k) e.name=newName; });
   });
   if(S.active) S.active.exercises.forEach(function(e){ if(normName(e.name)===k) e.name=newName; });
   dedupePlanNames();
+  if(history&&S.planBackup&&Array.isArray(S.planBackup.routines)) dedupePlanNames(S.planBackup.routines);
   /* Trap 8. A merge is the largest history edit there is, and without this the
      swallowed lift's sets keep PR flags they never earned. */
   recomputePRs();
@@ -3463,15 +3545,19 @@ function commitSession(){
   a.endTs=Date.now();
   a.bw=num(S.settings.bodyweight);
   a.deload=!!a.deload||inDeloadWeek();
-  a.exercises.forEach(function(e){ e.sets=e.sets.filter(function(s){ return s.done; }); });
   /* The rep-out is whichever working set came last, decided at save, so
-     adding or removing sets mid-workout can't leave the flag on the wrong one. */
+     adding or removing sets mid-workout can't leave the flag on the wrong one.
+     It is decided by position BEFORE undone sets are dropped: if the last set
+     was skipped there was no rep-out, and the set before it was an ordinary
+     one stopped at its target. Flagging that would feed a false "as many as
+     you can" into the shadow prescription and its v25 evidence. */
   a.exercises.forEach(function(e){
     if(!repOutApplies(e)) return;
     var w=working(e.sets);
     w.forEach(function(s){ delete s.out; });
-    if(w.length) w[w.length-1].out=true;
+    if(w.length&&w[w.length-1].done) w[w.length-1].out=true;
   });
+  a.exercises.forEach(function(e){ e.sets=e.sets.filter(function(s){ return s.done; }); });
   a.exercises=a.exercises.filter(function(e){ return e.sets.length; });
   S.sessions.unshift(a);
   S.active=null; stopRest();
@@ -4486,12 +4572,21 @@ $("#view").addEventListener("click",function(e){
   if(t.closest('[data-act="gist-remove"]')){ gistRemoveToken(); viewPrefs(); return; }
   if(t.closest('[data-act="gist-now"]')){ gistNowTap(); return; }
   if(t.closest('[data-act="gist-restore"]')){ gistRestore(); return; }
+  if(t.closest('[data-act="put-back"]')){ putBackBeforeRestore(); return; }
   if(t.closest('[data-act="export"]')){ doExport(); return; }
   if(t.closest('[data-act="import"]')){ doImport(); return; }
   if(t.closest('[data-act="wipe"]')){
-    confirmSheet("Erase everything?","Every session, day and setting is deleted. Back up first if you want a copy.","Erase",function(){
-      S=defaultState(); writeNow(); go("today"); toast("Wiped clean");
-    },true);
+    /* Erase used to be followed, 30 s later, by a push of the empty log over
+       the GitHub backup. Now it detaches from the gist first (gistDetach()):
+       the backup is kept and never touched, and Restore brings it back. */
+    var hasGist=!!gistLoad().token;
+    confirmSheet("Erase everything?",
+      "Every session, day and setting on this phone is deleted."+
+      (hasGist?" Your GitHub backup is kept and not touched: this phone stops backing up to it, and Restore from GitHub brings it back."
+              :" Back up first if you want a copy."),
+      "Erase",function(){
+        S=defaultState(); writeNow(); gistDetach(); go("today"); toast("Wiped clean");
+      },true);
   }
 });
 $("#view").addEventListener("change",function(e){
@@ -4918,6 +5013,7 @@ function doExport(){
     });
 }
 function doImport(){
+  if(refuseMidWorkout()) return;
   sheet('<h3>Import</h3><div class="sub">Replaces everything currently in the app. Pick a file you backed up, or paste the JSON.</div>'+
     '<input type="file" accept="application/json,.json,text/plain,.txt" data-x="file" style="margin-bottom:12px">'+
     '<textarea class="txt" style="min-height:110px;font-family:var(--mono);font-size:12px" placeholder="…or paste here" data-x="paste"></textarea>'+
@@ -4939,6 +5035,7 @@ function doImport(){
         var parsed;
         try{ parsed=JSON.parse(raw); }catch(e){ toast("That isn't valid Iron Log JSON"); return; }
         if(!parsed||!parsed.routines||!parsed.sessions){ toast("That file is missing routines or sessions"); return; }
+        if(refuseMidWorkout()) return;
         replaceLog(parsed);
         closeSheet(); go("today"); toast("Log imported");
       };
@@ -4981,8 +5078,12 @@ function gistPatch(fields){
 }
 
 /* Called from writeNow(), so every save path is covered without each one
-   knowing GitHub exists. Marks the gist stale now and sends it GIST_DELAY on. */
+   knowing GitHub exists. Marks the gist stale now and sends it GIST_DELAY on.
+   gistGen counts changes in memory: a push notes it when it reads the log, and
+   clears `dirty` on success only if nothing changed while it was uploading. */
+var gistGen=0;
 function gistChanged(){
+  gistGen++;
   var g=gistLoad();
   if(!g.token) return;
   if(!g.dirty) gistPatch({dirty:true});
@@ -4992,10 +5093,10 @@ function gistChanged(){
 
 /* Pushes are queued so two never race to create two gists, and each one
    reads the log when it starts, so the last one sent is the newest state. */
-function gistBackupNow(){
+function gistBackupNow(opts){
   clearTimeout(gistTimer); gistTimer=null;
   if(!gistLoad().token) return Promise.resolve();
-  gistQueue=gistQueue.then(gistPush).catch(function(err){
+  gistQueue=gistQueue.then(function(){ return gistPush(opts); }).catch(function(err){
     gistPatch({dirty:true, lastError:"Backup failed: "+(err&&err.message||"unknown error")+"."});
     gistPaint();
   });
@@ -5012,7 +5113,7 @@ function gistNewBody(files){
    otherwise stop and ask for a restore. Nothing is ever lost (GitHub keeps
    every revision), but this keeps the obvious button pointing at the right
    log. */
-function gistTarget(g){
+function gistTarget(g,mine){
   if(g.gistId) return Promise.resolve(g.gistId);
   return gistFind().then(function(id){
     return gistReq("GET","/gists/"+encodeURIComponent(id)).then(function(gist){
@@ -5020,10 +5121,10 @@ function gistTarget(g){
         var n=0;
         try{ var p=JSON.parse(text); n=(p&&Array.isArray(p.sessions))?p.sessions.length:0; }
         catch(e){ n=0; }                  // unreadable: nothing in it worth protecting
-        if(n>S.sessions.length)
+        if(n>mine)
           throw gistFail("GitHub already has a backup with "+plural(n,"session")+
             ", more than this phone. Restore it first so it isn't buried.");
-        gistPatch({gistId:id});
+        gistPatch({gistId:id, pushedSessions:n});   // what it holds, until this push lands
         return id;
       });
     });
@@ -5032,11 +5133,37 @@ function gistTarget(g){
     throw err;
   });
 }
-function gistPush(){
+/* The log as saved, not this window's copy of it: after another window has
+   saved (see otherWrote()), the stored log is the newest one there is. A save
+   still waiting on its 120 ms debounce goes in first. */
+function gistLog(){
+  flush();
+  if(storageOK){
+    try{
+      var p=JSON.parse(localStorage.getItem(KEY)||"null");
+      if(p&&typeof p==="object"&&Array.isArray(p.sessions)) return p;
+    }catch(e){ /* unreadable: fall back to what this window holds, below */ }
+  }
+  return S;
+}
+/* Never put a log holding fewer sessions than the last successful push over
+   the backup without asking. Erase everything did exactly that 30 s after the
+   wipe, and an empty log became the newest backup — the one Restore offers.
+   Only "Back up now", confirmed (gistNowTap), passes {force:true}. */
+function gistPush(opts){
   var g=gistLoad();
   if(!g.token) return Promise.resolve();
-  var files={}; files[GIST_FILE]={content:payload()};
-  var sent=gistTarget(g).then(function(id){
+  var log=gistLog(), mine=log.sessions.length, theirs=num(g.pushedSessions);
+  var gen=gistGen;                        // flush() above may have bumped it; this push covers that
+  clearTimeout(gistTimer); gistTimer=null;
+  if(mine<theirs&&!(opts&&opts.force)){
+    gistPatch({dirty:true, lastError:"This log has fewer sessions than your GitHub backup ("+mine+" vs "+theirs+
+      "). Restore it, or tap Back up now to replace it."});
+    gistPaint();
+    return Promise.resolve();
+  }
+  var files={}; files[GIST_FILE]={content:JSON.stringify(log,null,2)};
+  var sent=gistTarget(g,mine).then(function(id){
     if(!id) return gistReq("POST","/gists",gistNewBody(files));
     return gistReq("PATCH","/gists/"+encodeURIComponent(id),{files:files}).catch(function(err){
       if(err.status!==404) throw err;
@@ -5046,7 +5173,11 @@ function gistPush(){
     });
   });
   return sent.then(function(res){
-    gistPatch({gistId:res.id, lastSync:Date.now(), lastError:"", dirty:false});
+    /* A change made while this was uploading is not in it, so it is still
+       waiting: keep dirty and make sure another push is coming. */
+    var behind=gistGen!==gen;
+    gistPatch({gistId:res.id, lastSync:Date.now(), lastError:"", dirty:behind, pushedSessions:mine});
+    if(behind&&!gistTimer) gistTimer=setTimeout(gistBackupNow,GIST_DELAY);
     gistPaint();
   },function(err){
     gistPatch({dirty:true, lastError:gistErrText(err)});
@@ -5114,6 +5245,8 @@ function gistSettingsHtml(){
   h+='<div class="row" style="gap:8px">'+
     '<button class="btn" style="flex:1" data-act="gist-now">Back up now</button>'+
     '<button class="btn" style="flex:1" data-act="gist-restore">Restore from GitHub</button></div>';
+  if(beforeRestoreKept())
+    h+='<button class="btn block" data-act="put-back">Put back the log from before the restore</button>';
   return h;
 }
 
@@ -5132,15 +5265,40 @@ function gistSaveToken(){
 function gistRemoveToken(){
   var g=gistLoad();
   clearTimeout(gistTimer); gistTimer=null;
-  gistStore(g.gistId?{gistId:g.gistId}:{});       // keep the gist id so a re-added token resumes it
+  /* Keep the gist id, and what it holds, so a re-added token resumes it. */
+  gistStore(g.gistId?{gistId:g.gistId, pushedSessions:g.pushedSessions}:{});
   toast("Token removed from this browser");
 }
+/* Erase everything stops backing up to the gist instead of emptying it: the
+   id, its session count and anything waiting are dropped, the token is kept.
+   A later backup then has to find the gist again, and gistTarget() won't put
+   a smaller log over it — Restore from GitHub is how the log comes back. */
+function gistDetach(){
+  clearTimeout(gistTimer); gistTimer=null;
+  var g=gistLoad();
+  gistStore(g.token?{token:g.token, dirty:false, lastError:""}:{});
+}
+/* The one way past gistPush()'s fewer-sessions guard: asked, by name, with
+   both counts in front of you. */
 function gistNowTap(){
-  if(!gistLoad().token){ toast("Save a token first"); return; }
-  gistBackupNow().then(function(){
-    var g=gistLoad();
-    toast(g.dirty?(g.lastError||"Backup didn't finish"):"Backed up to GitHub");
-  });
+  var g=gistLoad();
+  if(!g.token){ toast("Save a token first"); return; }
+  function run(opts){
+    gistBackupNow(opts).then(function(){
+      var g2=gistLoad();
+      toast(g2.dirty?(g2.lastError||"Backup didn't finish"):"Backed up to GitHub");
+    });
+  }
+  var mine=gistLog().sessions.length, theirs=num(g.pushedSessions);
+  if(mine<theirs){
+    confirmSheet("Replace your GitHub backup?",
+      "This log has "+plural(mine,"session")+" and your GitHub backup has "+plural(theirs,"session")+
+      ". Backing up now replaces the backup with this log. GitHub keeps the old one in the gist's revision history, "+
+      "but Restore only offers the newest. To get the backup's sessions onto this phone instead, use Restore from GitHub.",
+      "Replace backup",function(){ run({force:true}); },true);
+    return;
+  }
+  run();
 }
 
 /* Finds the most recently updated gist holding a backup, for when the token is
@@ -5167,9 +5325,18 @@ function gistFileText(gist){
     return res.text();
   },function(){ throw gistFail("Couldn't reach GitHub. Try again when you're online."); });
 }
+/* Restore and file import both replace S wholesale, S.active included, so
+   mid-workout they would silently drop the sets logged so far. Same rule and
+   words as the plan switch. */
+function refuseMidWorkout(){
+  if(!S.active) return false;
+  toast("Finish or discard the workout first");
+  return true;
+}
 function gistRestore(){
   var g=gistLoad();
   if(!g.token){ toast("Save a token first"); return; }
+  if(refuseMidWorkout()) return;
   toast("Fetching your backup…");
   var have=g.gistId?Promise.resolve(g.gistId):gistFind();
   have.then(function(id){
@@ -5196,12 +5363,40 @@ function confirmRestore(parsed,gist){
     "Restore",function(){ applyRestore(parsed); },true);
 }
 function applyRestore(parsed){
+  if(refuseMidWorkout()) return;
   /* Keep what's there first. If that copy can't be made, nothing is replaced. */
   try{ localStorage.setItem(BEFORE_KEY,JSON.stringify(S)); }
   catch(e){ toast("Couldn't keep a copy of this log, so nothing was restored"); return; }
   try{ replaceLog(parsed); }
   catch(e){ toast("That backup couldn't be read, so nothing was restored"); return; }
+  gistPatch({pushedSessions:parsed.sessions.length});   // the gist holds exactly this log
   go("today"); toast("Restored from GitHub");
+}
+
+/* The copy applyRestore() keeps, offered back from Settings while it exists. */
+function beforeRestoreKept(){
+  try{ return !!localStorage.getItem(BEFORE_KEY); }
+  catch(e){ return false; }               // storage blocked: there is nothing to offer
+}
+function putBackBeforeRestore(){
+  if(refuseMidWorkout()) return;
+  var kept=null;
+  try{ kept=JSON.parse(localStorage.getItem(BEFORE_KEY)||"null"); }
+  catch(e){ kept=null; }
+  if(!kept||typeof kept!=="object"||!Array.isArray(kept.sessions)){
+    toast("The kept log couldn't be read, so nothing was changed"); return;
+  }
+  confirmSheet("Put back the log from before the restore?",
+    "The log kept from before the restore has "+plural(kept.sessions.length,"session")+". This phone has "+
+    plural(S.sessions.length,"session")+" now. Putting it back replaces everything on this phone with the kept log.",
+    "Put it back",function(){
+      if(refuseMidWorkout()) return;
+      try{ replaceLog(kept); }
+      catch(e){ toast("The kept log couldn't be read, so nothing was changed"); return; }
+      try{ localStorage.removeItem(BEFORE_KEY); }
+      catch(e){ toast("Put back, but the kept copy couldn't be removed"); go("today"); return; }
+      go("today"); toast("The log from before the restore is back");
+    },true);
 }
 
 /* ============================ storage ============================ */
