@@ -256,35 +256,35 @@ const longHist = (mins, extra) => [
   sess('c3','rC','C','vC',22, lifts([['Face Pull',10,12]]), { minutes:mins[2] }), sess('c4','rC','C','vC',29, lifts([['Face Pull',10,12]]), { minutes:mins[3] }),
   sess('a1','rA','A','vA',5, [['Leg Press',190,10],['Lateral Raise',15,14]]), sess('a2','rA','A','vA',12, [['Leg Press',190,10],['Lateral Raise',15,14]]) ].concat(extra || []);
 // Day C: RDL | Flat DB Press + DB Row | Face Pull + Cable fly -> everything paired, so the trim is the offer
-await boots(state(longHist([95, 90, 88, 84])));
+await boots(state(longHist([115, 110, 108, 104])));
 await finishDay('rC', ['RDL']);                          // the saved one is untimed; 3 timed of 4 is enough
 let lg = (await ofKind('long'))[0];
-ok(lg && lg.status === 'open' && lg.rid === 'rC', 'long: Day C raised when its last sessions ran over an hour');
-has(lg.reason, 'median of 90 active minutes', 'long: the reason gives the ACTIVE minutes (median of 95, 90, 88)');
+ok(lg && lg.status === 'open' && lg.rid === 'rC', 'long: Day C raised when its last sessions ran well past 1.5 hours');
+has(lg.reason, 'median of 110 active minutes', 'long: the reason gives the ACTIVE minutes (median of 115, 110, 108)');
 eq(lg.options.map(o => o.act).join(), 'trim', 'long: all accessories paired already -> trim is the only choice');
 eq(lg.options[0].lift, 'Low to high cable fly', 'long: trims the last accessory (lowest priority), never the main lift');
 ok(/convention/i.test(lg.evidence), 'long: labelled as convention');
 await boots(state(longHist([55, 52, 50, 48])));
 await finishDay('rC', ['RDL']);
 eq((await ofKind('long')).length, 0, 'long: median 53 minutes -> silent');
-await boots(state(longHist([74, 72, 70, 68])));
+await boots(state(longHist([89, 87, 85, 83])));
 await finishDay('rC', ['RDL']);
-eq((await ofKind('long')).length, 0, 'long: median 71 minutes is inside the 45-75 he said is fine -> silent');
-await boots(state(longHist([80, 78, 76, 74])));
+eq((await ofKind('long')).length, 0, 'long: median 87 minutes is inside the 1.5 hours he said is fine -> silent');
+await boots(state(longHist([95, 93, 91, 89])));
 await finishDay('rC', ['RDL']);
-eq((await ofKind('long')).length, 1, 'long: median 77 minutes -> raised (threshold 75)');
+eq((await ofKind('long')).length, 1, 'long: median 93 minutes -> raised (threshold 90)');
 /* the real log: last sets ticked hours or days later. First-to-last would read 10 hours; active time reads next to nothing. */
 await boots(state(longHist([600, 700, 900, 2000])));
 await finishDay('rC', ['RDL']);
 eq((await ofKind('long')).length, 0, 'long: sets ticked hours apart are not a long session (breaks over 15 min do not count)');
-await boots(state(longHist([95, 90, 88, 84]).map(s => s.id === 'c1' || s.id === 'c2' ? Object.assign(s, { exercises:s.exercises.map(e => Object.assign(e, { sets:e.sets.map(x => { const y = Object.assign({}, x); delete y.ts; return y; }) })) }) : s)));
+await boots(state(longHist([115, 110, 108, 104]).map(s => s.id === 'c1' || s.id === 'c2' ? Object.assign(s, { exercises:s.exercises.map(e => Object.assign(e, { sets:e.sets.map(x => { const y = Object.assign({}, x); delete y.ts; return y; }) })) }) : s)));
 await finishDay('rC', ['RDL']);
 eq((await ofKind('long')).length, 0, 'long: only 2 of the last 4 can be timed -> silent');
 // unpaired accessories: pair them
 {
   const C = [px('c1','RDL',6,10), px('c2','Flat DB Press',8,12), px('c3','DB Row',8,12), faceC(), px('c5','Low to high cable fly',12,16,{ inc:10, mg:'chest' })]
     .map(e => Object.assign(e, { link:false }));
-  const hist = longHist([95, 90, 88, 84]);
+  const hist = longHist([115, 110, 108, 104]);
   await boots(state(hist, { routines:routines({ C }) }));
   await finishDay('rC', ['RDL']);
   lg = (await ofKind('long'))[0];
@@ -300,7 +300,7 @@ eq((await ofKind('long')).length, 0, 'long: only 2 of the last 4 can be timed ->
   same(JSON.stringify((await getState(page)).routines), planBefore2, 'long: pair undone exactly');
 }
 // trim a set
-await boots(state(longHist([95, 90, 88, 84])));
+await boots(state(longHist([115, 110, 108, 104])));
 await finishDay('rC', ['RDL']);
 lg = (await ofKind('long'))[0];
 const planB4 = JSON.stringify((await getState(page)).routines);
@@ -348,9 +348,9 @@ eq((await ofKind('volume')).filter(p => /Chest/.test(p.title)).length, 0, 'volum
   await finishDay('rC', ['RDL']);
   eq((await ofKind('volume')).filter(p => /Chest/.test(p.title)).length, 0, 'volume: never on a day already planned at 21 working sets');
 }
-await boots(state(weekSessions(2, { minutes:60 }).concat([sess('a1','rA','A','vA',40,[['Leg Press',190,10]])]), { routines:chestRows() }));
+await boots(state(weekSessions(2, { minutes:85 }).concat([sess('a1','rA','A','vA',40,[['Leg Press',190,10]])]), { routines:chestRows() }));
 await finishDay('rC', ['RDL']);
-eq((await ofKind('volume')).filter(p => /Chest/.test(p.title)).length, 0, 'volume: never on a day already running 60 active minutes (over 55)');
+eq((await ofKind('volume')).filter(p => /Chest/.test(p.title)).length, 0, 'volume: never on a day already running 85 active minutes (over 80)');
 await boots(state(weekSessions(8).concat([sess('a1','rA','A','vA',40,[['Leg Press',190,10]])]), { routines:chestRows() }));
 await finishDay('rC', ['RDL']);
 eq((await ofKind('volume')).filter(p => /Chest/.test(p.title)).length, 0, 'volume: 16 chest sets a week is plenty -> silent for chest');
@@ -445,7 +445,7 @@ eq((await cableOf()).length, 0, 'stall: six sessions inside two weeks is not a p
 /* ================= 7. never more than two open ================= */
 {
   // Skipped (Face Pull), skipped (DB Row, not done lately) and long would all qualify.
-  const hist = longHist([95, 90, 88, 84]).map(s => s.routineId === 'rC' ? Object.assign(s, { exercises:s.exercises.filter(e => e.name !== 'Face Pull' && e.name !== 'DB Row') }) : s)
+  const hist = longHist([115, 110, 108, 104]).map(s => s.routineId === 'rC' ? Object.assign(s, { exercises:s.exercises.filter(e => e.name !== 'Face Pull' && e.name !== 'DB Row') }) : s)
     .concat([sess('c0','rC','C','vC',70,lifts([['Face Pull',10,12]]))]);
   await boots(state(hist));
   await finishDay('rC', ['RDL']);
@@ -557,6 +557,8 @@ ok(sch.additionalProperties === false && sch.required.join() === 'summary,propos
 ok(sch.properties.proposals.items.additionalProperties === false && sch.properties.proposals.items.required.join() === 'kind,lift,replacement,sets,reason', 'ai: ...proposals too');
 eq(sch.properties.proposals.items.properties.kind.enum.join(), 'swap,trim_sets,remove,add_set,pair,shift_range,unpair', 'ai: kinds are the fixed action list');
 ok(/never set|never.*weights/i.test(c0.body.system) && /at most 3/i.test(c0.body.system) && /similar exercise/i.test(c0.body.system), 'ai: the system prompt forbids weights, caps at 3, asks for a similar exercise');
+ok(/never suggest face pulls/i.test(c0.body.system), 'ai: the system prompt rules out face pulls');
+ok(/under about 6/.test(c0.body.system) && !/below 10 is worth a look/.test(c0.body.system), 'ai: volume guidance matches the rules (< 6), not < 10');
 const sent = c0.body.messages[0].content;
 ok(typeof sent === 'string' && sent.length < 24000, 'ai: the summary is compact  [' + sent.length + ' chars]');
 for (const frag of ['PLAN', 'SUPERSETS NOW: ', 'Incline DB Press + Cable Row', 'every ~', 'GAP over 14 d', 'min active', 'min first-to-last-set', 'Face Pull', 'SKIPPED in last 4 sessions of the day: Day C 2/4', 'Shoulder twinged on the last rep', 'WEEKLY SETS PER MUSCLE', 'SESSIONS', 'Slept badly', 'THE APP\'S OWN RULE SUGGESTIONS'])
@@ -624,6 +626,16 @@ ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)
 await page.click('[data-tab="today"]'); await page.waitForSelector('.card.co');
 ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '320 px: Today with a Coach card has no sideways scroll');
 ok(await page.evaluate(() => [...document.querySelectorAll('.co-o .btn')].every(b => b.scrollWidth <= b.clientWidth + 1)), '320 px: no option button overflows its box');
+
+/* ---- Nick doesn't do face pulls: a skipped Rear Delt Fly is never offered one ---- */
+{
+  const st = JSON.parse(JSON.stringify(state(skipHistory([22]))).replace(/Face Pull/g, 'Rear Delt Fly'));
+  await boots(st);
+  await finishDay('rC', ['RDL']);
+  const rd = (await ofKind('skipped')).find(p => p.lift === 'Rear Delt Fly');
+  const swaps = rd ? rd.options.filter(o => o.act === 'swap').map(o => o.to) : [];
+  ok(rd && swaps.length === 3 && !swaps.some(n => /face pull/i.test(n)), 'skipped Rear Delt Fly: three swaps, none a face pull  [' + swaps + ']');
+}
 
 ok(errors.length === 0, 'no page errors  ' + errors.join(' | '));
 report('t39 coach');

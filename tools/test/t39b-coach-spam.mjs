@@ -107,7 +107,7 @@ const skipper = await scenario('skips Rear Delt Fly, always Keep', {}, 'keep', '
 const skipperAcc = await scenario('skips Rear Delt Fly, always accept', {}, 'accept', 'Rear Delt Fly');
 const plateau = await scenario('rows plateau 12 weeks, Keep', { plateau: { lifts: ['Cable Row', 'DB Row'], from: 12, to: 24 } }, 'keep');
 const plateauAcc = await scenario('rows plateau 12 weeks, accept', { plateau: { lifts: ['Cable Row', 'DB Row'], from: 12, to: 24 } }, 'accept');
-const slow = await scenario('long days (4.2 min a set), Keep', {}, 'keep', '', 4.2);
+const slow = await scenario('long days (5.2 min a set), Keep', {}, 'keep', '', 5.2);
 
 const perLiftQuarter = per => mean(per) / (16 * 4);          // 16 lifts in the plan, four quarters
 const kindN = (sc, k, sd) => sc.runs[sd].raised.filter(x => x.kind === k).length;
@@ -119,7 +119,7 @@ ok(SEEDS.every((_, sd) => kindN(skipper, 'skipped', sd) >= 1), 'a lift skipped 7
 ok(SEEDS.every((_, sd) => kindN(skipper, 'skipped', sd) <= 3), 'skipped lift, always Keep: three cards in a year at most (6 weeks, then 18, then a year)  [' + SEEDS.map((_, sd) => kindN(skipper, 'skipped', sd)).join(',') + ']');
 ok(SEEDS.every((_, sd) => kindN(skipperAcc, 'skipped', sd) <= 1), 'skipped lift, accept: one card (the problem is solved)  [' + SEEDS.map((_, sd) => kindN(skipperAcc, 'skipped', sd)).join(',') + ']');
 ok(mean(plateau.per) <= 10 && mean(plateauAcc.per) <= 10 && Math.max(...plateau.worst, ...plateauAcc.worst) <= 2, 'rows plateau for a quarter: still a handful, at most two for one lift in a quarter  [' + mean(plateau.per).toFixed(1) + ',' + mean(plateauAcc.per).toFixed(1) + ']');
-ok(SEEDS.every((_, sd) => kindN(slow, 'long', sd) >= 1 && kindN(slow, 'long', sd) <= 3 * 3), 'sessions of ~88 active minutes are noticed, and kept ones come back slowly (per day: 6 weeks, 18 weeks, a year)  [' + SEEDS.map((_, sd) => kindN(slow, 'long', sd)).join(',') + ' over 3 days]');
+ok(SEEDS.every((_, sd) => kindN(slow, 'long', sd) >= 1 && kindN(slow, 'long', sd) <= 3 * 3), 'sessions of ~108 active minutes (past the 1.5 hours he is fine with) are noticed, and kept ones come back slowly (per day: 6 weeks, 18 weeks, a year)  [' + SEEDS.map((_, sd) => kindN(slow, 'long', sd)).join(',') + ' over 3 days]');
 ok(mean(slow.per) <= 16, 'long days: not a stream  [' + mean(slow.per).toFixed(1) + ']');
 ok(rows.every(r => r.runs.every(x => x.coach.proposals.filter(p => p.status === 'open').length <= 2)), 'never more than two open at the end of any simulated year');
 ok(errors.length === 0, 'no page errors  ' + errors.join(' | '));

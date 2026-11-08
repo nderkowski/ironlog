@@ -863,13 +863,19 @@ Rules to hold to:
 - **Session length is ACTIVE time** — gaps between logged sets of ≤15 min, summed
   (`coachActiveMin`). Sets are often ticked hours or days later (real sessions
   spanning 17 h to 4 days), so first-to-last (`coachSpanMin`) is only shown to
-  Claude, labelled as inflated.
+  Claude, labelled as inflated. `COACH_LONG` is **90** active minutes and
+  `COACH_BUSY` (no added set) **80**: Nick has said sessions up to 1.5 h are
+  fine, so there is no 45-minute target anywhere, the Claude prompt included.
+- **Face pulls are never offered** (`COACH_NEVER`). Nick has tried every
+  variation. They stay in the Rear Delt family so a plan that still has one can
+  swap out of it; the Claude prompt rules them out too.
 - **A stall rule on this log can't be sensitive and quiet at once.** Simulated, a
   6-exposure rule fired 37 cards a year on a healthy lifter. Do not loosen
   `COACH_STALL_*` without re-running `t39b`.
 - **The AI summary is built from `S` only.** The API key and GitHub token live
   under their own storage keys; `t39` asserts neither is in a request.
-- The coach card is rendered on Today only when idle and something is open
+- The coach card is rendered on Today under the day card (Start stays first on
+  screen), only when idle and something is open
   (never mid-workout, trap 1), and its buttons are `data-co`, handled in the
   first `#view` click listener so it works on Today and Progress alike (trap 18).
 

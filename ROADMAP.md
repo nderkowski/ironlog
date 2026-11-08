@@ -151,9 +151,18 @@ An outside model reviewed the engine and the coach design from a package of the 
 | Never lower the working-set target on one low day | **Rejected** | Year sim: progress *slower* (38% → 31%). | — |
 | `MG_GUESS` gives chest flies triceps credit | **True** for flies the guesser tags (e.g. "Pec Deck") | `/\bfly\b/` shared the press row. | Own row: chest + delts |
 | Day C supersets Lateral Raise into Rear Delt Fly | **True** | Two shoulder lifts back to back. | `REC_PLAN` re-paired; plans already switched get a one-tap "Re-pair Day C" (`t33` §2b) |
-| Unlink the press/row compound pairs | **Not adopted** | Agonist–antagonist pairs are the superset that holds up best, and they're what keeps a day near 45 min. | — |
-| Coach: Rule 2 durations break on late ticking; Rule 3's < 10 sets fires on every muscle; a stall should first try sets or range; measure the coach | **True** (data checked: Day C 11/06 spans 25.5 h; `REC_PLAN` gives chest and quads 7.5/wk at 2.5 sessions) | — | Sent to the coach build before it finished: active time with ≤ 15-min gaps at 75 min; Rule 3 only for programmed muscles at < 6; stall ladder (set, then range, then swap); history-aware swaps; outcome tally |
+| Unlink the press/row compound pairs | **Not adopted** | Agonist–antagonist pairs are the superset that holds up best, and they save rest time. (Nick, 8 Nov: sessions up to 1.5 h are fine, so time isn't the reason; the pairing is just efficient.) | — |
+| Coach: Rule 2 durations break on late ticking; Rule 3's < 10 sets fires on every muscle; a stall should first try sets or range; measure the coach | **True** (data checked: Day C 11/06 spans 25.5 h; `REC_PLAN` gives chest and quads 7.5/wk at 2.5 sessions) | — | Sent to the coach build before it finished: active time with ≤ 15-min gaps (threshold later raised to 90 min); Rule 3 only for programmed muscles at < 6; stall ladder (set, then range, then swap); history-aware swaps; outcome tally |
 | Bridge sets for coarse jumps (top set heavier, back-offs at the old weight) | **Plausible, not built** | Needs `droppedSets()` to know a planned back-off, and a sim with a steeper high-rep fatigue curve. | Candidate for after v26 |
+
+### Merged into v26 (8 Nov)
+
+The coach (v26 rules, v27 Claude check-in) and the form check (v28) merged onto the working branch as **v26**, with three changes on top:
+- **Face pulls are never offered.** `COACH_NEVER` keeps them in their family (so a plan that still has one can swap *out*) but never offers one as a swap; the Claude prompt says the same. (`t39`)
+- **No 45-minute target.** Long-session rule at 90 active minutes, the add-a-set guard at 80; the Claude prompt says 45–90 is normal and up to 1.5 h is fine. Its volume guidance now matches the rule (flag < 6 for a muscle he trains directly), not "below 10". (`t39`, `t39b`: a ~108-minute day is still noticed)
+- **Coach card under the day card on Today**, so Start is always the first thing on screen.
+
+On Nick's real log: 1 of 102 prescriptions changed (the incline wording), and the coach raises exactly two cards: the old plan's Facepull/Face pull skipped 4 of 4 on Days A and C. No stall, volume or long-session card. All 22 suites, 1,018 checks.
 
 ### 4. Notes on a single lift ✅ *v25, from Nick*
 
@@ -186,8 +195,8 @@ will read. `t37`.
   | Rule | Fires when | Offers |
   |---|---|---|
   | Skipped lift | no sets logged in ≥3 of the last 4 non-deload sessions of its day (week-aware); a row added since those sessions isn't judged, nor an undated row that was never once done | take it out · swap (≤3) · keep |
-  | Long sessions | median **active** time of a day's last 4 sessions >**75 min** (needs 3 timed). Active = sum of gaps between logged sets of ≤15 min — first-to-last is wrong here (sets get ticked hours or days later) | trim a set from the last accessory with ≥3 · superset the last two unpaired accessories · keep |
-  | Too few sets | a muscle with a primary (`mg`) lift averages **<6** weekly sets over the last 3 complete weeks (helper = ½), ≥2 sessions a week, no deload week and no empty week among them, and the day holds <21 sets and runs ≤55 active min | +1 set on its isolation lift · keep. Rare on purpose: <10 would fire on nearly every muscle of the recommended plan at 2.5 sessions a week |
+  | Long sessions | median **active** time of a day's last 4 sessions >**90 min** (needs 3 timed; Nick, 8 Nov: "its ok if they go to 1h15m or 1.5hrs" — was 75). Active = sum of gaps between logged sets of ≤15 min — first-to-last is wrong here (sets get ticked hours or days later) | trim a set from the last accessory with ≥3 · superset the last two unpaired accessories · keep |
+  | Too few sets | a muscle with a primary (`mg`) lift averages **<6** weekly sets over the last 3 complete weeks (helper = ½), ≥2 sessions a week, no deload week and no empty week among them, and the day holds <21 sets and runs ≤80 active min (was 55) | +1 set on its isolation lift · keep. Rare on purpose: <10 would fire on nearly every muscle of the recommended plan at 2.5 sessions a week |
   | Stalled lift | ≥3 whole progression cycles (≥8 exposures; 15 on an 8–12 lift) in a row at the same `workLoad()`, ≥4 weeks, slope of mean reps at the load ≤0, `trend()` not up, load step ≤8% of the load, not waiting at the top of its range for a jump, range ≤8 sessions of climb. **Rule of thumb, labelled.** | **ladder, history first:** +1 set · range down 2 reps · out of its superset; a **swap** only if it stalls again after one of those was accepted (≥42 days, ≥4 exposures), or at once if a recent note says pain/hurt/ache/pinch/tweak/sore |
 
   A swapped-in lift takes the old slot's shape (sets, range, superset, `inc`,

@@ -739,7 +739,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v25";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v26";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -2625,7 +2625,6 @@ function todayIdle(){
            '<h1 class="view-title">Ready to lift</h1><div class="stack">';
 
   html+=gistPausedBanner();
-  html+=coachCard();
   if(!storageOK){
     html+='<div class="banner warn"><div class="bt">This browser is blocking storage</div>'+
       '<div class="bd">Your log won\'t survive a refresh. Open this page in your normal browser, not a private window.</div></div>';
@@ -2674,6 +2673,10 @@ function todayIdle(){
     html+='<div class="card"><div class="empty">No training days yet.<br>Set up your split in <b>Plan</b>.</div>'+
       '<button class="btn primary block" data-act="tab" data-tab="plan">Build my split</button></div>';
   }
+
+  /* Coach suggestions sit under the day card: they never stand between him and
+     the Start button. */
+  html+=coachCard();
 
   /* The disaster-recovery moment. A new phone or a cleared browser lands on a
      stock split with empty days — not on "no routines" — so this keys off
@@ -6330,8 +6333,8 @@ var COACH_EVERY=14*864e5, COACH_OPEN_MAX=2, COACH_MIN_SESSIONS=6, COACH_EXPIRE=2
    three or more "Keep it"s. Kept once is a no for now; kept twice is a no. */
 var COACH_COOL=[42,126,365];
 var COACH_ACCEPT_COOL=42*864e5;
-var COACH_LONG=75;          // active minutes; over this a day is "running long"
-var COACH_BUSY=55;          // a day already this long (active) doesn't get another set
+var COACH_LONG=90;          // active minutes; over this a day is "running long" (Nick: up to 1.5 h is fine)
+var COACH_BUSY=80;          // a day already this long (active) doesn't get another set
 var COACH_BUSY_SETS=21;     // ...nor one already planned at this many working sets
 var COACH_MIN_WEEKLY=6;     // weekly sets per muscle under which the volume rule speaks
 var COACH_UI={busy:false, err:""};
@@ -6421,11 +6424,15 @@ function coachInPlan(name){
   return found;
 }
 /* Up to `max` similar lifts to offer for `name`, minus anything already in the plan. */
+/* Lifts Nick has ruled out: no face-pull variation ever felt right. They stay
+   in their family so a plan that still has one can swap OUT of it. */
+var COACH_NEVER=["face pull"];
 function coachAlternatives(name,max){
   var me=coachFamOf(name); if(!me) return [];
   var out=[];
   COACH_FAMILIES[me.fi].forEach(function(m){
     if(normName(m[0])===normName(me.name)||coachInPlan(m[0])) return;
+    if(COACH_NEVER.indexOf(normName(m[0]))>=0) return;   // looked up, never offered
     out.push(m[0]);
   });
   return out.slice(0,max||3);
@@ -6558,8 +6565,8 @@ function coachRuleSkipped(){
 }
 
 /* RULE 2 — long sessions. Median ACTIVE time (coachActiveMin) of a day's last
-   4 sessions over 75 minutes (needs 3 that can be timed); he has said 45–75 is
-   fine. Offers to trim one set
+   4 sessions over 90 minutes (needs 3 that can be timed); he has said up to
+   1.5 hours is fine — there's no 45-minute target. Offers to trim one set
    from the lowest-priority accessory — the last lift after the main one with
    3+ sets; plan order is priority — or to pair two unpaired accessories as a
    superset. */
@@ -6584,8 +6591,8 @@ function coachRuleLong(){
     out.push(coachMk({kind:"long", key:"long|"+r.id, lift:opts[0].lift, rid:r.id,
       title:r.name+" is running long",
       reason:"The last "+d.length+" timed "+r.name+" sessions had a median of "+Math.round(med)+" active minutes (time between sets; breaks over 15 minutes left out).",
-      evidence:"Convention, not a trial result: there is no studied cutoff. 45–75 minutes is fine; past 75 is where "+
-        "sessions get cut short. Pairing two lifts as a superset saves their rest time; "+
+      evidence:"Convention, not a trial result: there is no studied cutoff. You've said up to an hour and a half is fine; "+
+        "past that, sessions tend to get cut short. Pairing two lifts as a superset saves their rest time; "+
         "trimming a set from the last accessory saves a few minutes and costs little.",
       options:opts}));
   });
@@ -7097,13 +7104,13 @@ function coachTap(el){
 var COACH_SYSTEM=
 "You are a measured strength-and-hypertrophy coach reviewing the training log of one lifter, Nick. "+
 "He trains for muscle size, mostly with dumbbells, cables and machines, on a 3-day full-body A/B/C rotation: "+
-"about 45 minutes a session, usually 2 to 3 sessions a week. The app (Iron Log) already progresses his weights and reps by itself.\n\n"+
+"sessions of 45 to 90 minutes, usually 2 to 3 a week. He is fine with sessions up to 1.5 hours; do not push him to shorten a day that stays under that. The app (Iron Log) already progresses his weights and reps by itself.\n\n"+
 "What you may and may not do:\n"+
 "- You never set, change or suggest weights, rep targets, percentages or progression. The app's engine owns all of that. The one exception is the fixed action shift_range below, which only moves a lift's whole rep range down.\n"+
 "- You may only propose changes from this fixed list: swap (replace a lift with a close variation), trim_sets (drop 1 or 2 sets from a lift), "+
 "remove (take a lift out of its day), add_set (add 1 or 2 sets to a lift), pair (make two adjacent, currently unpaired lifts on the same day a superset), "+
 "unpair (take a lift out of its superset), shift_range (move a lift's rep range down by 1 to 3 reps, which makes the same reps heavier; use it, or add_set, before swap for a lift that has stalled). "+
-"Nothing else: no new training days, no schedule, diet or supplement advice.\n"+
+"Nothing else: no new training days, no schedule, diet or supplement advice. Never suggest face pulls in any form: he has tried every variation and none feels right.\n"+
 "- Propose at most 3 changes, and usually fewer. Quality over quantity. Nick confirms each one by hand; nothing is applied automatically.\n"+
 "- When you suggest trimming sets or removing a lift, also name a similar exercise in `replacement` that he could swap in instead: "+
 "a close variation that trains the same muscle with similar equipment. For swap, `replacement` is the new exercise. "+
@@ -7112,7 +7119,7 @@ var COACH_SYSTEM=
 "How to judge:\n"+
 "- Cite the evidence from the summary in every `reason`: dates, counts, minutes, sets per week, his own notes. Never invent data that is not in the summary.\n"+
 "- Weekly sets per muscle: the summary counts a set as 1 for the main muscle and 0.5 for a helper. Roughly 10 to 20 hard sets a week is the usual range associated with growth, "+
-"with diminishing returns; below 10 is worth a look. That evidence comes from short trials, so call it guidance, not a target.\n"+
+"with diminishing returns. That evidence comes from short trials, so call it guidance, not a target. At 2 to 3 sessions a week his plan gives most muscles about 7 to 9 sets, and that is by design: only flag a muscle he trains directly that is under about 6.\n"+
 "- Be sceptical about stalls. Each lift is trained about once every 9 days and moves slowly in 8-12 or 12-20 rep ranges, so a few flat sessions are normal, and a long gap is not a plateau. "+
 "No validated plateau rule exists; say so if you lean on one. A swap throws away a lift's history, so for a stall try add_set or shift_range first, and swap only when it has stalled again after that or a note mentions pain.\n"+
 "- Read his per-lift and session notes closely. Pain, setup problems, equipment, boredom or \"hated this\" matter more than any number.\n"+
