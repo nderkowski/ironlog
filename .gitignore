@@ -6,3 +6,6 @@ ironlog-*.json
 
 # Claude Code agent worktrees (temporary checkouts, never project files)
 .claude/worktrees/
+
+# Review scripts: dependencies are installed, not committed
+tools/review/node_modules/

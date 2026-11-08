@@ -1,0 +1,7 @@
+{
+  "name": "ironlog-independent-review",
+  "private": true,
+  "type": "module",
+  "description": "Scripts for tools/review/REVIEW.md. Needs Nick's export (gitignored) for replay/sim.",
+  "devDependencies": { "fast-check": "3.23.2" }
+}
