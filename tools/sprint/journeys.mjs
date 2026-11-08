@@ -53,7 +53,7 @@ const coachState = () => ({ version: 5, settings: { ...SET }, routines: routines
 
 /* ---------------- driver ---------------- */
 const browser = await chromium.launch();
-const newCtx = (opts = {}) => browser.newContext({ ...devices['Pixel 5'], viewport: { width: 390, height: 844 }, serviceWorkers: 'block', colorScheme: process.env.DARK ? 'dark' : 'light', ...opts });
+const newCtx = (opts = {}) => browser.newContext({ ...devices['Pixel 5'], viewport: { width: 390, height: 844 }, serviceWorkers: 'block', colorScheme: /^(1|true|dark)$/i.test(process.env.DARK || '') ? 'dark' : 'light', ...opts });
 async function open(state, ctxOpts) {
   const ctx = await newCtx(ctxOpts), page = await ctx.newPage();
   page.on('pageerror', e => R.errors.push('pageerror: ' + e));
@@ -268,9 +268,14 @@ await ctx.close();
    A point owned by another control is a "stolen" point = overlapping hit areas = mis-tap. */
 async function audit(pg, root) {
   const vp = pg.viewportSize();
+  /* NB: the 4000px viewport moves the fixed tab bar off the controls, so rows that
+     sit under it on a real 844px screen count as fully tappable here (they are
+     after a scroll). Effective sizes are per-control, not "reachable without scrolling". */
   await pg.setViewportSize({ width: vp.width, height: 4000 });
+  let res;
+  try {
   await pg.evaluate(() => window.scrollTo(0, 0));
-  const res = await pg.evaluate(rootSel => {
+  res = await pg.evaluate(rootSel => {
     const SEL = 'button, a[href], input, select, textarea, [role=button], [data-x], [data-act], [data-tab]';
     const root = document.querySelector(rootSel), els = [], seen = new Set();
     root.querySelectorAll(SEL).forEach(el => {
@@ -326,7 +331,7 @@ async function audit(pg, root) {
       worst: grp(lt44, e => `${e.id} "${e.text}" ${e.w}x${e.h}`),
       worstEff: grp(effLt44, e => `${e.id} "${e.text}" ${e.hw}x${e.hh}`) };
   }, root);
-  await pg.setViewportSize(vp);
+  } finally { await pg.setViewportSize(vp); }
   return res;
 }
 async function runAxe(pg) {
