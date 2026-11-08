@@ -184,6 +184,23 @@ s = await st(page);
 end(`reps ${r0} -> ${s.sessions[0].exercises[0].sets[0].r}; first History row sits at y=${sessY}px (fold 844): ${sessY > 844 ? 'below the fold' : 'visible'}; plus keyboard entry (not counted as taps)`);
 await ctx.close();
 
+/* ============ 5b. Edit the last session straight from Today ============ */
+({ ctx, page } = await open(mainState())); await page.reload(); await page.waitForSelector('#view .card');
+if (!(await page.locator('[data-act="edit-last"]').count())) {
+  R.journeys.push({ journey: '5b edit last session from Today', taps: 0, scrolls: 0, ms: 0, notes: 'NO Last-session Edit row on Today (not implemented on this build)' });
+} else {
+  begin('5b edit last session from Today');
+  const q0 = (await st(page)).sessions[0].exercises[0].sets[0].r;
+  const lastY = await page.locator('[data-act="edit-last"]').evaluate(el => Math.round(el.getBoundingClientRect().bottom));
+  await tap(page, '[data-act="edit-last"]', 'Last row'); await page.waitForSelector('.sheet input[data-k="0.0"][data-f="r"]');
+  await tap(page, '.sheet input[data-k="0.0"][data-f="r"]', 'reps input'); await page.fill('.sheet input[data-k="0.0"][data-f="r"]', '9');
+  await tap(page, '.sheet [data-x="save"]', 'Save changes');
+  await page.waitForFunction(() => !document.querySelector('.backdrop')); await settle(page);
+  s = await st(page);
+  end(`reps ${q0} -> ${s.sessions[0].exercises[0].sets[0].r}; Last row bottom at y=${lastY}px; stays on Today (${await page.locator('[data-act="start"].primary').count() > 0}); keyboard entry not counted`);
+}
+await ctx.close();
+
 /* ============ 6/7. Touch targets + axe on Today, History, Progress, Plan ============ */
 ({ ctx, page } = await open(mainState())); await page.reload(); await page.waitForSelector('[data-act="start"].primary');
 R.touch.today = await audit(page, 'body');
