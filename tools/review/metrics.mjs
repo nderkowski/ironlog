@@ -73,6 +73,16 @@ export function lifterMetrics(r, cfg) {
     const M = r.M[k] || [0, 0];
     lifts[k] = liftMetrics(rows, days, M[0], M[1]);
   }
+  /* A lift the plan holds at several ranges (his lateral raise: 12-20 and 8-12)
+     is also scored per range, as "name@lo-top". Once each range progresses on
+     its own (v26.1), alternating days at different loads are not cuts; the
+     per-lift entries above stay as pre-registered. */
+  for (const [k, rows] of Object.entries(by)) {
+    const rk = [...new Set(rows.map(x => x[13] + '-' + x[14]))];
+    if (rk.length < 2) continue;
+    const M = r.M[k] || [0, 0];
+    for (const key of rk) lifts[k + '@' + key] = liftMetrics(rows.filter(x => x[13] + '-' + x[14] === key), days, M[0], M[1]);
+  }
   const main = MAIN.filter(k => lifts[k] && lifts[k].gain !== null);
   // coach: false positives against the true trajectory, plateau detection
   const traj = k => (by[k] || []).map(x => [x[0], x[10]]);

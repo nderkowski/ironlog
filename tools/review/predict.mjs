@@ -28,18 +28,20 @@ const q = (a, p) => { const s = a.slice().sort((x, y) => x - y); return s[Math.m
 console.log(`engine=${ENGINE} copy=${COPY} lifters=${NL}; exposure nearest day ${TARGET} (2027-01-03), within ±14 days`);
 console.log('| lift | load (median, 80% int.) | min reps at load (median, 80% int.) | most common load × reps | n |');
 console.log('|---|---|---|---|---|');
-for (const k of MAIN) {
+/* Main lifts, plus the two-range lateral raise per range (where v26.1 acts). */
+const ROWS = MAIN.map(k => [k, k, null]).concat([['lateral riase', 'lateral raise (Day A, 12–20)', '12-20'], ['lateral riase', 'lateral raise (Day B, 8–12)', '8-12']]);
+for (const [k, label, rng] of ROWS) {
   const pts = [];
   res.forEach(recs => {
-    const ex = recs.filter(r => r[1] === k && !r[6]);
+    const ex = recs.filter(r => r[1] === k && !r[6] && (!rng || r[13] + '-' + r[14] === rng));
     if (!ex.length) return;
     const best = ex.reduce((a, b) => Math.abs(b[0] - TARGET) < Math.abs(a[0] - TARGET) ? b : a);
     if (Math.abs(best[0] - TARGET) > 14) return;
     pts.push([best[7], best[8].length ? Math.min(...best[8]) : 0]);
   });
-  if (!pts.length) { console.log(`| ${k} | — | — | — | 0 |`); continue; }
+  if (!pts.length) { console.log(`| ${label} | — | — | — | 0 |`); continue; }
   const W = pts.map(p => p[0]), R = pts.map(p => p[1]);
   const mode = Object.entries(pts.reduce((m, p) => { const key = p[0] + ' × ' + p[1]; m[key] = (m[key] || 0) + 1; return m; }, {}))
     .sort((a, b) => b[1] - a[1])[0];
-  console.log(`| ${k} | ${q(W, .5)} (${q(W, .1)}–${q(W, .9)}) | ${q(R, .5)} (${q(R, .1)}–${q(R, .9)}) | ${mode[0]} (${(mode[1] / pts.length * 100).toFixed(0)}%) | ${pts.length} |`);
+  console.log(`| ${label} | ${q(W, .5)} (${q(W, .1)}–${q(W, .9)}) | ${q(R, .5)} (${q(R, .1)}–${q(R, .9)}) | ${mode[0]} (${(mode[1] / pts.length * 100).toFixed(0)}%) | ${pts.length} |`);
 }
