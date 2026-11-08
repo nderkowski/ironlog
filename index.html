@@ -1012,10 +1012,18 @@ function nextVariantIx(r){
    asks "what lifts am I training" — muscle tags, tracked lifts, renames, the
    straight-sets count — has to span variants or it judges the block on half
    the plan. */
-function eachPlanEx(fn){
-  S.routines.forEach(function(r){
+/* `opts.backup` also walks the plan kept by Settings → Workout plan
+   (S.planBackup), for the edits that must reach it too — a rename or a unit
+   conversion that skipped it made "Switch back" restore a lift cut off from
+   its history, or a 45 kg bar. Everything that asks what is being trained
+   now leaves it out, which is why it is opt-in. */
+function eachPlanEx(fn,opts){
+  var days=S.routines;
+  if(opts&&opts.backup&&S.planBackup&&Array.isArray(S.planBackup.routines))
+    days=days.concat(S.planBackup.routines);
+  days.forEach(function(r){
     variantsOf(r).forEach(function(v,vi){
-      v.exercises.forEach(function(e,ei){ fn(e,r,v,vi,ei); });
+      (v.exercises||[]).forEach(function(e,ei){ fn(e,r,v,vi,ei); });
     });
   });
 }
@@ -1265,7 +1273,15 @@ function convertUnits(to){
     if(!n) return n;
     return (n===oldBar||n===defaultBar(to==="kg"?"lb":"kg"))?defaultBar(to):cv(n);
   }
-  function cvEx(e){ e.inc=e.inc?cv(e.inc):e.inc; e.bar=cvBar(e.bar); }
+  /* A session exercise also carries weights that aren't sets: the shadow
+     prescription and last time's first set, behind "Use" and "Keep". Left
+     behind, a mid-workout switch to kg made Use fill 65 kg where 65 lb was
+     meant, and the shadow outcome in history read against the wrong unit. */
+  function cvEx(e){
+    e.inc=e.inc?cv(e.inc):e.inc; e.bar=cvBar(e.bar);
+    if(e.shadow&&num(e.shadow.w)) e.shadow.w=cv(e.shadow.w);
+    if(e.lastW) e.lastW=cv(e.lastW);
+  }
   function cvSets(sets){
     (sets||[]).forEach(function(s){
       if(s.w!==""&&s.w!==null&&s.w!==undefined) s.w=String(cv(s.w));
@@ -1280,7 +1296,7 @@ function convertUnits(to){
     S.active.bw=cv(S.active.bw);
     S.active.exercises.forEach(function(e){ cvEx(e); cvSets(e.sets); });
   }
-  eachPlanEx(cvEx);
+  eachPlanEx(cvEx,{backup:true});                 // the kept plan too, or Switch back brings a 45 kg bar
   S.settings.bodyweight=cv(S.settings.bodyweight);
   S.settings.inc=cv(S.settings.inc)||defaultInc(to);
 }
@@ -3160,8 +3176,8 @@ function planNameCount(name){
 }
 /* Two identical rows in one day is a plan you can't train — you'd do the lift
    twice. Renaming onto a lift already in the same week produced exactly that. */
-function dedupePlanNames(){
-  S.routines.forEach(function(r){
+function dedupePlanNames(routines){
+  (routines||S.routines).forEach(function(r){
     variantsOf(r).forEach(function(v){
       var seen={};
       v.exercises=v.exercises.filter(function(e){
@@ -3177,12 +3193,16 @@ function dedupePlanNames(){
    today either way. */
 function applyRename(oldName,newName,history){
   var k=normName(oldName);
-  eachPlanEx(function(e){ if(normName(e.name)===k) e.name=newName; });
+  /* When the history is renamed, the kept plan is too: otherwise Switch back
+     restores the old name, cut off from the history it was just renamed with.
+     A plan-only rename leaves it, since the old name keeps its own past. */
+  eachPlanEx(function(e){ if(normName(e.name)===k) e.name=newName; },{backup:!!history});
   if(history) S.sessions.forEach(function(s){
     s.exercises.forEach(function(e){ if(normName(e.name)===k) e.name=newName; });
   });
   if(S.active) S.active.exercises.forEach(function(e){ if(normName(e.name)===k) e.name=newName; });
   dedupePlanNames();
+  if(history&&S.planBackup&&Array.isArray(S.planBackup.routines)) dedupePlanNames(S.planBackup.routines);
   /* Trap 8. A merge is the largest history edit there is, and without this the
      swallowed lift's sets keep PR flags they never earned. */
   recomputePRs();
@@ -3332,15 +3352,19 @@ function commitSession(){
   a.endTs=Date.now();
   a.bw=num(S.settings.bodyweight);
   a.deload=!!a.deload||inDeloadWeek();
-  a.exercises.forEach(function(e){ e.sets=e.sets.filter(function(s){ return s.done; }); });
   /* The rep-out is whichever working set came last, decided at save, so
-     adding or removing sets mid-workout can't leave the flag on the wrong one. */
+     adding or removing sets mid-workout can't leave the flag on the wrong one.
+     It is decided by position BEFORE undone sets are dropped: if the last set
+     was skipped there was no rep-out, and the set before it was an ordinary
+     one stopped at its target. Flagging that would feed a false "as many as
+     you can" into the shadow prescription and its v25 evidence. */
   a.exercises.forEach(function(e){
     if(!repOutApplies(e)) return;
     var w=working(e.sets);
     w.forEach(function(s){ delete s.out; });
-    if(w.length) w[w.length-1].out=true;
+    if(w.length&&w[w.length-1].done) w[w.length-1].out=true;
   });
+  a.exercises.forEach(function(e){ e.sets=e.sets.filter(function(s){ return s.done; }); });
   a.exercises=a.exercises.filter(function(e){ return e.sets.length; });
   S.sessions.unshift(a);
   S.active=null; stopRest();
