@@ -107,17 +107,25 @@ on the diff + `/code-review high` → Playwright run of the changed flow at
 ## Decision log
 - 16:40 Cherry-picked v26.1 from review branch rather than redo it.
 - 16:55 Rejected "target never slides below set 1": behind −0.5 pp (noise), progressing −7 pp (metric artefact, but no real gain).
-- 17:00 Chose jump-rule redesign as lane A from a 3-variant prototype.
+- 16:50 Real export received; replay: prototype changes 1/102 calls, in the right direction.
+- 16:45 Chose jump-rule redesign as lane A from a 3-variant prototype.
+
+## Real-log replay (owner sent the export at 16:47; kept in the scratchpad, never committed)
+`tools/review/replay.mjs` (from the review branch), v26.1 vs the near-miss
+prototype: **1 of 102 real calls changes**, the same one at slack 1 and 2:
+DB Curl 8–12, 9 Sep. History: 25×12,12,9 → app said "go for 10" (the target
+slid from 12 to 10 off the rep-out) → 25×12,12,11 → v26.1 "go for 12",
+prototype "30×8" → he did 25×12,12,12, then 25×14,12, then 30×8,8,8. The jump
+the prototype asks for was made at the bottom of the range when he finally
+took it, a month later. Supports lane A; no real call gets more aggressive
+than what he went on to make.
 
 ## Owner questions
 0. **`main` is v21.** GitHub Pages serves `main`, and `main` holds v21:
    v22–v26 were never merged, so your phone runs v21 (check the BUILD line at
    the foot of Plan). Everything this sprint measured is v26.1+. Merge when
    you have reviewed it — nothing here touches `main`.
-1. Lane A changes when a lift steps up. Trap 17c says replay the real export
-   before trusting a prescription change; the export is not in this public
-   repo. Can you drop `ironlog-*.json` at the repo root (gitignored) for the
-   next session to replay `tools/review/replay.mjs`?
+1. ~~Real export for replay~~ — received, used (see above).
 2. The review's biggest lever is frequency (1.4 → 2–3 sessions/week ≈ +8 pp
    strength/yr), not code. Want a sessions-per-week vs target line on Progress?
 
