@@ -72,7 +72,7 @@ Vanilla JS, no framework, no build, no dependencies, no network calls. One IIFE.
 
 ```
 S = {
-  version, settings, routines[], sessions[], active
+  version, settings, routines[], sessions[], active, coach
 }
 
 settings = { unit, rest, autoRest, buzz, sound, notify, rpe, keepTone,
@@ -85,7 +85,7 @@ settings = { unit, rest, autoRest, buzz, sound, notify, rpe, keepTone,
 routine  = { id, key, name, variants[] }
   variant = { id, label, exercises[] }
   exercise (plan) = { id, name, sets, reps, repTop, inc, bw, bar, metric,
-                      link, mg, mg2[] }
+                      link, mg, mg2[], added, startW?, stepBack? }   // last three: the coach
 
 session  = { id, ts, endTs, routineId, key, name, variantId, variantName,
              note, bw, deload, exercises[] }
@@ -786,6 +786,49 @@ than cycle 8** and says so in the status line. Every default tier (5–8, 8–12
 That is also why it no longer keys off the `"up"` *label*: the flat band
 includes real but slow progress, and counting that as stalled is exactly how a
 working plan gets told to take a week off.
+
+### The coach (v26 rules, v27 Claude) — one suggestion system
+
+`S.coach = {proposals[], history[], lastCheck}`; every read goes through
+`coachState()` and `normalize()` repairs it (`coachShape`). A **proposal** is a
+card: `{id, ts, source:"rules"|"claude", kind, key, lift, rid, title, reason,
+evidence, options[], status:"open"|"accepted"|"skipped", decided, chosen,
+undo?, stage?}`; an option is `{act, lift, label, to?, n?, with?}` with `act` ∈
+swap, remove, trim, add, pair, unpair, shift_range. `history[]` holds Claude
+check-ins (`type:"claude"`: ts, model, usage, summary, questions — never the
+prompt) and measured acceptances (`type:"accepted"`: baseline, result).
+
+Rules to hold to:
+
+- **It prompts; it never applies.** Only `coachApply()` changes the plan, from a
+  button on a card. It refuses while `S.active` ("Finish or discard the workout
+  first"), applies in every week variant via `eachPlanEx()`, calls `writeNow()`,
+  and records an undo as a *diff* per week (rows added / changed-as-they-were /
+  removed with what sat above them), so Undo restores the exact rows even after
+  later edits elsewhere.
+- **It never sets weights or reps.** The one number written is `startW` on a
+  never-done swapped-in row (and `shift_range` moves a range down, which the
+  coordinator asked for), read only in `prescribe()`'s `"new"` branch. A swapped
+  row with history gets `stepBack`, applied in `makeSessionEx()` (a prefill),
+  not in `prescribe()`.
+- **Plan rows carry `added`** (set in `newPlanEx`/`planExFromSession`, trap 13),
+  so the skipped-lift rule can't judge a row younger than its four sessions.
+  Unstamped rows are judged only if the lift was ever done.
+- **A swap is the last rung, not the first** (stall ladder): it discards the
+  lift's history. And the `COACH_FAMILIES` load ratios are guesses, documented
+  as such, used only to suggest a first weight, erring light.
+- **Session length is ACTIVE time** — gaps between logged sets of ≤15 min, summed
+  (`coachActiveMin`). Sets are often ticked hours or days later (real sessions
+  spanning 17 h to 4 days), so first-to-last (`coachSpanMin`) is only shown to
+  Claude, labelled as inflated.
+- **A stall rule on this log can't be sensitive and quiet at once.** Simulated, a
+  6-exposure rule fired 37 cards a year on a healthy lifter. Do not loosen
+  `COACH_STALL_*` without re-running `t39b`.
+- **The AI summary is built from `S` only.** The API key and GitHub token live
+  under their own storage keys; `t39` asserts neither is in a request.
+- The coach card is rendered on Today only when idle and something is open
+  (never mid-workout, trap 1), and its buttons are `data-co`, handled in the
+  first `#view` click listener so it works on Today and Progress alike (trap 18).
 
 ### `recomputePRs()`
 

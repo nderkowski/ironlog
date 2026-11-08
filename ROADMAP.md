@@ -164,19 +164,68 @@ next time it comes up. History shows it. Before this, the only note was the
 one at the foot of the whole session. These notes are what the v26/v27 coach
 will read. `t37`.
 
-### Then — the coach (v26–v28)
+### The coach (v26–v28) — v26 and v27 shipped
 
-- **v26, rule-based coach every ~2 weeks:**
-  - Stall → a variation from a curated family, linked to the same history.
-  - Skipped in 3 of 4 → replace or remove.
-  - Under ~10 sets a week for a muscle → add a set.
-  - A session runs long → pair or trim.
-  - Accessory rotation every ~8 weeks, labelled as convention.
-  - At most 2 changes per check-in, one-tap accept, undoable.
-- **v27, AI check-in every 2 weeks (Claude, opt-in, Nick's own key):** it
-  reviews the coach's evidence plus his session notes and proposes up to 3
-  changes from the same fixed action list. It never sets weights. Roughly
-  $0.15 a check-in on Opus 5.5.
+- **v26, rule-based coach** ✅ *shipped* and **v27, check-in with Claude** ✅
+  *shipped*, as ONE suggestion system (`S.coach`; `t39`, `t39b`).
+
+  It prompts and never changes the plan by itself: each suggestion is a card
+  with a reason, an evidence line (labelled *convention* or *rule of thumb*
+  where it is), and choices — swap for a similar lift (2–3 from a curated
+  family table), trim or remove, add a set, pair, lower a range — plus
+  **Keep it**. It never sets a weight or a rep target. Accepting goes
+  through the plan's own rows, in every week variant, writes at once, and is
+  one tap to undo (the toast, or the Coach section). Refused mid-workout.
+  At most **2 open**; a kept or accepted lift+reason isn't raised again for
+  **6 weeks**, then 18 weeks, then a year if kept again. An open rules card
+  nobody answers in 28 days is closed as a "Keep it".
+
+  **Rules** (`coachRun`, after a saved workout, at most every 14 days, with
+  ≥6 sessions logged; strongest evidence first):
+
+  | Rule | Fires when | Offers |
+  |---|---|---|
+  | Skipped lift | no sets logged in ≥3 of the last 4 non-deload sessions of its day (week-aware); a row added since those sessions isn't judged, nor an undated row that was never once done | take it out · swap (≤3) · keep |
+  | Long sessions | median **active** time of a day's last 4 sessions >**75 min** (needs 3 timed). Active = sum of gaps between logged sets of ≤15 min — first-to-last is wrong here (sets get ticked hours or days later) | trim a set from the last accessory with ≥3 · superset the last two unpaired accessories · keep |
+  | Too few sets | a muscle with a primary (`mg`) lift averages **<6** weekly sets over the last 3 complete weeks (helper = ½), ≥2 sessions a week, no deload week and no empty week among them, and the day holds <21 sets and runs ≤55 active min | +1 set on its isolation lift · keep. Rare on purpose: <10 would fire on nearly every muscle of the recommended plan at 2.5 sessions a week |
+  | Stalled lift | ≥3 whole progression cycles (≥8 exposures; 15 on an 8–12 lift) in a row at the same `workLoad()`, ≥4 weeks, slope of mean reps at the load ≤0, `trend()` not up, load step ≤8% of the load, not waiting at the top of its range for a jump, range ≤8 sessions of climb. **Rule of thumb, labelled.** | **ladder, history first:** +1 set · range down 2 reps · out of its superset; a **swap** only if it stalls again after one of those was accepted (≥42 days, ≥4 exposures), or at once if a recent note says pain/hurt/ache/pinch/tweak/sore |
+
+  A swapped-in lift takes the old slot's shape (sets, range, superset, `inc`,
+  bar/load type, muscles). A **never-done** lift gets a guessed `startW` on the
+  plan row (old working load × a per-pair ratio in `COACH_FAMILIES`, which is a
+  guess, × 0.85, rounded **down** to the step), read only by `prescribe()`'s
+  "new" branch: "First time — start around 45 and find your 8". A lift **with
+  history** keeps it; if its last exposure is over 28 days old it starts one
+  step lighter (`makeSessionEx`, flag `stepBack`).
+
+  **Measured.** Every accepted suggestion is logged in `S.coach.history` with a
+  baseline (trendScore, skip rate, day minutes). After 4 further exposures of
+  its slot it is marked helped or not — progression earned for swap/+set/range;
+  a shorter day or fewer lifts missed for trim/pair/unpair/remove — and the
+  Coach section shows the tally ("4 suggestions accepted · 3 led to progress
+  within 4 sessions").
+
+  **v27 check-in** (`coachAsk`): on demand from the Coach section, *offered*
+  (never run) once 14 days pass. A compact summary (~6k tokens: plan, supersets,
+  per-lift last 6 exposures with notes, cadence and any gap >14 d, weekly sets
+  per muscle for 4 weeks, skip counts, active and raw session minutes, session
+  notes from 3 weeks, the rules' own suggestions) goes to `aiCall()`; effort
+  high; JSON schema; every proposal is validated against the current plan
+  (lift exists, kind allowed, replacement present and not already in the plan,
+  sets sane, pair adjacent) and the rest dropped and logged; ≤3 kept, 2 shown
+  (Claude's outrank open rules cards). The check-in is recorded (ts, model,
+  tokens, summary, questions — not the prompt). The key and the GitHub token
+  are never in the summary. Cost ≈ $0.15 on Opus 5.5.
+
+  **Spam check** (`t39b`, simulated year, 4 seeds, 16 lifts): healthy lifter
+  6.0 cards a year if he keeps everything, 5.5 if he accepts everything — about
+  0.09 per lift per quarter; a lift skipped 7 sessions in 10 is raised ≤3 times
+  a year if kept (6 wk, 18 wk, a year), once if accepted. The first stall rule
+  tried (6 exposures at one load, no new best) raised **37 cards a year** on
+  the healthy lifter; over 6 sessions a lifter 5–15% stronger a year looks like
+  a stalled one, the rep noise being the size of the gain (the same finding as
+  v25 F4). It now needs three whole cycles. **The cost: a 12-week plateau
+  (~9 exposures) is not caught.**
 - **v28, form check:** 8–12 frames from a side-on clip, 2–3 cues for the
   next set, with honest limits.
 
