@@ -26,8 +26,8 @@
   --panel:#FFFFFF;
   --panel-2:#E4E6EA;
   --ink:#14171B;
-  --ink-2:#5A6169;
-  --ink-3:#878F98;
+  --ink-2:#4A5159;
+  --ink-3:#5F666E;
   --line:#D3D7DD;
   --accent:#C98A0E;
   --on-accent:#14171B;
@@ -50,8 +50,8 @@
     --panel:#191D21;
     --panel-2:#242A30;
     --ink:#EDEFF2;
-    --ink-2:#98A1AA;
-    --ink-3:#6E777F;
+    --ink-2:#AAB3BB;
+    --ink-3:#8E979F;
     --line:#2C3238;
     --accent:#E8AC2B;
     --on-accent:#14171B;
@@ -65,7 +65,7 @@
 }
 :root[data-theme="dark"]{
   --bg:#111417; --panel:#191D21; --panel-2:#242A30;
-  --ink:#EDEFF2; --ink-2:#98A1AA; --ink-3:#6E777F; --line:#2C3238;
+  --ink:#EDEFF2; --ink-2:#AAB3BB; --ink-3:#8E979F; --line:#2C3238;
   --accent:#E8AC2B; --on-accent:#14171B; --accent-soft:rgba(232,172,43,.16);
   --good:#4FBE85; --good-soft:rgba(79,190,133,.15);
   --bad:#E0645A; --bad-soft:rgba(224,100,90,.15);
@@ -73,7 +73,7 @@
 }
 :root[data-theme="light"]{
   --bg:#EEEFF1; --panel:#FFFFFF; --panel-2:#E4E6EA;
-  --ink:#14171B; --ink-2:#5A6169; --ink-3:#878F98; --line:#D3D7DD;
+  --ink:#14171B; --ink-2:#4A5159; --ink-3:#5F666E; --line:#D3D7DD;
   --accent:#C98A0E; --on-accent:#14171B; --accent-soft:rgba(201,138,14,.14);
   --good:#2E7D57; --good-soft:rgba(46,125,87,.13);
   --bad:#B03A32; --bad-soft:rgba(176,58,50,.12);
@@ -129,8 +129,10 @@ button.rest{
   font-family:var(--mono);font-variant-numeric:tabular-nums;
   background:var(--accent);color:var(--on-accent);
   padding:5px 11px;border-radius:999px;font-size:13px;font-weight:700;
-  display:inline-flex;align-items:center;gap:7px;
+  display:inline-flex;align-items:center;gap:7px;position:relative;
 }
+/* 29px tall pill -> 45px hit area; the header's own padding is the room it borrows */
+button.rest::before{content:"";position:absolute;left:0;right:0;top:-8px;bottom:-8px}
 button.rest.over{background:var(--good);color:#fff}
 
 /* ---------- typography ---------- */
@@ -160,7 +162,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
   background:var(--panel-2);color:var(--ink);
   font-weight:600;font-size:14px;
   border:1px solid transparent;
-  min-height:42px;
+  min-height:44px;
 }
 .btn:active{transform:translateY(1px)}
 .btn.primary{background:var(--accent);color:var(--on-accent)}
@@ -192,7 +194,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .daypick{
   padding:7px 12px;border-radius:9px;border:1px solid var(--line);
   background:transparent;font-size:13px;font-weight:600;color:var(--ink-2);
-  display:inline-flex;gap:7px;align-items:center;
+  display:inline-flex;gap:7px;align-items:center;min-height:44px;
 }
 .daypick .k{font-family:var(--mono);color:var(--ink);font-weight:700}
 
@@ -206,7 +208,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .ex-name{font-size:16px;font-weight:700;letter-spacing:-.01em;word-break:break-word}
 .ex-meta{font-size:12px;color:var(--ink-3);margin-top:1px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .kebab{
-  width:34px;height:34px;border-radius:8px;color:var(--ink-3);
+  width:44px;height:44px;margin:-5px -5px -5px 0;border-radius:8px;color:var(--ink-3);
   display:flex;align-items:center;justify-content:center;font-size:18px;line-height:1;
   flex:0 0 auto;
 }
@@ -218,14 +220,15 @@ h1,h2,h3{margin:0;text-wrap:balance}
 }
 .callout .lastrow{
   display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-  padding:7px 10px;font-size:12px;color:var(--ink-2);
+  padding:10px 10px;font-size:12px;color:var(--ink-2);
 }
 .callout .lastrow .num{color:var(--ink)}
 .callout .revert{
   margin-left:auto;font-size:12px;font-weight:700;
   padding:3px 8px;border-radius:7px;background:var(--panel);color:var(--ink-2);
-  border:1px solid var(--line);white-space:nowrap;
+  border:1px solid var(--line);white-space:nowrap;position:relative;
 }
+.callout .revert::before{content:"";position:absolute;left:0;right:0;top:-10px;bottom:-10px}
 .callout .why{
   display:flex;align-items:center;gap:7px;
   padding:7px 10px;font-size:12.5px;font-weight:600;
@@ -283,10 +286,17 @@ h1,h2,h3{margin:0;text-wrap:balance}
 
 .sets{display:flex;flex-direction:column}
 .set{
+  /* v26.3 thumb sizing. Every control in the row is 44px tall; the row is the same
+     52px it always was (4+44+4). Width is the scarce axis (see traps 12/16 and t21 at
+     320px), so the steppers get --stp of real width and borrow the rest from dead
+     space: the inner pair (weight + and rep -) split the 20px of gutter around the
+     "x" between them, 9px each, as a ::before hit-slop. Slop never crosses into a
+     neighbouring control; tools/sprint/journeys.mjs checks that by probing. */
+  --stp:34px;--sl:9.5px;
   display:grid;
-  grid-template-columns:20px 1fr 10px 1fr 44px;
-  align-items:center;gap:5px;
-  padding:7px var(--pad);
+  grid-template-columns:28px 1fr 12px 1fr 44px;
+  align-items:center;gap:4px;
+  padding:4px 10px;
   border-top:1px solid var(--line);
   position:relative;
 }
@@ -301,33 +311,40 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .set.warm .grp input{color:var(--ink-2)}
 .idx{
   font-family:var(--mono);font-size:12px;color:var(--ink-3);
-  height:38px;width:100%;display:flex;align-items:center;justify-content:center;
-  border-radius:6px;
+  height:44px;width:100%;display:flex;align-items:center;justify-content:center;
+  border-radius:6px;position:relative;
 }
+/* the left edge of the row is free (3px status bar, then padding) */
+.idx::before{content:"";position:absolute;top:0;bottom:0;left:-10px;right:0}
 .idx:active{background:var(--panel-2)}
 .set.done .idx{color:var(--ink-2)}
 .set.warm .idx{color:var(--ink-3);font-weight:700;font-size:11px}
-.grp{display:flex;align-items:center;gap:2px;min-width:0}
+.grp{display:flex;align-items:center;gap:0;min-width:0}
 .grp button{
-  flex:0 0 auto;width:28px;height:38px;border-radius:8px;
+  flex:0 0 auto;width:var(--stp);height:44px;border-radius:8px;position:relative;
   color:var(--ink-2);font-size:17px;font-weight:600;line-height:1;
   display:flex;align-items:center;justify-content:center;
 }
 .grp button:active{background:var(--panel-2)}
+.grp button::before{content:"";position:absolute;top:0;bottom:0;left:0;right:0}
+.grp button:first-child::before{left:-3.5px}
+.grp button:last-child::before{right:-3.5px}
+.times + .grp button:first-child::before{left:calc(-1*var(--sl))}
+.grp:nth-of-type(1) button:last-child::before{right:calc(-1*var(--sl))}
 .grp input{
   flex:1;min-width:0;width:100%;
-  height:38px;border:1px solid var(--line);border-radius:8px;
+  height:44px;border:1px solid var(--line);border-radius:8px;
   background:var(--bg);
   font-family:var(--mono);font-variant-numeric:tabular-nums;
   font-size:16px;font-weight:600;text-align:center;
-  padding:0 1px;
+  padding:0;
   -moz-appearance:textfield;
 }
 .set.done .grp input{background:transparent;border-color:transparent}
 .grp input::-webkit-outer-spin-button,.grp input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .times{text-align:center;color:var(--ink-3);font-size:13px}
 .tick{
-  width:44px;height:40px;border-radius:9px;
+  width:44px;height:44px;border-radius:9px;
   border:1px solid var(--line);
   display:flex;align-items:center;justify-content:center;
   color:var(--ink-3);
@@ -337,7 +354,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .set.done.warm .tick{background:var(--ink-3);border-color:var(--ink-3);color:var(--bg)}
 .set.done.pr .tick{background:var(--good);border-color:var(--good);color:#fff}
 .prtag{
-  position:absolute;right:58px;top:50%;transform:translateY(-50%);
+  position:absolute;right:54px;top:50%;transform:translateY(-50%);
   font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--good);
   pointer-events:none;
 }
@@ -348,7 +365,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
   display:flex;align-items:center;gap:8px;
   font-family:var(--mono);font-variant-numeric:tabular-nums;
   font-size:11px;color:var(--ink-3);
-  padding-left:25px;margin-top:-3px;
+  padding-left:32px;margin-top:-3px;
   pointer-events:none;
 }
 .plates:empty{display:none}
@@ -379,10 +396,20 @@ h1,h2,h3{margin:0;text-wrap:balance}
 }
 @media (max-width:360px){
   :root{--pad:10px}
-  .set{grid-template-columns:18px 1fr 8px 1fr 40px;gap:4px}
-  .grp button{width:24px}
+  .set{--stp:28px;--sl:9px;grid-template-columns:26px 1fr 10px 1fr 44px}
+  .plates{padding-left:30px}
+}
+/* wide phones have the room to make the steppers properly thumb-wide (inner 49, outer 43) */
+@media (min-width:400px){
+  .set{--stp:40px}
+}
+/* 320px class: the width budget is spent, so the steppers go back to 24px wide.
+   Heights stay at 44. */
+@media (max-width:340px){
+  .set{--stp:24px;grid-template-columns:22px 1fr 10px 1fr 40px}
   .tick{width:40px}
-  .plates{padding-left:22px}
+  .plates{padding-left:26px}
+  .prtag{right:50px}
 }
 
 /* ---------- progress ---------- */
@@ -556,6 +583,9 @@ table.hist tr.dl td{opacity:.6}
 /* The header gear is the only way into Settings, so it gets the readable ink
    rather than the most muted one. */
 header.top .iconbtn{color:var(--ink-2)}
+/* 44px hit box, 32px of layout: the negative margins give the extra 6px a side back,
+   so the header does not grow and the box stays clear of its neighbours (10px gap). */
+header.top .iconbtn{width:44px;height:44px;margin:-6px}
 
 .field-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
 .field-row:first-child{border-top:none}
@@ -576,6 +606,8 @@ textarea.txt{
   position:relative;flex:0 0 auto;transition:background .15s;
   border:1px solid var(--line);
 }
+/* 28px tall -> 44px hit area, inside the field-row's own 9px padding */
+.switch::before{content:"";position:absolute;left:-4px;right:-4px;top:-8px;bottom:-8px}
 .switch::after{
   content:"";position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;
   background:var(--panel);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s;
@@ -739,7 +771,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v26.1";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v26.3";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -2848,7 +2880,7 @@ function exerciseCard(ex,ei){
   ex.sets.forEach(function(s,si){
     if(!s.warm) wi++;
     html+='<div class="set'+(s.warm?" warm":"")+(s.done?" done":"")+(s.done&&s.pr?" pr":"")+(si===outSi?" out":"")+'" data-ei="'+ei+'" data-si="'+si+'">'+
-      '<button class="idx" data-act="warm" aria-label="'+(s.warm?"Make this a working set":"Make this a warm-up")+'">'+(s.warm?"W":wi)+'</button>'+
+      '<button class="idx" data-act="warm" aria-label="'+(s.warm?"Warm-up: make it a working set":"Set "+wi+": make it a warm-up")+'">'+(s.warm?"W":wi)+'</button>'+
       '<div class="grp">'+
         '<button data-act="step" data-f="w" data-d="-1" aria-label="Less weight">−</button>'+
         '<input inputmode="decimal" enterkeyhint="done" type="number" step="any" data-f="w" value="'+esc(s.w)+'" placeholder="'+esc(mode===1?"+":mode===2?"−":unit())+'" aria-label="Weight">'+
@@ -4135,7 +4167,7 @@ function finishSheet(){
     html+='<div class="eyebrow" style="margin-bottom:6px">Keep the extras in '+esc(a.name)+'?</div>';
     extras.forEach(function(e,i){
       html+='<div class="field-row"><div class="fl">'+esc(e.name)+'</div>'+
-        '<button class="switch" data-keep="'+i+'"></button></div>';
+        '<button class="switch" role="switch" aria-checked="false" aria-label="Keep '+esc(e.name)+' in this day" data-keep="'+i+'"></button></div>';
     });
     html+='<div style="height:12px"></div>';
   }
@@ -4147,7 +4179,7 @@ function finishSheet(){
     var keeps={};
     el.addEventListener("click",function(e){
       var sw=e.target.closest("[data-keep]");
-      if(sw){ var i=sw.dataset.keep; keeps[i]=!keeps[i]; sw.classList.toggle("on",keeps[i]); return; }
+      if(sw){ var i=sw.dataset.keep; keeps[i]=!keeps[i]; sw.classList.toggle("on",keeps[i]); sw.setAttribute("aria-checked",String(!!keeps[i])); return; }
       if(e.target.closest('[data-x="back"]')){ closeSheet(); return; }
       if(e.target.closest('[data-x="save"]')){
         var r=S.routines.find(function(x){ return x.id===a.routineId; });
@@ -4632,7 +4664,7 @@ function drawEditor(){
     '<div class="field-row"><div class="fl">Name</div>'+
       '<input class="txt" style="max-width:190px" data-x="name" value="'+esc(d.name)+'"></div>'+
     '<div class="field-row"><div class="fl">Deload session<div class="fh">Kept out of trend maths</div></div>'+
-      '<button class="switch'+(d.deload?" on":"")+'" data-x="deload"></button></div>';
+      '<button class="switch'+(d.deload?" on":"")+'" role="switch" aria-checked="'+!!d.deload+'" aria-label="Deload session" data-x="deload"></button></div>';
 
   d.exercises.forEach(function(e,ei){
     var mode=bwMode(e), emet=metricOf(e);
@@ -4675,7 +4707,7 @@ function drawEditor(){
     };
     $('[data-x="name"]',el).oninput=function(){ d.name=this.value; };
     $('[data-x="note"]',el).oninput=function(){ d.note=this.value; };
-    $('[data-x="deload"]',el).onclick=function(){ d.deload=!d.deload; this.classList.toggle("on",d.deload); };
+    $('[data-x="deload"]',el).onclick=function(){ d.deload=!d.deload; this.classList.toggle("on",d.deload); this.setAttribute("aria-checked",String(!!d.deload)); };
 
     el.addEventListener("input",function(e){
       var i=e.target;
@@ -4894,31 +4926,31 @@ function viewSettings(){
   var html='<div class="eyebrow">This device</div><h1 class="view-title">Settings</h1><div class="stack">';
   html+='<div class="eyebrow">Session</div><div class="card">'+
     '<div class="field-row"><div class="fl">Units</div>'+
-      '<select class="txt" style="width:96px" data-set="unit">'+
+      '<select class="txt" style="width:96px" aria-label="Units" data-set="unit">'+
         '<option value="lb"'+(unit()==="lb"?" selected":"")+'>lb</option>'+
         '<option value="kg"'+(unit()==="kg"?" selected":"")+'>kg</option></select></div>'+
     '<div class="field-row"><div class="fl">Your bodyweight<div class="fh">Used to score pull-ups, dips and assisted work</div></div>'+
-      '<input class="txt small" inputmode="decimal" type="number" step="any" data-set="bodyweight" value="'+(S.settings.bodyweight||"")+'"></div>'+
+      '<input class="txt small" inputmode="decimal" type="number" step="any" aria-label="Your bodyweight" data-set="bodyweight" value="'+(S.settings.bodyweight||"")+'"></div>'+
     '<div class="field-row"><div class="fl">Rest timer<div class="fh">Seconds after each logged set</div></div>'+
-      '<input class="txt small" inputmode="numeric" type="number" data-set="rest" value="'+esc(S.settings.rest)+'"></div>'+
+      '<input class="txt small" inputmode="numeric" type="number" aria-label="Rest timer, seconds" data-set="rest" value="'+esc(S.settings.rest)+'"></div>'+
     '<div class="field-row"><div class="fl">Start rest automatically</div>'+
-      '<button class="switch'+(S.settings.autoRest?" on":"")+'" data-set="autoRest"></button></div>'+
+      '<button class="switch'+(S.settings.autoRest?" on":"")+'" role="switch" aria-checked="'+!!S.settings.autoRest+'" aria-label="Start rest automatically" data-set="autoRest"></button></div>'+
     '<div class="field-row"><div class="fl">Vibrate<div class="fh">On logging a set and when rest ends</div></div>'+
-      '<button class="switch'+(S.settings.buzz?" on":"")+'" data-set="buzz"></button></div>'+
+      '<button class="switch'+(S.settings.buzz?" on":"")+'" role="switch" aria-checked="'+!!S.settings.buzz+'" aria-label="Vibrate" data-set="buzz"></button></div>'+
     '<div class="field-row"><div class="fl">Alarm when rest ends'+
       '<div class="fh">Beeps out loud, and keeps the timer running with the screen off</div></div>'+
-      '<button class="switch'+(S.settings.sound?" on":"")+'" data-set="sound"></button></div>'+
+      '<button class="switch'+(S.settings.sound?" on":"")+'" role="switch" aria-checked="'+!!S.settings.sound+'" aria-label="Alarm when rest ends" data-set="sound"></button></div>'+
     '<div class="field-row"><div class="fl">Rate sets (RPE)'+
       '<div class="fh">Adds an optional tag after you log a set. A hard week then holds the weight instead of adding.</div></div>'+
-      '<button class="switch'+(S.settings.rpe?" on":"")+'" data-set="rpe"></button></div>'+
+      '<button class="switch'+(S.settings.rpe?" on":"")+'" role="switch" aria-checked="'+!!S.settings.rpe+'" aria-label="Rate sets (RPE)" data-set="rpe"></button></div>'+
     '<div class="field-row"><div class="fl">Keep-alive tone during rests'+
       '<div class="fh">'+(S.settings.keepTone
         ? '<span style="color:var(--bad)">Guarantees the alarm, but Android mutes your music for the whole rest.</span>'
         : "Off — your music plays untouched. If an alarm ever arrives late, the app will offer to turn this on.")+'</div></div>'+
-      '<button class="switch'+(S.settings.keepTone?" on":"")+'" data-set="keepTone"></button></div>'+
+      '<button class="switch'+(S.settings.keepTone?" on":"")+'" role="switch" aria-checked="'+!!S.settings.keepTone+'" aria-label="Keep-alive tone during rests" data-set="keepTone"></button></div>'+
     '<div class="field-row"><div class="fl">Back up after every workout'+
       '<div class="fh">Writes a file to your downloads when you tap Save workout. No extra tap, and it is the only backup that can\'t be forgotten.</div></div>'+
-      '<button class="switch'+(S.settings.autoBackup?" on":"")+'" data-set="autoBackup"></button></div>'+
+      '<button class="switch'+(S.settings.autoBackup?" on":"")+'" role="switch" aria-checked="'+!!S.settings.autoBackup+'" aria-label="Back up after every workout" data-set="autoBackup"></button></div>'+
     '<div class="field-row"><div class="fl">Test the alarm with the screen off'+
       '<div class="fh">Runs a 20-second rest and reports whether the phone kept the timer alive</div></div>'+
       '<button class="btn sm ghost" data-act="bgtest">Test</button></div>'+
@@ -4928,20 +4960,20 @@ function viewSettings(){
         : notifyState()==="none"
           ? "This browser can't show notifications"
           : "Shows up on the lock screen. Needs permission.")+'</div></div>'+
-      '<button class="switch'+(S.settings.notify?" on":"")+'" data-act="toggle-notify"></button></div>'+
+      '<button class="switch'+(S.settings.notify?" on":"")+'" role="switch" aria-checked="'+!!S.settings.notify+'" aria-label="Notify when rest ends" data-act="toggle-notify"></button></div>'+
   '</div>';
 
   html+='<div class="eyebrow" style="margin:6px 0 0">Barbell</div><div class="card">'+
     '<div class="field-row"><div class="fl">Bar weight<div class="fh">Used for new barbell exercises. Set it per exercise in its ⋯ menu.</div></div>'+
-      '<input class="txt small" inputmode="decimal" type="number" step="any" data-set="bar" value="'+esc(S.settings.bar||"")+'"></div>'+
+      '<input class="txt small" inputmode="decimal" type="number" step="any" aria-label="Bar weight" data-set="bar" value="'+esc(S.settings.bar||"")+'"></div>'+
     '<div class="field-row" style="display:block">'+
       '<div class="fl">Plates you own<div class="fh">Counted in pairs — one for each side.</div></div>'+
       '<div class="plate-ed">'+
         (S.settings.plates||[]).map(function(p,i){
           return '<div class="pr-row">'+
-            '<input class="txt" inputmode="decimal" type="number" step="any" data-pw="'+i+'" value="'+esc(p.w)+'">'+
+            '<input class="txt" inputmode="decimal" type="number" step="any" aria-label="Plate weight" data-pw="'+i+'" value="'+esc(p.w)+'">'+
             '<span class="x">'+esc(unit())+' ×</span>'+
-            '<input class="txt" style="width:60px" inputmode="numeric" type="number" data-pn="'+i+'" value="'+esc(p.n)+'">'+
+            '<input class="txt" style="width:60px" inputmode="numeric" type="number" aria-label="Plate pairs" data-pn="'+i+'" value="'+esc(p.n)+'">'+
             '<span class="x">pairs</span><span class="sp"></span>'+
             '<button class="rm" data-act="plate-rm" data-i="'+i+'" aria-label="Remove this plate">✕</button>'+
           '</div>';
@@ -5065,16 +5097,16 @@ function viewPlan(){
   }
 
   html+='<div class="field-row"><div class="fl">Double progression by default<div class="fh">New exercises climb by reps first, then weight</div></div>'+
-      '<button class="switch'+(S.settings.doubleDefault?" on":"")+'" data-set="doubleDefault"></button></div>'+
+      '<button class="switch'+(S.settings.doubleDefault?" on":"")+'" role="switch" aria-checked="'+!!S.settings.doubleDefault+'" aria-label="Double progression by default" data-set="doubleDefault"></button></div>'+
     '<div class="field-row"><div class="fl">Default rep range'+
       '<div class="fh">'+esc(rangeTiersHint())+'</div></div>'+
       '<div class="row" style="gap:6px">'+
-        '<input class="txt tiny-n" inputmode="numeric" type="number" data-set="repLow" value="'+esc(S.settings.repLow)+'">'+
+        '<input class="txt tiny-n" inputmode="numeric" type="number" aria-label="Default rep range, from" data-set="repLow" value="'+esc(S.settings.repLow)+'">'+
         '<span class="muted tiny">to</span>'+
-        '<input class="txt tiny-n" inputmode="numeric" type="number" data-set="repHigh" value="'+esc(S.settings.repHigh)+'">'+
+        '<input class="txt tiny-n" inputmode="numeric" type="number" aria-label="Default rep range, to" data-set="repHigh" value="'+esc(S.settings.repHigh)+'">'+
       '</div></div>'+
     '<div class="field-row"><div class="fl">Default weight step<div class="fh">Used by ± and by the weight jumps</div></div>'+
-      '<input class="txt small" inputmode="decimal" type="number" step="any" data-set="inc" value="'+esc(S.settings.inc)+'"></div>'+
+      '<input class="txt small" inputmode="decimal" type="number" step="any" aria-label="Default weight step" data-set="inc" value="'+esc(S.settings.inc)+'"></div>'+
     '<div class="field-row"><div class="fl">Deload week'+
       '<div class="fh">'+(inDeloadWeek()
         ? "Running through "+esc(shortDate(S.settings.deloadUntil))+" — light prescriptions, excluded from trends"
@@ -5177,7 +5209,7 @@ $("#view").addEventListener("click",function(e){
   var sw=t.closest('[data-set]');
   if(sw&&sw.classList.contains("switch")){
     var k2=sw.dataset.set; S.settings[k2]=!S.settings[k2];
-    sw.classList.toggle("on",S.settings[k2]); save();
+    sw.classList.toggle("on",S.settings[k2]); sw.setAttribute("aria-checked",String(!!S.settings[k2])); save();
     if(k2==="sound"&&S.settings[k2]) playSrc(audioURLs().alarm,false);   // proves it works
     if(k2==="sound"&&!S.settings[k2]&&!S.settings.notify) audioStop();
     /* Turning it on has to mean something for the plan you already have, not

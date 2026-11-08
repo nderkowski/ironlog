@@ -1,0 +1,56 @@
+
+JOURNEY                                taps  scrolls  wall ms  notes
+1 start workout (cold open)                  1     0        158      app ready 47ms; Start in first viewport: true (bottom 263px of 844, tab bar top 780px)
+2a log prefilled set (tick)                  1     0        310      prefill 135 x 11; done=true; rest timer: true
+2b log set with weight +5 (stepper)          2     0        373      135 -> 140; one + tap = 5 lb (settings.inc=5); typing instead = tap input + keyboard + dismiss
+3 finish workout (2 sets logged)             2     0        608      sessions 6->7, active=null; lands on Progress tab; header Finish in first viewport: true; Save in first viewport: true
+3b full workout (tick all sets + finish)     15    4        1613     scroll to Finish; 12 sets ticked; saved sessions=7; scrolls counted when a tick was off-screen/obscured (1 per set, an under-estimate of swipes)
+4a coach card: accept (Start deload week)    1     0        321      deloadUntil set: true; card in first viewport: true (bottom 555px); toast has Undo pill: false
+4b coach card: undo (End it now)             1     0        311      deloadUntil=0 (reverted: true); no Undo on the accept toast - the only reversal is the banner's "End it now" ("Not now" snoozes 14 days, no undo)
+5 edit past session (change reps, save)      5     2        1086     scroll to History row; scroll to Save changes; reps 10 -> 9; first History row sits at y=2214px (fold 844): below the fold; plus keyboard entry (not counted as taps)
+
+TOUCH TARGETS (interactive elements smaller than 44x44 / 24x24 CSS px, as rendered)
+  active: 126 interactive, 78 < 44px, 0 < 24px  (bounding boxes)
+      revert "Keep 135×10" 93x25  x1
+      revert "Keep 120×10" 93x25  x1
+      revert "Keep 50×10" 88x25  x1
+      revert "Keep 80×10" 88x25  x1
+      warm "n" 28x44  x12
+      rest-tap "2:00" 53x29  x1
+      ex-note "+ Note on this lift" 101x30  x4
+      step "−" 34x44  x24
+      step "+" 34x44  x24
+      add-set "+ Set" 55x34  x4
+      del-set "− Set" 55x34  x4
+      finish "Finish" 60x34  x1
+  active EFFECTIVE (elementFromPoint probe, incl. ::before hit-slop): 49 < 44px, 0 < 24px; overlapping hit rects: 0, probe points stolen by a neighbour: 0
+      eff ex-note "+ Note on this lift" 101x31  x3
+      eff ex-note "+ Note on this lift" 101x32  x1
+      eff add-set "+ Set" 55x35  x4
+      eff del-set "− Set" 56x35  x4
+      eff finish "Finish" 60x35  x1
+      eff warm "n" 38x45  x12
+      eff step "−" 38x45  x12
+      eff step "+" 38x45  x12
+  finishSheet: 2 interactive, 0 < 44px, 0 < 24px  (bounding boxes)
+  finishSheet EFFECTIVE (elementFromPoint probe, incl. ::before hit-slop): 0 < 44px, 0 < 24px; overlapping hit rects: 0, probe points stolen by a neighbour: 0
+  today: 8 interactive, 0 < 44px, 0 < 24px  (bounding boxes)
+  today EFFECTIVE (elementFromPoint probe, incl. ::before hit-slop): 0 < 44px, 0 < 24px; overlapping hit rects: 0, probe points stolen by a neighbour: 0
+
+OVERFLOW (active workout; scrollWidth <= clientWidth)
+  320px: document ok (320/320); cards/rows/groups overflowing: none; weight input 45px wide; set row 53px tall
+  360px: document ok (360/360); cards/rows/groups overflowing: none; weight input 53px wide; set row 53px tall
+  390px: document ok (390/390); cards/rows/groups overflowing: none; weight input 54px wide; set row 53px tall
+
+AXE-CORE (violations: id [impact] nodes)
+  active: color-contrast [serious] 9
+  today: color-contrast [serious] 2
+  progress: color-contrast [serious] 1
+  history: color-contrast [serious] 2, heading-order [moderate] 1, region [moderate] 6
+      heading-order: h3
+      region: h3 | .sub
+  plan: color-contrast [serious] 1
+
+OFFLINE {"swReady":true,"controller":true,"bootsOffline":true,"todayRenders":true,"sessionsBefore":6,"sessionsAfter":7,"persisted":true}
+
+JOURNEYS_JSON {"journeys":[{"journey":"1 start workout (cold open)","taps":1,"scrolls":0,"ms":158,"notes":"app ready 47ms; Start in first viewport: true (bottom 263px of 844, tab bar top 780px)"},{"journey":"2a log prefilled set (tick)","taps":1,"scrolls":0,"ms":310,"notes":"prefill 135 x 11; done=true; rest timer: true"},{"journey":"2b log set with weight +5 (stepper)","taps":2,"scrolls":0,"ms":373,"notes":"135 -> 140; one + tap = 5 lb (settings.inc=5); typing instead = tap input + keyboard + dismiss"},{"journey":"3 finish workout (2 sets logged)","taps":2,"scrolls":0,"ms":608,"notes":"sessions 6->7, active=null; lands on Progress tab; header Finish in first viewport: true; Save in first viewport: true"},{"journey":"3b full workout (tick all sets + finish)","taps":15,"scrolls":4,"ms":1613,"notes":"scroll to Finish; 12 sets ticked; saved sessions=7; scrolls counted when a tick was off-screen/obscured (1 per set, an under-estimate of swipes)"},{"journey":"4a coach card: accept (Start deload week)","taps":1,"scrolls":0,"ms":321,"notes":"deloadUntil set: true; card in first viewport: true (bottom 555px); toast has Undo pill: false"},{"journey":"4b coach card: undo (End it now)","taps":1,"scrolls":0,"ms":311,"notes":"deloadUntil=0 (reverted: true); no Undo on the accept toast - the only reversal is the banner's \"End it now\" (\"Not now\" snoozes 14 days, no undo)"},{"journey":"5 edit past session (change reps, save)","taps":5,"scrolls":2,"ms":1086,"notes":"scroll to History row; scroll to Save changes; reps 10 -> 9; first History row sits at y=2214px (fold 844): below the fold; plus keyboard entry (not counted as taps)"}],"touch":{"active":{"total":126,"lt44":78,"lt24":0,"effLt44":49,"effLt24":0,"overlaps":0,"stolenPts":0,"overlapEx":[],"stolenEx":[],"worst":["revert \"Keep 135×10\" 93x25  x1","revert \"Keep 120×10\" 93x25  x1","revert \"Keep 50×10\" 88x25  x1","revert \"Keep 80×10\" 88x25  x1","warm \"n\" 28x44  x12","rest-tap \"2:00\" 53x29  x1","ex-note \"+ Note on this lift\" 101x30  x4","step \"−\" 34x44  x24","step \"+\" 34x44  x24","add-set \"+ Set\" 55x34  x4","del-set \"− Set\" 55x34  x4","finish \"Finish\" 60x34  x1"],"worstEff":["ex-note \"+ Note on this lift\" 101x31  x3","ex-note \"+ Note on this lift\" 101x32  x1","add-set \"+ Set\" 55x35  x4","del-set \"− Set\" 56x35  x4","finish \"Finish\" 60x35  x1","warm \"n\" 38x45  x12","step \"−\" 38x45  x12","step \"+\" 38x45  x12"]},"finishSheet":{"total":2,"lt44":0,"lt24":0,"effLt44":0,"effLt24":0,"overlaps":0,"stolenPts":0,"overlapEx":[],"stolenEx":[],"worst":[],"worstEff":[]},"today":{"total":8,"lt44":0,"lt24":0,"effLt44":0,"effLt24":0,"overlaps":0,"stolenPts":0,"overlapEx":[],"stolenEx":[],"worst":[],"worstEff":[]}},"axe":{"active":[{"id":"color-contrast","impact":"serious","nodes":9,"sample":["section:nth-child(1) > .callout > .why.reps > .mark [#2e7d57 on #ccd8d7 = 3.43]","section:nth-child(1) > .callout > .why.reps > span:nth-child(2) [#2e7d57 on #ccd8d7 = 3.43]","section:nth-child(2) > .callout > .why.reps > .mark [#2e7d57 on #ccd8d7 = 3.43]","section:nth-child(2) > .callout > .why.reps > span:nth-child(2) [#2e7d57 on #ccd8d7 = 3.43]","section:nth-child(3) > .callout > .why.reps > .mark [#2e7d57 on #ccd8d7 = 3.43]","section:nth-child(3) > .callout > .why.reps > span:nth-child(2) [#2e7d57 on #ccd8d7 = 3.43]"]}],"today":[{"id":"color-contrast","impact":"serious","nodes":2,"sample":[".sub [#d29e37 on #f7efdd = 2.11]",".on > span [#c98a0e on #f7efdd = 2.57]"]}],"progress":[{"id":"color-contrast","impact":"serious","nodes":1,"sample":[".on > span [#c98a0e on #f7efdd = 2.57]"]}],"history":[{"id":"color-contrast","impact":"serious","nodes":2,"sample":[".on > span [#c98a0e on #f7efdd = 2.57]",".danger [#b03a32 on #e7d9da = 4.38]"]},{"id":"heading-order","impact":"moderate","nodes":1,"sample":["h3"]},{"id":"region","impact":"moderate","nodes":6,"sample":["h3",".sub"]}],"plan":[{"id":"color-contrast","impact":"serious","nodes":1,"sample":["button[data-tab=\"plan\"] > span [#c98a0e on #f7efdd = 2.57]"]}]},"offline":{"swReady":true,"controller":true,"bootsOffline":true,"todayRenders":true,"sessionsBefore":6,"sessionsAfter":7,"persisted":true},"errors":[],"bugs":[],"startInFirstViewport":true,"overflow":{"320":{"doc":true,"docW":"320/320","inner":[],"weightInputW":45,"setRowH":53},"360":{"doc":true,"docW":"360/360","inner":[],"weightInputW":53,"setRowH":53},"390":{"doc":true,"docW":"390/390","inner":[],"weightInputW":54,"setRowH":53}},"coachCardMechanism":"deload banner (todayIdle: \"Deload worth considering\"); there is no tools/test/t39-coach.mjs in this repo"}
