@@ -6,7 +6,7 @@ non-obvious parts, and what has actually been verified. Pair it with
 for the commercial question. **[Traps](#traps--read-before-changing-anything)
 is the section to read before touching anything.**
 
-*Last updated: 8 Aug 2026 (v21) — built with Claude Opus 5.*
+*Last updated: 8 Nov 2026 (v26.9, cloud sprint) — earlier: 8 Aug 2026 (v21).*
 
 ---
 
@@ -597,6 +597,20 @@ sets *after* it (`droppedSets()`) are back-offs or a mid-exercise drop, and
 make the lift hold: "Only 1 of 3 sets at 225 — get them all there first".
 A blank weight on loaded work is an un-retyped set, not a set at zero. See
 `t30`.
+
+**The near-miss step (v26.2).** In double progression the load used to step
+only when *every* set at the working load reached the top (`minR>=top`). The
+last working set of a ranged lift is a rep-out, so it ends 1–2 under the
+earlier sets from fatigue alone, and 12,12,11 at 8–12 held — then the next
+target was built from that 11. Now the step also comes when every set but the
+last is at the top, the last is within `min(NEAR_SLACK=2, ⌊(top−low)/2⌋)` of
+it (never below `low`), every planned set was logged at the load, and the lift
+is rep-counted and loaded. Everything that returns earlier (deload, trend
+back-off, RPE hold, dropped sets) still wins, and the failed-jump memory still
+applies. 20-seed year, paired: prescriptions ≥1 step lighter than the heaviest
+load the lifter could do mid-range fell 37.3% → 31.8%, with over-loading,
+unreachable loads and flips unchanged; the real log changes 1 of 102 calls
+(a curl jump he made himself a month later). `t42`; invariants in `t43`.
 
 Order of precedence:
 
@@ -1268,6 +1282,27 @@ bite.
     unit-style checks and obvious the moment a real click drove them. The menu
     overflow above is the same lesson again: it was found by measuring a
     rendered sheet, not by reading the code.
+
+20. **A worktree agent starts from `main`, not from the branch you are on.**
+    In the 8 Nov sprint every `isolation: "worktree"` implementer came up on
+    `main` (v21) while the sprint branch was v26.1 — one measured a v21 app and
+    reported that the coach "does not exist". First line of every brief:
+    check `BUILD` and `git checkout -B <branch> <sprint branch>` if it is wrong.
+21. **Port 8117 is shared; a second tree's server makes tests pass against
+    the wrong build.** `harness.mjs` reads `IRONLOG_PORT` (default 8117).
+    Serve each tree on its own port and set it, or a "green" run is someone
+    else's code.
+22. **A load-step rule that reads the minimum set reads the rep-out.** The
+    last working set is taken to (near) failure on purpose, so anything that
+    keys on `min(reps)` — the jump, the next target — sees fatigue as a miss.
+    v26.2 fixed the jump; the target still slides (12,12,9 → "go for 10"),
+    measured as harmless to load accuracy. Don't "fix" one without simulating
+    both.
+23. **Hit-slop must leave a dead strip between controls that change values.**
+    v26.3 grew the steppers into the gutter around the "×"; the first version
+    met in the middle, so a tap on the "×" added weight or took a rep away.
+    Keep ~5 px that belongs to nothing, and probe it with `elementFromPoint`
+    (`tools/sprint/journeys.mjs` does).
 
 ## Settled decisions
 
