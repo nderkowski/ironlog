@@ -32,7 +32,7 @@ not a toy.
   `npx http-server -p 8117 -s -c-1 .` and use a 390×844 mobile context. Most of
   the genuine bugs in this codebase were invisible to function-level tests and
   obvious the moment a real click drove them. **The suites live in
-  `tools/test/`** — `t20`–`t31`, run with
+  `tools/test/`** — `t20`–`t32`, run with
   `node tools/test/tNN-….mjs` against that server. Run them before you change
   anything and after; add to them for whatever you touch.
 - Ask before merging to `main`.

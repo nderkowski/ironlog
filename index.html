@@ -236,6 +236,19 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .why.reps{background:var(--good-soft);color:var(--good)}
 .why.deload{background:var(--bad-soft);color:var(--bad)}
 .why.hold{color:var(--ink-2)}
+/* v24: the rep-out instruction and the shadow prescription. Same strip shape
+   as .why so the callout reads as one block. */
+.callout .outhint,.callout .shadow{
+  display:flex;align-items:center;gap:7px;
+  padding:7px 10px;font-size:12.5px;border-top:1px solid var(--line);color:var(--ink-2);
+}
+.callout .shadow{font-weight:600;color:var(--ink)}
+.callout .shadow .use{
+  margin-left:auto;font-size:12px;font-weight:700;padding:3px 10px;border-radius:7px;
+  background:var(--accent);color:#fff;white-space:nowrap;flex:0 0 auto;
+}
+.callout .shadow.stall{color:var(--bad);font-weight:600}
+.set.out .idx{color:var(--accent);font-weight:800}
 
 .sets{display:flex;flex-direction:column}
 .set{
@@ -675,7 +688,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v23";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v24";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -895,7 +908,8 @@ function exSessions(name){
       var e=s.exercises[j];
       if(normName(e.name)!==k) continue;
       var sets=working(e.sets).filter(function(x){ return x.done!==false&&num(x.r)>0; });
-      if(sets.length) out.push({ts:s.ts,sets:sets,sessionId:s.id,deload:!!s.deload,bw:bwMode(e),metric:metricOf(e)});
+      if(sets.length) out.push({ts:s.ts,sets:sets,sessionId:s.id,deload:!!s.deload,bw:bwMode(e),metric:metricOf(e),
+                                kind:e.kind||""});
     }
   }
   return out;
@@ -1084,10 +1098,40 @@ function cycleOf(name){
    simulations: every false "down" above becomes flat or up, it survives ±1 rep
    of session-to-session noise, and a genuine 2%-per-session decline still
    reports −6.5% and a genuine stall −0.1%. */
+/* What a session says about strength, for the trend only (PR board and
+   charts keep sessionTopScore). A rep-out set is taken near failure, so its
+   score is the honest one and it has no double-progression sawtooth. Without
+   one, only sets at the working load count: a single test set at 170 between
+   two at 150 held Lat Pulldown on "Already backed off" for two sessions. */
+function trendScore(s){
+  var w=workLoad(s.sets,s.bw), b=0;
+  s.sets.forEach(function(x){ if(isAt(x,w,s.bw)) b=Math.max(b,setScore(x,s.metric)); });
+  /* A real rep-out is the session's best set. One that isn't was not pushed
+     — the flag is set by position at save, not by effort — and scoring it
+     would read an easy last set as a decline (it cut a simulated lifter a
+     third time, below his true 8RM). So take whichever says more. */
+  var out=s.sets.filter(function(x){ return x.out; });
+  if(out.length) b=Math.max(b,setScore(out[out.length-1],s.metric));
+  return b||sessionTopScore(s);
+}
+/* A load drop the lifter chose — not one the app prescribed (kind "deload")
+   — is a reset, not a decline. The trend starts after it, so going 65 → 55
+   by choice doesn't read as "slipping" for the next nine sessions. Newest
+   first in, newest first out. */
+function sinceChosenDrop(h){
+  for(var i=0;i+1<h.length;i++){
+    var a=workLoad(h[i].sets,h[i].bw), b=workLoad(h[i+1].sets,h[i+1].bw);
+    /* Only when the session recorded what the app prescribed: a log without
+       it (old, hand-built) can't tell a choice from a decline, so it keeps
+       its whole history. */
+    if(heavierLoad(b,a,h[i].bw)&&h[i].kind&&h[i].kind!=="deload") return h.slice(0,i+1);
+  }
+  return h;
+}
 function trendAt(name,win){
-  var h=exWorking(name);
+  var h=sinceChosenDrop(exWorking(name));
   if(h.length<4) return {state:"new",n:h.length,pct:0};
-  var vals=h.slice(0,win).map(sessionTopScore).reverse();   // oldest first
+  var vals=h.slice(0,win).map(trendScore).reverse();   // oldest first
   var n=vals.length;
   var ym=vals.reduce(function(x,y){ return x+y; },0)/n;
   if(!ym) return {state:"new",n:h.length,pct:0};
@@ -1806,6 +1850,71 @@ function prescribe(name,ex){
   return {w:w,r:low,sets:nsets,why:"Missed "+amtText(low,met)+" last time — run it back",kind:"hold"};
 }
 
+/* ============================ v24: rep-out shadow ============================
+   The last working set of a ranged rep exercise is a rep-out: as many as you
+   can (compounds stop one short of form breaking, isolation goes to failure).
+   That is the one number in the log that measures capacity rather than echoing
+   the target, and shadowPrescribe() decides the next session from it alone.
+
+   It is a SHADOW: shown beside prescribe()'s answer, applied only when you
+   tap Use, recorded either way, so whether it should replace double
+   progression is decided from evidence (ROADMAP v24/v25), not assumed.
+
+   APRE-style (Mann 2010), relative to the range and counted in equipment
+   steps. No e1RM anywhere, so it is valid at 12–20 reps where rep-to-1RM
+   formulas aren't (Reynolds 2006):
+     A < low−1        one step lighter       working sets at low
+     low−1 ≤ A < low  hold                   working sets at low
+     low ≤ A < top    hold                   working sets at A
+     top ≤ A < top+4  one step heavier       working sets at low
+     A ≥ top+4        two steps heavier      working sets at low
+   The step comes when the rep-out REACHES the top, not when it passes it.
+   The rep-out is the last set, already tired by the ones before it, so it
+   reads about three reps under fresh capacity; waiting for top+1 asked for
+   more reserve than double progression ever does, and in the closed loop
+   (t32) a lifter with reserve parked at 195 while v23's engine reached 200.
+   Working sets match the rep-out's count for the same reason: sets 1–2 are
+   fresher than the set that produced A, so A reps leaves them 2–3 short of
+   failure — inside the 1–3 the evidence supports. A−2 left about five.
+   =============================================================================== */
+var OUT_JUMP2=4;
+function repOutApplies(ex){ return metricOf(ex)===0&&num(ex.repTop)>num(ex.reps); }
+function repOutHint(name){
+  return movementClass(name)==="iso"?"take it to failure":"stop 1 short of form breaking";
+}
+function repOutOf(h){
+  var o=h.sets.filter(function(x){ return x.out; });
+  return o.length?o[o.length-1]:null;
+}
+function shadowPrescribe(name,ex){
+  if(inDeloadWeek()||!repOutApplies(ex)) return null;
+  var low=Math.max(1,num(ex.reps)), top=num(ex.repTop), mode=bwMode(ex);
+  var step=stepFor(ex), nsets=Math.max(1,num(ex.sets)||3);
+  var hist=exWorking(name), last=hist[0];
+  var o=last&&repOutOf(last);
+  if(!o) return null;
+  var W=blankW(o,mode)?workLoad(last.sets,mode):num(o.w), A=num(o.r);
+  var k=A<low-1?-1:A<top?0:A<top+OUT_JUMP2?1:2;
+  var w=W;
+  if(k<0) w=mode===2?W+step:Math.max(0,W-step);
+  for(var i=0;i<k;i++) w=harder(w,step,mode);
+  if(k<0&&w===W) k=0;                        // nothing lighter to go to
+  var r=k===0?Math.max(low,Math.min(top,A)):low;
+  var why=k===2?"last set "+A+", well past "+top+" — two steps up":
+          k===1?"last set "+A+", at the top — one step up":
+          k<0?"last set "+A+", under "+low+" — one step down":
+          A<low?"last set "+A+" — repeat it":"last set "+A+" — same weight";
+  /* Three exposures at one load, all with rep-outs, and no gain from the
+     first to the newest. A rule of thumb: there is no validated stall rule
+     (Coleman 2024; Bell 2023 is coaches' opinion), and the card says so. */
+  var stall=false;
+  if(hist.length>=3&&k===0){
+    var outs=hist.slice(0,3).map(function(h){ var x=repOutOf(h); return x?{w:num(x.w),r:num(x.r)}:null; });
+    stall=outs.every(function(x){ return x&&x.w===outs[0].w; })&&outs[0].r<=outs[2].r;
+  }
+  return {w:w,r:r,sets:nsets,why:why,steps:k,stall:stall};
+}
+
 /* ============================ sparkline ============================ */
 function spark(canvas,values,opts){
   opts=opts||{};
@@ -2196,6 +2305,7 @@ function makeSessionEx(planEx,planId){
     mg:planEx.mg||"", mg2:(planEx.mg2||[]).slice(),
     supplemental:!planId, note:"",
     why:p.why, kind:p.kind,
+    shadow:(function(sp){ return sp?{w:sp.w,r:sp.r,why:sp.why,stall:sp.stall,used:false}:null; })(shadowPrescribe(planEx.name,planEx)),
     lastW:last?num(last.sets[0].w):null, lastR:last?num(last.sets[0].r):null,
     sets:sets
   };
@@ -2369,13 +2479,28 @@ function exerciseCard(ex,ei){
     var glyph=ex.kind==="up"?"↑":ex.kind==="reps"?"+1":ex.kind==="deload"?"↓":"=";
     html+='<div class="why '+esc(ex.kind)+'"><span class="mark">'+glyph+'</span><span>'+esc(ex.why)+'</span></div>';
   }
+  var outSi=-1, outNo=0;
+  if(repOutApplies(ex)) ex.sets.forEach(function(s,si){ if(!s.warm){ outSi=si; outNo++; } });
+  var sh=ex.shadow;
+  if(sh){
+    var same=String(sh.w)===String(working(ex.sets)[0]?working(ex.sets)[0].w:"")&&
+             String(sh.r)===String(working(ex.sets)[0]?working(ex.sets)[0].r:"");
+    html+='<div class="shadow" data-shadow="'+ei+'"><span>Rep-out method: '+esc(entryText({w:sh.w},mode))+' × '+sh.r+
+      ' <span class="muted" style="font-weight:500">· '+esc(sh.why)+'</span></span>'+
+      (sh.used?'<span class="tiny muted" style="margin-left:auto">using it</span>':
+       same?'<span class="tiny muted" style="margin-left:auto">same</span>':
+       '<button class="use" data-act="use-shadow" data-ei="'+ei+'">Use</button>')+'</div>';
+    if(sh.stall) html+='<div class="shadow stall">Stalled 3 sessions at this weight — try a variation or a new range (a rule of thumb, not a proven one)</div>';
+  }
+  if(outSi>=0)
+    html+='<div class="outhint">Set '+outNo+' is a rep-out: as many as you can — '+esc(repOutHint(ex.name))+'.</div>';
   html+='</div>';
 
   html+='<div class="sets">';
   var wi=0;
   ex.sets.forEach(function(s,si){
     if(!s.warm) wi++;
-    html+='<div class="set'+(s.warm?" warm":"")+(s.done?" done":"")+(s.done&&s.pr?" pr":"")+'" data-ei="'+ei+'" data-si="'+si+'">'+
+    html+='<div class="set'+(s.warm?" warm":"")+(s.done?" done":"")+(s.done&&s.pr?" pr":"")+(si===outSi?" out":"")+'" data-ei="'+ei+'" data-si="'+si+'">'+
       '<button class="idx" data-act="warm" aria-label="'+(s.warm?"Make this a working set":"Make this a warm-up")+'">'+(s.warm?"W":wi)+'</button>'+
       '<div class="grp">'+
         '<button data-act="step" data-f="w" data-d="-1" aria-label="Less weight">−</button>'+
@@ -2506,6 +2631,16 @@ $("#view").addEventListener("click",function(e){
     return;
   }
 
+  var use=t.closest('[data-act="use-shadow"]');
+  if(use){
+    var ex6=S.active.exercises[+use.dataset.ei], sh6=ex6.shadow;
+    if(!sh6) return;
+    ex6.sets.forEach(function(s){ if(!s.done&&!s.warm){ s.w=String(sh6.w); s.r=String(sh6.r); } });
+    sh6.used=true;
+    save(); viewToday(); refreshSummary();
+    toast("Using the rep-out method: "+entryText({w:sh6.w},bwMode(ex6))+" × "+sh6.r);
+    return;
+  }
   var rev=t.closest('[data-act="revert"]');
   if(rev){
     var ex2=S.active.exercises[+rev.dataset.ei];
@@ -3198,6 +3333,14 @@ function commitSession(){
   a.bw=num(S.settings.bodyweight);
   a.deload=!!a.deload||inDeloadWeek();
   a.exercises.forEach(function(e){ e.sets=e.sets.filter(function(s){ return s.done; }); });
+  /* The rep-out is whichever working set came last, decided at save, so
+     adding or removing sets mid-workout can't leave the flag on the wrong one. */
+  a.exercises.forEach(function(e){
+    if(!repOutApplies(e)) return;
+    var w=working(e.sets);
+    w.forEach(function(s){ delete s.out; });
+    if(w.length) w[w.length-1].out=true;
+  });
   a.exercises=a.exercises.filter(function(e){ return e.sets.length; });
   S.sessions.unshift(a);
   S.active=null; stopRest();

@@ -10,7 +10,7 @@ Ship in slices; each slice should leave the app fully usable.
 
 ---
 
-## Next session starts here — v24: measure effort, then progress from it
+## Next session starts here — v24 shipped in shadow; v25 decides whether it takes over
 
 **Why.** v22's replay and the research (RESEARCH.md) agree: the engine's limit
 is not its rules but its input. Half of Nick's logged exercises stop exactly
@@ -31,7 +31,31 @@ its slots no longer disagree. The week-2 variants are gone. Why: Day A ran
 about 80 min as written and was done 3 of 7 exercises three times; face
 pulls were never done after 9 Aug.
 
-### v24 — rep-out last set, shadow prescriptions
+### v24 — rep-out last set, shadow prescriptions ✅ *shipped*
+
+Built as specified below, with two corrections that came out of the tests:
+
+- **The step comes when the rep-out *reaches* the top, not when it passes
+  it.** The rep-out is the last set, tired by the ones before it, so it reads
+  about 3 reps under fresh capacity. `A > top` asked for more reserve than
+  double progression ever does. In `t32`'s closed loop, a lifter with reserve
+  parked at 195 while v23 reached 200. Fixed, the same lifter reaches 200 at
+  session 6 instead of 14. Both stop there, because that is his real
+  strength.
+- **With no rep-out in the history there is no shadow line at all**, rather
+  than one equal to today's prescription. Nothing to measure, nothing shown.
+  The replay of Nick's real log changes 5 of 102 calls, and all of them come
+  from the trend fixes:
+  - Hamstring curls: the false "back off to 100" on 9/1 is gone.
+  - Lat Pulldown: the July 170 test set no longer drives the trend.
+  - Incline: his own 65→55 drop no longer reads as a decline.
+
+- **Working sets match the rep-out, not two below it.** The rep-out is the
+  tired third set. With the planned `A − 2`, the fresh sets would sit about
+  5 reps from failure, which is the under-shooting this release exists to
+  fix. With `A` they sit 2–3 short.
+
+`t32` covers all of this. The table below is the shipped one.
 
 1. **The last set is a rep-out.**
    - On the card, the last working set reads "As many as you can". Compounds
@@ -50,9 +74,9 @@ pulls were never done after 9 Aug.
    |---|---|---|
    | `A < low − 1` | −1 step | `low` |
    | `low − 1 ≤ A < low` | hold | `low` |
-   | `low ≤ A ≤ top` | hold | `clamp(A − 2, low, top)` |
-   | `top < A ≤ top + 4` | +1 step | `low` |
-   | `A > top + 4` | +2 steps (cap) | `low` |
+   | `low ≤ A < top` | hold | `A` (sets 1–2 are fresher, so this is ~2–3 short) |
+   | `top ≤ A < top + 4` | +1 step | `low` |
+   | `A ≥ top + 4` | +2 steps (cap) | `low` |
 
    The rep-out is always "as many as you can". The `+4` boundary is a
    starting guess. After about 4 jumps per lift, compare it with the actual
@@ -72,8 +96,8 @@ pulls were never done after 9 Aug.
      target, the rep-out goes to capacity −1. Assert the shadow progresses
      faster than v23 in the same sim, never prescribes a load whose true
      capacity is under `low − 1`, and doesn't oscillate.
-   - Replay of the real log, which has no rep-outs: shadow must equal today's
-     prescription.
+   - Replay of the real log, which has no rep-outs: no shadow line, and only
+     the trend fixes change anything.
    - UI: the rep-out label, the shadow line and tap-to-use, and 320 px overflow.
 
 **Promote it (v25) only if, after ≥3 weeks and ≥9 sessions**, the shadow
@@ -146,7 +170,7 @@ across slots with different rep ranges (it would have moved a cable fly from
 |---|---|
 | **v23** | **Automatic backup to a private GitHub gist** (Slice 4's "user-supplied cloud file", for one user). Token in Settings; backs up after every workout and on changes; restore with both session counts shown and the old log kept. A new phone can't bury the real backup under an empty one. Also asks the browser to keep the data (`storage.persist()`). Details in PROJECT_STATE's settled decisions |
 
-The suites are in `tools/test/` — twelve of them now, `t20`–`t31`. Run them all
+The suites are in `tools/test/` — thirteen of them now, `t20`–`t32`. Run them all
 before and after any change and read the summary lines; assertion counts are
 deliberately not written down here, because they go stale and did.
 

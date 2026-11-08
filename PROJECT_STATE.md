@@ -567,6 +567,30 @@ Order of precedence:
    load and one more rep; short of the bottom means run it back.
 5. **Straight sets** (`repTop` empty) → hit the target on every set, load goes up.
 
+**v24 — the rep-out and its shadow.** For ranged rep work
+(`repOutApplies()`), the last working set is a rep-out: as many as you can.
+Compounds stop 1 short of form breaking; `movementClass()` "iso" goes to
+failure. The card says so, and the row gets `.out`. `commitSession()` sets
+`out:true` on whichever working set came last, so adding or removing sets
+mid-workout can't misplace it.
+
+`shadowPrescribe()` reads only the newest rep-out and applies the table in
+ROADMAP v24, counted in equipment steps with no e1RM. `makeSessionEx()`
+stores the result as `ex.shadow = {w, r, why, stall, used}`. The card shows
+it beside `why`; **Use** copies it into the undone sets, the same way
+"Keep" does. It never applies itself: the stored `used` flag plus the logged
+outcome is the evidence v25 is decided on. With no rep-out in the history
+there is no shadow line. The stall line is a labelled rule of thumb.
+
+**The trend reads `trendScore()`, not `sessionTopScore()`.** It is the best
+set at the working load, or the rep-out if that is higher. A "rep-out" that
+isn't the session's best set wasn't pushed, and scoring it read an easy last
+set as a decline. The PR board and charts keep `sessionTopScore`. The trend
+also starts after a load drop **you** chose (`sinceChosenDrop()`): lighter
+than the session before, and the session recorded a prescription `kind` that
+wasn't `"deload"`. A log without `kind` keeps its whole history, because it
+can't tell a choice from a decline.
+
 There is **no load-jump check**, on purpose — read ROADMAP's v22 entry before
 adding one. Epley from a set stopped at its target is a lower bound, and on
 Nick's real log it would have blocked every jump he then made.
