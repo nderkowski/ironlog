@@ -688,7 +688,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v24";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v24.1";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -4013,6 +4013,9 @@ function viewSettings(){
     '</div>'+
   '</div>';
 
+  html+='<div class="eyebrow" style="margin:6px 0 0">Workout plan</div><div class="card"><div class="stack">'+
+    planSettingsHtml()+'</div></div>';
+
   html+='<div class="eyebrow" style="margin:6px 0 0">Data</div><div class="card"><div class="stack">'+
     '<div class="tiny muted" id="storage-status">'+esc(storageLine())+'</div>'+
     '<div class="tiny muted">Your log lives in this browser on this device. It only leaves it when you back it up to GitHub below, or send a file out.'+
@@ -4240,6 +4243,22 @@ $("#view").addEventListener("click",function(e){
   }
   var pw=t.closest("[data-pw],[data-pn]");
   if(pw) return;                                  // let the input handler have it
+  if(t.closest('[data-act="plan-rec"]')||t.closest('[data-act="plan-back"]')){
+    var back=!!t.closest('[data-act="plan-back"]');
+    if(S.active){ toast("Finish or discard the workout first"); return; }
+    confirmSheet(back?"Switch back to your previous plan?":"Switch to the recommended plan?",
+      back?"Your days go back to how they were before you switched, and rest goes back to "+S.planBackup.rest+" s. Logged sessions are not touched."
+          :"Days A, B and C are replaced with the plan above and rest becomes "+REC_PLAN.rest+" s (now "+S.settings.rest+
+           " s). Every logged session is kept, with Lateral Riase and the two face-pull spellings merged. You can switch back here at any time.",
+      back?"Switch back":"Switch",
+      function(){
+        if(back) switchBackPlan(); else switchToRecPlan();
+        viewSettings();
+        var nx=nextRoutine();
+        toast((back?"Previous plan restored":"Switched")+(nx?" — "+nx.name+" is next":""));
+      });
+    return;
+  }
   if(t.closest('[data-act="gist-save"]')){ if(gistSaveToken()) viewPrefs(); return; }
   if(t.closest('[data-act="gist-remove"]')){ gistRemoveToken(); viewPrefs(); return; }
   if(t.closest('[data-act="gist-now"]')){ gistNowTap(); return; }
@@ -4977,6 +4996,108 @@ function askPersist(){
     .then(function(kept){ return kept?true:navigator.storage.persist(); })
     .then(function(kept){ storageKept=!!kept; },function(){ storageKept=null; })
     .then(paintStorage);
+}
+
+/* ============================ recommended plan ============================
+   Nick's own lifts, repacked to fit the ~45 minutes his logs show a session
+   really lasts. As written, Day A was 21 straight sets at 180 s rest, about
+   80 min; he stopped after three exercises on three of the four times he ran
+   it as written, and the lifts at the end of each day were the ones that
+   never got done. So:
+   one main lift, then three supersets (`link`), 120 s rest. Lateral Raise is
+   12–20 everywhere so its slots agree. Face Pull is out — no variation ever
+   felt right, and it was skipped every time after 9 Aug — and Rear Delt Fly
+   takes the slot; rows on all three days cover the upper back regardless.
+
+   Switching keeps every logged session and keeps the plan it replaces in
+   S.planBackup (so it travels in backups and the gist), which makes
+   "Switch back" one tap. Plan rows go through newPlanEx() (trap 13), and
+   carry over the old row's increment, bar, load type and muscle tags. */
+var REC_PLAN={
+  name:"3-day full body, about 45 min",
+  rest:120,
+  days:{
+    A:[["Leg Press",8,12],["Incline DB Press",8,12],["Cable Row",8,12,1],
+       ["Hamstring Curls",8,12],["Lateral Raise",12,20,1],["DB Curl",8,12],["Tricep Pushdown",10,15,1]],
+    B:[["Bulgarian Split Squat",8,11],["DB Overhead Press",8,12],["Lat Pulldown",8,12,1],
+       ["Leg Extension",10,15],["Lateral Raise",12,20,1],["DB Curl",8,12],["Tricep Pushdown",10,15,1]],
+    C:[["RDL",6,10],["Flat DB Press",8,12],["DB Row",8,12,1],
+       ["Hamstring Curls",8,12],["Low to high cable fly",12,16,1],["Lateral Raise",12,20],["Rear Delt Fly",12,20,1]]
+  }
+};
+/* Fixed in the history on switching, so the plan's lifts join what was
+   already logged under a typo or a second spelling. */
+var REC_RENAME={"lateral riase":"Lateral Raise","facepull":"Face Pull","face pull":"Face Pull"};
+
+function renameHistory(map){
+  var n=0;
+  function fix(e){ var k=normName(e.name); if(map[k]&&e.name!==map[k]){ e.name=map[k]; n++; } }
+  S.sessions.forEach(function(x){ x.exercises.forEach(fix); });
+  eachPlanEx(fix);
+  return n;
+}
+function recPlanEx(spec,old){
+  var e=newPlanEx(spec[0]), o=old[normName(spec[0])];
+  if(o) ["inc","bar","bw","metric","mg","mg2"].forEach(function(k){
+    if(o[k]!==undefined) e[k]=Array.isArray(o[k])?o[k].slice():o[k];
+  });
+  e.sets=3; e.reps=spec[1]; e.repTop=spec[2]; e.link=!!spec[3];
+  return e;
+}
+function recDayText(key){
+  var out=[];
+  REC_PLAN.days[key].forEach(function(sp){
+    if(sp[3]&&out.length) out[out.length-1]+=" + "+sp[0]; else out.push(sp[0]);
+  });
+  return out.join(" · ");
+}
+function switchToRecPlan(){
+  var before={ts:Date.now(), rest:S.settings.rest, routines:JSON.parse(JSON.stringify(S.routines))};
+  renameHistory(REC_RENAME);
+  var old={};
+  eachPlanEx(function(e){ var k=normName(e.name); if(!old[k]) old[k]=e; });
+  Object.keys(REC_PLAN.days).forEach(function(key){
+    var ex=REC_PLAN.days[key].map(function(sp){ return recPlanEx(sp,old); });
+    var r=S.routines.find(function(x){ return x.key===key; });
+    var v=newVariant("",ex);
+    if(r){
+      /* Keep the routine and its first week's id, so the A → B → C rotation
+         carries on from the last session rather than restarting. */
+      var v0=variantsOf(r)[0]; if(v0) v.id=v0.id;
+      r.variants=[v];
+    } else S.routines.push({id:uid(), key:key, name:"Day "+key, variants:[v]});
+  });
+  S.settings.rest=REC_PLAN.rest;
+  S.planBackup=before;
+  recomputePRs();                                 // names changed (trap 8)
+  writeNow();                                     // a plan change lands now, not on the debounce
+}
+function switchBackPlan(){
+  var b=S.planBackup; if(!b) return;
+  S.routines=b.routines;
+  S.settings.rest=b.rest;
+  delete S.planBackup;
+  renameHistory(REC_RENAME);                      // the restored rows use the fixed names too
+  recomputePRs();
+  writeNow();
+}
+function planSettingsHtml(){
+  var b=S.planBackup, h='<div class="field-row" style="display:block">';
+  if(b){
+    h+='<div class="fl">On the recommended plan<div class="fh">Switched '+esc(shortDate(b.ts))+
+      '. Your previous plan is kept: switching back restores it and its '+esc(String(b.rest))+
+      ' s rest. Logged sessions are never touched either way.</div></div></div>'+
+      '<button class="btn block" data-act="plan-back">Switch back to my previous plan</button>';
+  } else {
+    h+='<div class="fl">Recommended: '+esc(REC_PLAN.name)+
+      '<div class="fh">Your own lifts, repacked to fit about 45 minutes: one main lift, then three supersets, '+
+      REC_PLAN.rest+' s rest. Face pulls are swapped for rear delt flies. Every logged session is kept.</div></div>';
+    Object.keys(REC_PLAN.days).forEach(function(k){
+      h+='<div class="tiny" style="margin-top:6px"><b>'+k+'</b> '+esc(recDayText(k))+'</div>';
+    });
+    h+='</div><button class="btn primary block" data-act="plan-rec">Switch to it</button>';
+  }
+  return h;
 }
 
 /* ============================ render ============================ */

@@ -106,6 +106,17 @@ no lift regressed. Then the rule replaces double progression for any lift
 with rep-out data. Lifts without it keep double progression. Replay before
 and after, as trap 17c says.
 
+**v24.1 — the routine as a switch in Settings.** Settings → Workout plan →
+"Switch to it" replaces days A/B/C with the plan above and sets rest to
+120 s. It keeps every session, the routine and first-week ids (so the
+rotation carries on), and each lift's increment, bar and muscle tags. It
+fixes "Lateral Riase" and merges the two face-pull spellings in the
+history. The old plan and rest are kept in `S.planBackup`, which travels in
+backups and the gist, so "Switch back" restores it exactly. It refuses
+mid-workout. **Face Pull is replaced by Rear Delt Fly**: Nick never did
+face pulls after 9 Aug ("never feel right, whatever the variation"), and
+three rows a rotation already cover the upper back. `t33`, 33 checks.
+
 **Out of scope for v24:** the RPE-gated jump check (superseded by this),
 exercise types beyond the rep-out instruction, and top set + back-offs.
 
@@ -170,7 +181,7 @@ across slots with different rep ranges (it would have moved a cable fly from
 |---|---|
 | **v23** | **Automatic backup to a private GitHub gist** (Slice 4's "user-supplied cloud file", for one user). Token in Settings; backs up after every workout and on changes; restore with both session counts shown and the old log kept. A new phone can't bury the real backup under an empty one. Also asks the browser to keep the data (`storage.persist()`). Details in PROJECT_STATE's settled decisions |
 
-The suites are in `tools/test/` — thirteen of them now, `t20`–`t32`. Run them all
+The suites are in `tools/test/` — fourteen of them now, `t20`–`t33`. Run them all
 before and after any change and read the summary lines; assertion counts are
 deliberately not written down here, because they go stale and did.
 

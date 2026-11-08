@@ -591,6 +591,14 @@ than the session before, and the session recorded a prescription `kind` that
 wasn't `"deload"`. A log without `kind` keeps its whole history, because it
 can't tell a choice from a decline.
 
+**The recommended plan (v24.1)** lives in `REC_PLAN` and is applied from
+Settings by `switchToRecPlan()`. It goes through `newPlanEx()` (trap 13),
+carries over each old row's `inc`/`bar`/`bw`/`metric`/tags, keeps routine
+and first-variant ids so `nextRoutine()` continues, renames the history
+via `REC_RENAME`, runs `recomputePRs()`, and writes immediately. The
+replaced plan and rest go to `S.planBackup`; `switchBackPlan()` restores
+them.
+
 There is **no load-jump check**, on purpose — read ROADMAP's v22 entry before
 adding one. Epley from a set stopped at its target is a lower bound, and on
 Nick's real log it would have blocked every jump he then made.
