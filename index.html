@@ -171,6 +171,12 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .btn.block{width:100%}
 .btn.big{min-height:54px;font-size:16px;border-radius:12px}
 .btn.sm{min-height:34px;padding:6px 10px;font-size:13px;border-radius:8px}
+/* Sprint: Finish and + Set / − Set are tapped every session but drawn 34-35 px
+   tall. Grow the hit area vertically only (a 6 px slop above and below), so
+   no row gets taller and the two side-by-side set buttons keep their gap. */
+[data-act="finish"].btn.sm,[data-act="add-set"],[data-act="del-set"]{position:relative}
+[data-act="finish"].btn.sm::before,[data-act="add-set"]::before,[data-act="del-set"]::before{
+  content:"";position:absolute;left:0;right:0;top:-6px;bottom:-6px}
 .btn[disabled]{opacity:.45;pointer-events:none}
 
 /* ---------- next-up hero ---------- */
@@ -207,7 +213,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .lastsess .ls-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lastsess .ls-t b{color:var(--ink);font-weight:700}
 .lastsess .ls-k{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
-.lastsess .ls-edit{flex:0 0 auto;font-weight:700;color:var(--accent);padding:4px 8px}
+.lastsess .ls-edit{flex:0 0 auto;font-weight:700;color:var(--on-accent);background:var(--accent);border-radius:8px;padding:5px 12px}   /* accent text on white was 2.9:1 */
 
 /* ---------- exercise card ---------- */
 .ex{padding:0;overflow:hidden}
@@ -595,7 +601,7 @@ table.hist tr.dl td{opacity:.6}
    rather than the most muted one. */
 header.top .iconbtn{color:var(--ink-2)}
 /* 44px hit box, 32px of layout: the negative margins give the extra 6px a side back,
-   so the header does not grow and the box stays clear of its neighbours (10px gap). */
+   so the header does not grow; the row gap is 10px but the -6px margin leaves only 4px to the rest pill, so never add horizontal slop to button.rest. */
 header.top .iconbtn{width:44px;height:44px;margin:-6px}
 
 .field-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
@@ -628,17 +634,17 @@ textarea.txt{
 
 /* ---------- edit-session rows ---------- */
 .erow{
-  display:grid;grid-template-columns:26px 1fr 10px 1fr 34px;
+  display:grid;grid-template-columns:26px 1fr 10px 1fr 40px;
   align-items:center;gap:6px;padding:6px 0;border-top:1px solid var(--line);
 }
 .erow .ei{font-family:var(--mono);font-size:11px;color:var(--ink-3);text-align:center}
 .erow input{
-  height:38px;width:100%;border:1px solid var(--line);border-radius:8px;background:var(--bg);
+  height:44px;width:100%;border:1px solid var(--line);border-radius:8px;background:var(--bg);
   font-family:var(--mono);font-size:16px;font-weight:600;text-align:center;padding:0 2px;
   -moz-appearance:textfield;
 }
 .erow input::-webkit-outer-spin-button,.erow input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-.erow .rm{width:32px;height:34px;border-radius:8px;color:var(--ink-3);display:flex;align-items:center;justify-content:center}
+.erow .rm{width:40px;height:44px;border-radius:8px;color:var(--ink-3);display:flex;align-items:center;justify-content:center}
 .erow .rm:active{background:var(--panel-2)}
 .erow.warm input{color:var(--ink-2)}
 
@@ -792,7 +798,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v26.9";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v26.10";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
