@@ -53,7 +53,7 @@ const coachState = () => ({ version: 5, settings: { ...SET }, routines: routines
 
 /* ---------------- driver ---------------- */
 const browser = await chromium.launch();
-const newCtx = (opts = {}) => browser.newContext({ ...devices['Pixel 5'], viewport: { width: 390, height: 844 }, serviceWorkers: 'block', ...opts });
+const newCtx = (opts = {}) => browser.newContext({ ...devices['Pixel 5'], viewport: { width: 390, height: 844 }, serviceWorkers: 'block', colorScheme: process.env.DARK ? 'dark' : 'light', ...opts });
 async function open(state, ctxOpts) {
   const ctx = await newCtx(ctxOpts), page = await ctx.newPage();
   page.on('pageerror', e => R.errors.push('pageerror: ' + e));
@@ -132,6 +132,23 @@ await settle(page); s = await st(page);
 end(`sessions ${before}->${s.sessions.length}, active=${s.active}; lands on Progress tab; header Finish in first viewport: ${fb.inView}; Save in first viewport: ${saveVis.inView}`);
 await ctx.close();
 
+/* ============ 3a. Active workout must not overflow sideways (traps 12/16), and the
+   set-row inputs must still fit a 5-char weight ("137.5") at each width ============ */
+R.overflow = {};
+for (const w of [320, 360, 390]) {
+  const o = await open(mainState(), { viewport: { width: w, height: 844 } }); await o.page.reload();
+  await o.page.waitForSelector('[data-act="start"].primary'); await o.page.locator('[data-act="start"].primary').tap(); await o.page.waitForSelector('.card.ex');
+  R.overflow[w] = await o.page.evaluate(() => {
+    const de = document.documentElement, bad = [];
+    document.querySelectorAll('.card.ex, .set').forEach(e => { if (e.scrollWidth > e.clientWidth + 0.5) bad.push(e.className + ' ' + e.scrollWidth + '>' + e.clientWidth); });
+    /* .grp is not checked by scrollWidth: its inner steppers' ::before hit-slop is deliberately outside it */
+    document.querySelectorAll('.grp').forEach(g => { const gr = g.getBoundingClientRect(); g.querySelectorAll('button,input').forEach(c => { const cr = c.getBoundingClientRect(); if (cr.left < gr.left - .5 || cr.right > gr.right + .5) bad.push('grp child out ' + Math.round(cr.right - gr.right)); }); });
+    const inp = document.querySelector('.set input[data-f="w"]').getBoundingClientRect();
+    return { doc: de.scrollWidth <= de.clientWidth, docW: de.scrollWidth + '/' + de.clientWidth, inner: bad.slice(0, 3), weightInputW: Math.round(inp.width), setRowH: Math.round(document.querySelector('.set').getBoundingClientRect().height) };
+  });
+  await o.ctx.close();
+}
+
 /* ============ 3b. Full workout: tick every set ============ */
 ({ ctx, page } = await open(mainState())); await page.reload(); await page.waitForSelector('[data-act="start"].primary');
 begin('3b full workout (tick all sets + finish)');
@@ -208,6 +225,7 @@ R.axe.today = await runAxe(page);
 await page.locator('[data-tab="progress"]').tap(); await page.waitForSelector('.sess');
 R.axe.progress = await runAxe(page);
 await page.locator('.sess').first().tap(); await page.waitForSelector('.sheet [data-x="edit"]');
+await page.waitForTimeout(400); /* let the .16s sheet fade finish: axe otherwise reads mid-fade colours (v26.3: added; the v26.1 history number was inflated by it) */
 R.axe.history = await runAxe(page); // the session detail sheet: the History row opened
 await page.keyboard.press('Escape');
 await page.locator('[data-tab="plan"]').tap(); await page.waitForSelector('.pex');
@@ -238,31 +256,83 @@ await ctx.close();
 }
 
 /* ---------------- audits ---------------- */
-/* Every visible interactive element inside `root`, measured as rendered. */
+/* Every visible interactive element inside `root`, measured two ways:
+   - bbox: getBoundingClientRect, as rendered (the v26.1 numbers; ignores ::before hit-slop)
+   - hit : the EFFECTIVE hit area, found by probing document.elementFromPoint on a 2px grid
+           around the element (+-14px, 1px step) and taking the bounding box of the points that map
+           back to this control. This is what a thumb actually lands on, so a transparent
+           ::before hit-slop counts and an obscured edge does not.
+   Overlap check: the page is stretched to 4000px tall so every control is on screen; each
+   control's declared hit rect (bbox U its ::before/::after rect, from computed style) is
+   compared pairwise, and every probe point inside a declared rect must map to its owner.
+   A point owned by another control is a "stolen" point = overlapping hit areas = mis-tap. */
 async function audit(pg, root) {
-  return pg.evaluate(rootSel => {
-    const root = document.querySelector(rootSel), out = [], seen = new Set();
-    root.querySelectorAll('button, a[href], input, select, textarea, [role=button], [data-x], [data-act], [data-tab]').forEach(el => {
+  const vp = pg.viewportSize();
+  await pg.setViewportSize({ width: vp.width, height: 4000 });
+  await pg.evaluate(() => window.scrollTo(0, 0));
+  const res = await pg.evaluate(rootSel => {
+    const SEL = 'button, a[href], input, select, textarea, [role=button], [data-x], [data-act], [data-tab]';
+    const root = document.querySelector(rootSel), els = [], seen = new Set();
+    root.querySelectorAll(SEL).forEach(el => {
       if (seen.has(el)) return; seen.add(el);
       const cs = getComputedStyle(el), r = el.getBoundingClientRect();
       if (r.width < 1 || r.height < 1 || cs.visibility === 'hidden' || cs.display === 'none') return;
       if (el.closest('.backdrop') && rootSel === 'body') return; // sheet is audited on its own
-      out.push({ id: el.dataset.x || el.dataset.act || el.dataset.tab || el.getAttribute('aria-label') || el.type || el.tagName.toLowerCase(),
-        text: (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().slice(0, 24), w: Math.round(r.width), h: Math.round(r.height) });
+      els.push(el);
     });
-    const lt44 = out.filter(e => e.w < 44 || e.h < 44), lt24 = out.filter(e => e.w < 24 || e.h < 24);
-    /* group identical id+size so 36 identical warm-up buttons read as one line with a count */
-    const g = {}; lt44.forEach(e => { const k = `${e.id} "${e.text}" ${e.w}x${e.h}`; g[k] = (g[k] || 0) + 1; });
-    const worst = Object.entries(g).map(([k, n]) => ({ k: k.replace(/\s+/g, ' ').replace(/ "\d+"/, ' "n"'), n, m: Math.min(...k.match(/(\d+)x(\d+)$/).slice(1).map(Number)) }));
-    const merged = {}; worst.forEach(w => { merged[w.k] = merged[w.k] || { ...w, n: 0 }; merged[w.k].n += w.n; });
-    return { total: out.length, lt44: lt44.length, lt24: lt24.length,
-      worst: Object.values(merged).sort((a, b) => a.m - b.m || b.n - a.n).slice(0, 10).map(w => `${w.k}  x${w.n}`) };
+    const owner = (x, y) => { const t = document.elementFromPoint(x, y); return t ? t.closest(SEL) : null; };
+    const declared = el => { // bbox U pseudo-element rects
+      const r = el.getBoundingClientRect(); let L = r.left, T = r.top, R = r.right, B = r.bottom;
+      const ecs = getComputedStyle(el), ox = r.left + parseFloat(ecs.borderLeftWidth), oy = r.top + parseFloat(ecs.borderTopWidth);
+      for (const ps of ['::before', '::after']) {
+        const p = getComputedStyle(el, ps);
+        if (p.content === 'none' || p.position !== 'absolute' || ps === '::after' && el.classList.contains('switch')) continue;
+        const l = parseFloat(p.left), t = parseFloat(p.top), w = parseFloat(p.width), h = parseFloat(p.height);
+        if ([l, t, w, h].some(isNaN)) continue;
+        L = Math.min(L, ox + l); T = Math.min(T, oy + t); R = Math.max(R, ox + l + w); B = Math.max(B, oy + t + h);
+      }
+      return { L, T, R, B };
+    };
+    const out = els.map(el => {
+      const r = el.getBoundingClientRect(), d = declared(el), M = 14, hitPts = []; let stolen = 0, stolenBy = {};
+      for (let y = Math.floor(r.top - M); y <= r.bottom + M; y += 1) for (let x = Math.floor(r.left - M); x <= r.right + M; x += 1) {
+        if (y < 0 || x < 0 || y >= innerHeight || x >= innerWidth) continue;
+        const o = owner(x, y);
+        if (o === el) hitPts.push([x, y]);
+        else if (o && !o.contains(el) && !el.contains(o) && x >= d.L && x < d.R && y >= d.T && y < d.B) { stolen++; const k = (o.dataset.act || o.dataset.x || o.tagName.toLowerCase()); stolenBy[k] = (stolenBy[k] || 0) + 1; }
+      }
+      let hw = 0, hh = 0;
+      if (hitPts.length) { const xs = hitPts.map(p => p[0]), ys = hitPts.map(p => p[1]); hw = Math.max(...xs) - Math.min(...xs) + 1; hh = Math.max(...ys) - Math.min(...ys) + 1; }
+      return { el, d, id: el.dataset.x || el.dataset.act || el.dataset.tab || el.getAttribute('aria-label') || el.type || el.tagName.toLowerCase(),
+        text: (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().slice(0, 24), w: Math.round(r.width), h: Math.round(r.height),
+        hw: Math.min(hw, Math.max(hw, 0)), hh, stolen, stolenBy };
+    });
+    /* declared-rect overlaps, pairwise (nested controls are not overlaps) */
+    let overlaps = 0; const ex = [];
+    for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) {
+      const a = out[i], b = out[j]; if (a.el.contains(b.el) || b.el.contains(a.el)) continue;
+      const ix = Math.min(a.d.R, b.d.R) - Math.max(a.d.L, b.d.L), iy = Math.min(a.d.B, b.d.B) - Math.max(a.d.T, b.d.T);
+      if (ix > 0.01 && iy > 0.01) { overlaps++; if (ex.length < 4) ex.push(`${a.id}"${a.text}" x ${b.id}"${b.text}" ${ix.toFixed(1)}x${iy.toFixed(1)}`); }
+    }
+    const rows = out.map(({ el, d, ...e }) => e);
+    const lt44 = rows.filter(e => e.w < 44 || e.h < 44), lt24 = rows.filter(e => e.w < 24 || e.h < 24);
+    const effLt44 = rows.filter(e => e.hw < 44 || e.hh < 44), effLt24 = rows.filter(e => e.hw < 24 || e.hh < 24);
+    const stolenPts = rows.reduce((n, e) => n + e.stolen, 0);
+    const grp = (list, key) => { const g = {}; list.forEach(e => { const k = key(e); g[k] = (g[k] || 0) + 1; });
+      const merged = {}; Object.entries(g).forEach(([k, n]) => { const kk = k.replace(/\s+/g, ' ').replace(/ "\d+"/, ' "n"'); merged[kk] = (merged[kk] || 0) + n; });
+      return Object.entries(merged).map(([k, n]) => ({ k, n, m: Math.min(...k.match(/(\d+)x(\d+)$/).slice(1).map(Number)) })).sort((a, b) => a.m - b.m || b.n - a.n).slice(0, 12).map(w => `${w.k}  x${w.n}`); };
+    return { total: rows.length, lt44: lt44.length, lt24: lt24.length, effLt44: effLt44.length, effLt24: effLt24.length,
+      overlaps, stolenPts, overlapEx: ex, stolenEx: rows.filter(e => e.stolen).slice(0, 4).map(e => `${e.id}"${e.text}" <- ${JSON.stringify(e.stolenBy)}`),
+      worst: grp(lt44, e => `${e.id} "${e.text}" ${e.w}x${e.h}`),
+      worstEff: grp(effLt44, e => `${e.id} "${e.text}" ${e.hw}x${e.hh}`) };
   }, root);
+  await pg.setViewportSize(vp);
+  return res;
 }
 async function runAxe(pg) {
   await pg.addScriptTag({ path: AXE });
   const r = await pg.evaluate(() => axe.run(document, { resultTypes: ['violations'] }));
-  return r.violations.map(v => ({ id: v.id, impact: v.impact, nodes: v.nodes.length, sample: v.nodes.slice(0, 2).map(n => n.target.join(' ')) }));
+  return r.violations.map(v => ({ id: v.id, impact: v.impact, nodes: v.nodes.length, sample: v.nodes.slice(0, v.id === 'color-contrast' ? 6 : 2).map(n => n.target.join(' ') + (v.id === 'color-contrast' && n.any[0] ? ` [${n.any[0].data.fgColor} on ${n.any[0].data.bgColor} = ${n.any[0].data.contrastRatio}]` : '')) }));
 }
 
 /* ---------------- report ---------------- */
@@ -272,12 +342,18 @@ console.log('\nJOURNEY'.padEnd(40) + pad('taps', 6) + pad('scrolls', 9) + pad('w
 for (const j of R.journeys) console.log(pad(j.journey, 45) + pad(j.taps, 6) + pad(j.scrolls, 9) + pad(j.ms, 9) + j.notes);
 console.log('\nTOUCH TARGETS (interactive elements smaller than 44x44 / 24x24 CSS px, as rendered)');
 for (const [k, t] of Object.entries(R.touch)) {
-  console.log(`  ${k}: ${t.total} interactive, ${t.lt44} < 44px, ${t.lt24} < 24px`);
+  console.log(`  ${k}: ${t.total} interactive, ${t.lt44} < 44px, ${t.lt24} < 24px  (bounding boxes)`);
   t.worst.forEach(w => console.log('      ' + w));
+  console.log(`  ${k} EFFECTIVE (elementFromPoint probe, incl. ::before hit-slop): ${t.effLt44} < 44px, ${t.effLt24} < 24px; overlapping hit rects: ${t.overlaps}, probe points stolen by a neighbour: ${t.stolenPts}`);
+  t.worstEff.forEach(w => console.log('      eff ' + w));
+  t.overlapEx.forEach(w => console.log('      OVERLAP ' + w));
+  t.stolenEx.forEach(w => console.log('      STOLEN ' + w));
 }
+console.log('\nOVERFLOW (active workout; scrollWidth <= clientWidth)');
+for (const [w, o] of Object.entries(R.overflow)) console.log(`  ${w}px: document ${o.doc ? 'ok' : 'OVERFLOWS'} (${o.docW}); cards/rows/groups overflowing: ${o.inner.length ? o.inner.join(' | ') : 'none'}; weight input ${o.weightInputW}px wide; set row ${o.setRowH}px tall`);
 console.log('\nAXE-CORE (violations: id [impact] nodes)');
 for (const [k, v] of Object.entries(R.axe)) { console.log(`  ${k}: ` + (v.length ? v.map(x => `${x.id} [${x.impact}] ${x.nodes}`).join(', ') : 'none'));
-  v.filter(x => x.impact === 'critical' || x.id !== 'color-contrast').forEach(x => console.log(`      ${x.id}: ${x.sample.join(' | ')}`)); }
+  v.filter(x => x.impact === 'critical' || x.id !== 'color-contrast' || process.env.CONTRAST).forEach(x => console.log(`      ${x.id}: ${x.sample.join(' | ')}`)); }
 console.log('\nOFFLINE ' + JSON.stringify(R.offline));
 if (R.errors.length) console.log('\nPAGE ERRORS (' + R.errors.length + '): ' + [...new Set(R.errors)].slice(0, 5).join(' | '));
 console.log('\nJOURNEYS_JSON ' + JSON.stringify(R));
