@@ -1,0 +1,48 @@
+
+JOURNEY                                taps  scrolls  wall ms  notes
+1 start workout (cold open)                  1     0        172      app ready 62ms; Start in first viewport: true (bottom 263px of 844, tab bar top 780px)
+2a log prefilled set (tick)                  1     0        315      prefill 135 x 11; done=true; rest timer: true
+2b log set with weight +5 (stepper)          2     0        375      135 -> 140; one + tap = 5 lb (settings.inc=5); typing instead = tap input + keyboard + dismiss
+3 finish workout (2 sets logged)             2     0        639      sessions 6->7, active=null; lands on Progress tab; header Finish in first viewport: true; Save in first viewport: true
+3b full workout (tick all sets + finish)     15    4        1673     scroll to Finish; 12 sets ticked; saved sessions=7; scrolls counted when a tick was off-screen/obscured (1 per set, an under-estimate of swipes)
+4a coach card: accept (Start deload week)    1     0        306      deloadUntil set: true; card in first viewport: true (bottom 545px); toast has Undo pill: false
+4b coach card: undo (End it now)             1     0        305      deloadUntil=0 (reverted: true); no Undo on the accept toast - the only reversal is the banner's "End it now" ("Not now" snoozes 14 days, no undo)
+5 edit past session (change reps, save)      5     2        1106     scroll to History row; scroll to Save changes; reps 10 -> 9; first History row sits at y=2214px (fold 844): below the fold; plus keyboard entry (not counted as taps)
+
+TOUCH TARGETS (interactive elements smaller than 44x44 / 24x24 CSS px, as rendered)
+  active: 126 interactive, 121 < 44px, 12 < 24px
+      warm "n" 20x38  x12
+      revert "Keep 135×10" 93x25  x1
+      revert "Keep 120×10" 93x25  x1
+      revert "Keep 50×10" 88x25  x1
+      revert "Keep 80×10" 88x25  x1
+      step "−" 28x38  x24
+      step "+" 28x38  x24
+      rest-tap "2:00" 53x29  x1
+      ex-note "+ Note on this lift" 101x30  x4
+      settings "Settings" 32x32  x1
+  finishSheet: 2 interactive, 2 < 44px, 0 < 24px
+      back "Keep going" 152x42  x1
+      save "Save workout" 200x42  x1
+  today: 8 interactive, 4 < 44px, 0 < 24px
+      settings "Settings" 32x32  x1
+      start "A Day A" 78x35  x1
+      start "C Day C" 78x35  x1
+      start "+ Freestyle" 99x35  x1
+
+AXE-CORE (violations: id [impact] nodes)
+  active: color-contrast [serious] 18, label-content-name-mismatch [serious] 12, region [moderate] 1
+      label-content-name-mismatch: .done.pr[data-si="0"] > .idx[data-act="warm"][aria-label="Make this a warm-up"] | .done.pr[data-si="1"] > .idx[data-act="warm"][aria-label="Make this a warm-up"]
+      region: .toast
+  today: color-contrast [serious] 7
+  progress: color-contrast [serious] 61
+  history: color-contrast [serious] 69, heading-order [moderate] 1, region [moderate] 6
+      heading-order: h3
+      region: h3 | .sub
+  plan: button-name [critical] 1, color-contrast [serious] 26, label [critical] 3
+      button-name: .switch
+      label: input[data-set="repLow"] | input[data-set="repHigh"]
+
+OFFLINE {"swReady":true,"controller":true,"bootsOffline":true,"todayRenders":true,"sessionsBefore":6,"sessionsAfter":7,"persisted":true}
+
+JOURNEYS_JSON {"journeys":[{"journey":"1 start workout (cold open)","taps":1,"scrolls":0,"ms":172,"notes":"app ready 62ms; Start in first viewport: true (bottom 263px of 844, tab bar top 780px)"},{"journey":"2a log prefilled set (tick)","taps":1,"scrolls":0,"ms":315,"notes":"prefill 135 x 11; done=true; rest timer: true"},{"journey":"2b log set with weight +5 (stepper)","taps":2,"scrolls":0,"ms":375,"notes":"135 -> 140; one + tap = 5 lb (settings.inc=5); typing instead = tap input + keyboard + dismiss"},{"journey":"3 finish workout (2 sets logged)","taps":2,"scrolls":0,"ms":639,"notes":"sessions 6->7, active=null; lands on Progress tab; header Finish in first viewport: true; Save in first viewport: true"},{"journey":"3b full workout (tick all sets + finish)","taps":15,"scrolls":4,"ms":1673,"notes":"scroll to Finish; 12 sets ticked; saved sessions=7; scrolls counted when a tick was off-screen/obscured (1 per set, an under-estimate of swipes)"},{"journey":"4a coach card: accept (Start deload week)","taps":1,"scrolls":0,"ms":306,"notes":"deloadUntil set: true; card in first viewport: true (bottom 545px); toast has Undo pill: false"},{"journey":"4b coach card: undo (End it now)","taps":1,"scrolls":0,"ms":305,"notes":"deloadUntil=0 (reverted: true); no Undo on the accept toast - the only reversal is the banner's \"End it now\" (\"Not now\" snoozes 14 days, no undo)"},{"journey":"5 edit past session (change reps, save)","taps":5,"scrolls":2,"ms":1106,"notes":"scroll to History row; scroll to Save changes; reps 10 -> 9; first History row sits at y=2214px (fold 844): below the fold; plus keyboard entry (not counted as taps)"}],"touch":{"active":{"total":126,"lt44":121,"lt24":12,"worst":["warm \"n\" 20x38  x12","revert \"Keep 135×10\" 93x25  x1","revert \"Keep 120×10\" 93x25  x1","revert \"Keep 50×10\" 88x25  x1","revert \"Keep 80×10\" 88x25  x1","step \"−\" 28x38  x24","step \"+\" 28x38  x24","rest-tap \"2:00\" 53x29  x1","ex-note \"+ Note on this lift\" 101x30  x4","settings \"Settings\" 32x32  x1"]},"finishSheet":{"total":2,"lt44":2,"lt24":0,"worst":["back \"Keep going\" 152x42  x1","save \"Save workout\" 200x42  x1"]},"today":{"total":8,"lt44":4,"lt24":0,"worst":["settings \"Settings\" 32x32  x1","start \"A Day A\" 78x35  x1","start \"C Day C\" 78x35  x1","start \"+ Freestyle\" 99x35  x1"]}},"axe":{"active":[{"id":"color-contrast","impact":"serious","nodes":18,"sample":[".brand","div:nth-child(1) > .eyebrow"]},{"id":"label-content-name-mismatch","impact":"serious","nodes":12,"sample":[".done.pr[data-si=\"0\"] > .idx[data-act=\"warm\"][aria-label=\"Make this a warm-up\"]",".done.pr[data-si=\"1\"] > .idx[data-act=\"warm\"][aria-label=\"Make this a warm-up\"]"]},{"id":"region","impact":"moderate","nodes":1,"sample":[".toast"]}],"today":[{"id":"color-contrast","impact":"serious","nodes":7,"sample":[".brand","#view > .eyebrow"]}],"progress":[{"id":"color-contrast","impact":"serious","nodes":61,"sample":[".brand","#view > .eyebrow:nth-child(1)"]}],"history":[{"id":"color-contrast","impact":"serious","nodes":69,"sample":[".brand","#view > .eyebrow:nth-child(1)"]},{"id":"heading-order","impact":"moderate","nodes":1,"sample":["h3"]},{"id":"region","impact":"moderate","nodes":6,"sample":["h3",".sub"]}],"plan":[{"id":"button-name","impact":"critical","nodes":1,"sample":[".switch"]},{"id":"color-contrast","impact":"serious","nodes":26,"sample":[".brand","#view > .eyebrow"]},{"id":"label","impact":"critical","nodes":3,"sample":["input[data-set=\"repLow\"]","input[data-set=\"repHigh\"]"]}]},"offline":{"swReady":true,"controller":true,"bootsOffline":true,"todayRenders":true,"sessionsBefore":6,"sessionsAfter":7,"persisted":true},"errors":[],"bugs":[],"startInFirstViewport":true,"coachCardMechanism":"deload banner (todayIdle: \"Deload worth considering\"); there is no tools/test/t39-coach.mjs in this repo"}
