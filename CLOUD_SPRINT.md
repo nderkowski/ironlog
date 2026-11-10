@@ -172,6 +172,11 @@ than what he went on to make.
 - Harness fixes: DARK=0 meant dark; viewport not restored on error.
 - 18:00 handoff docs pushed (ROADMAP, PROJECT_STATE traps 20–23, NEXT_SESSION).
 
+## After the sprint (10 Nov, owner answers)
+- Merge check: `main` (v26) is an ancestor of the branch — fast-forward, 34+ commits, no conflicts.
+- No auto-scroll (owner).
+- v26.12–13: sessions per week on Progress (last 8 calendar weeks, average over full weeks since the first session; t46), and readable coloured text: `--accent-ink/--good-ink/--bad-ink` for text, brand colours kept for fills. axe colour-contrast 0 in light and dark. Opus review: 2 Important (dark red text, faded banner text) fixed. 28 suites / 1,148 checks.
+
 ## Owner questions
 0. **`main` is v21.** GitHub Pages serves `main`, and `main` holds v21:
    v22–v26 were never merged, so your phone runs v21 (check the BUILD line at

@@ -10,7 +10,7 @@ Ship in slices; each slice should leave the app fully usable.
 
 ---
 
-## Next session starts here — the 8 Nov cloud sprint (v26.1 → v26.11)
+## Next session starts here — the 8 Nov cloud sprint (v26.1 → v26.13)
 
 Branch `cloud/sprint-1108`, **not merged**. `main` is still **v21** — v22–v26
 were never merged either, so the phone has been running v21. Review, then
@@ -41,6 +41,7 @@ measurement: [CLOUD_SPRINT.md](CLOUD_SPRINT.md).
 - **v26.4** "Last … Edit" row on Today opens the editor; editor Save/Cancel sticky.
 - **v26.5–v26.8** editor keeps its place after + Set and shows a newly added exercise; coach citations fixed (review #8); dates by calendar day.
 - **v26.10–v26.11** Finish, + Set / − Set and the editor's controls get 44 px hit areas; editor rows 44 px; Today's Edit is a filled pill (contrast).
+- **v26.12–v26.13** (10 Nov, owner OK'd) sessions per week on Progress; coloured text uses readable ink variants — axe colour-contrast 0 in light and dark. Owner declined auto-scroll.
 - Tests: `t42` near-miss, `t43` engine invariants over 39,760 simulated exposures (with mutants), `t44` last-session row, `t45` editor scroll. `harness.mjs` honours `IRONLOG_PORT`.
 
 ### Measured and rejected (don't redo without new evidence)
@@ -52,13 +53,13 @@ measurement: [CLOUD_SPRINT.md](CLOUD_SPRINT.md).
 
 ### Backlog, in order
 1. Remaining under-loading is on heavy lifts with small relative steps (Leg Press, RDL, Pulldown, Ham Curl ≈90–100% of exposures behind by the sprint metric, light lifts 0%). It is double progression's one-rep-per-session climb plus the metric's mid-range definition — decide whether that is a problem before engineering it.
-2. Contrast on tinted chips (accent/good/bad on their *-soft backgrounds, 2.6–3.4:1) — a brand-colour decision.
+2. ~~Contrast on tinted chips~~ — done in v26.12–13.
 3. Still under 44 px wide: outer steppers and warm toggle (38 px effective at 390, the width budget), "+ Note on this lift" (31 tall), "Keep N×R" revert (25 tall box). Plate-editor ✕ 34×34.
 4. Coach stall rule latency (review #7): misses 89% of injected plateaus, median 153 days.
 5. Unit conversion snapping 5 lb ↔ 2.5 kg (review #9).
 
 ### Gym test plan (v26.9, after merging)
-1. Plan tab foot shows **v26.11**. If not, reload twice (service worker).
+1. Plan tab foot shows **v26.13**. If not, reload twice (service worker).
 2. A lift where you did e.g. 12, 12, 11 last time at 8–12: card says "Hit 12, rep-out 11 — add 5 lb". Do it; if the heavier load lands under the bottom of the range, note the lift — that is the case to replay.
 3. Log a full session with sweaty hands: count mis-taps on − / + / the set number (warm-up toggle). A tap on the "×" should do nothing.
 4. Finish, then on Today tap **Last … Edit**, change one rep, Save — no scrolling needed.

@@ -1,8 +1,8 @@
 # Handoff — cloud sprint 8 Nov 2026
 
-Branch `cloud/sprint-1108`, build **v26.11**, clean: last full run on v26.11
-was 27 suites / 1,139 checks / 0 failures (`tools/sprint/runall.sh`). Nothing
-is mid-change. `main` is still **v21**. Details and every measurement:
+Branch `cloud/sprint-1108`, build **v26.13**, clean: last full run on v26.13
+was 28 suites / 1,148 checks / 0 failures (`tools/sprint/runall.sh`). Nothing
+is mid-change. `main` is **v26**; the branch fast-forwards onto it with no conflicts (checked 10 Nov). Details and every measurement:
 [CLOUD_SPRINT.md](CLOUD_SPRINT.md); before/after and gym test plan: top of
 [ROADMAP.md](ROADMAP.md).
 
@@ -26,17 +26,17 @@ budget 2 min for that (PROJECT_STATE trap 20).
 
 ## Owner only
 
-1. **Gym test v26.11** (one session). Plan at the top of ROADMAP.md: Plan
-   tab shows v26.11; a "Hit 12, rep-out 11 — add 5 lb" jump lands inside the
+1. **Gym test v26.13** (one session). Plan at the top of ROADMAP.md: Plan
+   tab shows v26.13; Progress → Consistency shows sessions a week; a "Hit 12, rep-out 11 — add 5 lb" jump lands inside the
    range; count mis-taps on − / + / set number; "Last … Edit" after
    finishing. Then export a backup.
 2. **Merge `cloud/sprint-1108` → `main`** after that session (or before it,
    so the phone gets it — Pages serves `main`). This also ships v22–v26,
    which were never merged.
-3. **Decide:** auto-scroll the next exercise into view after its last set
-   (Owner question 3); a sessions-per-week line on Progress (question 2);
-   whether to change the brand accent/good colours for contrast on tinted
-   chips.
+3. ~~Decisions~~ answered 10 Nov: **no auto-scroll**; sessions per week on
+   Progress — built (v26.12–13); colours may change freely if readable —
+   done (v26.12–13: text uses darker/lighter ink variants, 0 axe contrast
+   failures in light and dark).
 
 ## P0 — before or right after the merge
 
@@ -99,7 +99,7 @@ budget 2 min for that (PROJECT_STATE trap 20).
 
 ## P2 — backlog
 
-**P2.1 Contrast on tinted chips.**
+**P2.1 ~~Contrast on tinted chips~~ — done in v26.12–13.**
 - *What:* accent, good and bad text on their `-soft` backgrounds, 2.6–3.4:1.
   There are 15 light-mode nodes.
 - *Why:* readability in bright gyms.
