@@ -21,11 +21,18 @@ await open({ version: 5, settings: { unit: 'lb', inc: 5 }, routines: plan, sessi
 const bars = await page.locator('.wkbars .n').allInnerTexts();
 eq(bars.join(','), '1,0,0,2,1,2,3,1', 'eight weekly counts, oldest first, this week last');
 const head = (await page.locator('.wkhead').innerText()).replace(/\s+/g, ' ');
-ok(/^2 a week/.test(head), 'average over the last 4 full weeks: (3+2+1+2)/4 = 2  [' + head + ']');
+ok(/^2 sessions a week last 4 full weeks/.test(head), 'average over the last 4 full weeks: (3+2+1+2)/4 = 2  [' + head + ']');
 ok(await page.locator('.wkbars .wb').last().evaluate(e => e.classList.contains('now')), 'this week is marked as in progress');
 ok((await page.locator('.wkbars').getAttribute('aria-label')).includes('1, 0, 0, 2, 1, 2, 3, 1'), 'the chart has a text alternative');
 await open({ version: 5, settings: { unit: 'lb', inc: 5 }, routines: plan, sessions: ts.map(sess).sort((a, b) => b.ts - a.ts), active: null }, 320);
 ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal overflow at 320 px');
+// a new lifter: the average covers only weeks since the first session
+await open({ version: 5, settings: { unit: 'lb', inc: 5 }, routines: plan, sessions: [mon(2), mon(2) + DAY, mon(2) + 2 * DAY, mon(1), mon(1) + DAY, mon(1) + 2 * DAY].map(sess).sort((a, b) => b.ts - a.ts), active: null }, 390);
+let h2 = (await page.locator('.wkhead').innerText()).replace(/\s+/g, ' ');
+ok(/^3 sessions a week last 2 full weeks/.test(h2), 'two weeks in at 3 a week reads 3, not 1.5  [' + h2 + ']');
+await open({ version: 5, settings: { unit: 'lb', inc: 5 }, routines: plan, sessions: [sess(mon(0), 0)], active: null }, 390);
+h2 = (await page.locator('.wkhead').innerText()).replace(/\s+/g, ' ');
+ok(/^1 session this week no full week yet/.test(h2), 'first week: says so instead of averaging zeros  [' + h2 + ']');
 await open({ version: 5, settings: { unit: 'lb', inc: 5 }, routines: plan, sessions: [], active: null }, 390);
 eq(await page.locator('.wkbars').count(), 0, 'nothing shown with no sessions');
 ok(errors.length === 0, 'no page errors ' + errors.join(' | '));

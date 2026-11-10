@@ -63,7 +63,7 @@
     --good-soft:rgba(79,190,133,.15);
     --bad:#E0645A;
     --bad-soft:rgba(224,100,90,.15);
-    --accent-ink:#E8AC2B; --good-ink:#4FBE85; --bad-ink:#E0645A;
+    --accent-ink:#E8AC2B; --good-ink:#4FBE85; --bad-ink:#F08A80;
     --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.28);
   }
 }
@@ -73,7 +73,7 @@
   --accent:#E8AC2B; --on-accent:#14171B; --accent-soft:rgba(232,172,43,.16);
   --good:#4FBE85; --good-soft:rgba(79,190,133,.15);
   --bad:#E0645A; --bad-soft:rgba(224,100,90,.15);
-  --accent-ink:#E8AC2B; --good-ink:#4FBE85; --bad-ink:#E0645A;
+  --accent-ink:#E8AC2B; --good-ink:#4FBE85; --bad-ink:#F08A80;
   --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.28);
 }
 :root[data-theme="light"]{
@@ -453,7 +453,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .banner.calm{background:var(--panel);border-color:var(--line);color:var(--ink)}
 .banner .bt{font-weight:700;font-size:14px}
 .banner .bd{font-size:13px;color:var(--ink-2)}
-.banner.warn .bd{color:var(--bad-ink);opacity:.85}
+.banner.warn .bd{color:var(--bad-ink)}
 .banner .acts{display:flex;gap:8px;margin-top:10px}
 /* the coach's cards: a reason, then one button per choice */
 .co-p{padding:11px 0;border-top:1px solid var(--line)}
@@ -514,7 +514,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .wkbars .wb{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:3px}
 .wkbars .bar{width:100%;max-width:26px;border-radius:4px 4px 2px 2px;background:var(--accent);min-height:2px}
 .wkbars .bar.z{background:var(--line)}
-.wkbars .wb.now .bar{opacity:.55}
+.wkbars .wb.now .bar{background:var(--accent-soft);box-shadow:inset 0 0 0 2px var(--accent)}   /* in progress: outlined, not faded */
 .wkbars .n{font-family:var(--mono);font-size:11px;color:var(--ink-2);line-height:1}
 .wkaxis{display:flex;justify-content:space-between;margin-top:4px}
 .wkhead{display:flex;align-items:baseline;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
@@ -531,7 +531,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .cal .cell.pad{visibility:hidden}
 .cal .cell.today{border-color:var(--ink-3)}
 .cal .cell.hit{background:var(--accent-soft);color:var(--accent-ink);font-weight:700}
-.cal .cell.hit .k{font-size:9px;letter-spacing:.05em;opacity:.85;margin-top:1px}
+.cal .cell.hit .k{font-size:9px;letter-spacing:.05em;margin-top:1px}
 .cal .cell.hit:active{background:var(--accent);color:var(--on-accent)}
 .calhead{display:flex;align-items:center;gap:8px;margin-bottom:9px}
 .calhead .cm{flex:1;font-size:14px;font-weight:700}
@@ -813,7 +813,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v26.12";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v26.13";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;
@@ -4641,10 +4641,16 @@ function sessionsPerWeek(n){
 }
 function weeklyFreqHtml(){
   if(!S.sessions.length) return "";
-  var c=sessionsPerWeek(8), avg4=c.slice(3,7).reduce(function(a,b){ return a+b; },0)/4;
+  var c=sessionsPerWeek(8), st=weekStarts(8);
+  /* Average only over full weeks since the first session: two weeks in at
+     three a week is "3", not "1.5" (review). No full week yet: say so. */
+  var first=S.sessions.reduce(function(m,s){ return Math.min(m,s.ts); },Infinity);
+  var full=[3,4,5,6].filter(function(i){ return st[i+1]>first; });
+  var avg=full.length?full.reduce(function(a,i){ return a+c[i]; },0)/full.length:null;
   var mx=Math.max(3,Math.max.apply(null,c));
-  var html='<div class="wkhead"><div style="font-size:14px;font-weight:700">'+fmt(round(avg4,1))+' a week</div>'+
-    '<div class="tiny muted">sessions, last 4 full weeks</div></div>'+
+  var html='<div class="wkhead"><div style="font-size:14px;font-weight:700">'+
+      (avg===null?plural(c[7],"session")+' this week':fmt(round(avg,1))+' sessions a week')+'</div>'+
+    '<div class="tiny muted">'+(avg===null?'no full week yet':'last '+(full.length>1?full.length+' full weeks':'full week'))+'</div></div>'+
     '<div class="wkbars" role="img" aria-label="Sessions per week, last 8 weeks, oldest first: '+c.join(", ")+'">';
   c.forEach(function(k,i){
     html+='<div class="wb'+(i===c.length-1?" now":"")+'"><span class="n">'+k+'</span>'+
