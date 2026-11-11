@@ -491,7 +491,9 @@ var MUSCLES=[
   {k:"chest",   n:"Chest"},
   {k:"back",    n:"Back"},
   {k:"traps",   n:"Traps"},
-  {k:"delts",   n:"Shoulders"},
+  {k:"front_delts",n:"Front delts"},
+  {k:"side_delts", n:"Side delts"},
+  {k:"rear_delts", n:"Rear delts"},
   {k:"biceps",  n:"Biceps"},
   {k:"triceps", n:"Triceps"},
   {k:"forearms",n:"Forearms"},
@@ -499,7 +501,7 @@ var MUSCLES=[
   {k:"hams",    n:"Hamstrings"},
   {k:"glutes",  n:"Glutes"},
   {k:"calves",  n:"Calves"},
-  {k:"core",    n:"Core"}
+  {k:"core",    n:"Abs"}
 ];
 function muscleName(k){
   for(var i=0;i<MUSCLES.length;i++) if(MUSCLES[i].k===k) return MUSCLES[i].n;
@@ -518,21 +520,23 @@ var MG_GUESS=[
   [/squat|leg\s*press|lunge|step.?up|hack|sissy/i,        "quads",  ["glutes","hams"]],
   [/calf|calve|toe\s*press/i,                             "calves", []],
   [/shrug/i,                                              "traps",  []],
-  [/upright\s*row|lateral\s*raise|side\s*raise|front\s*raise/i,"delts",[]],
-  [/rear\s*delt|face\s*pull|reverse\s*(fly|flye|pec)/i,   "delts",  ["back","traps"]],
-  [/overhead\s*press|\bohp\b|shoulder\s*press|military|arnold/i,"delts",["triceps"]],
+  [/front\s*raise/i,                                      "front_delts",[]],
+  [/upright\s*row|lateral\s*raise|side\s*raise/i,         "side_delts",[]],
+  [/rear\s*delt|face\s*pull|reverse\s*(fly|flye|pec)/i,   "rear_delts",["back","traps"]],
+  [/overhead\s*press|\bohp\b|shoulder\s*press|military|arnold/i,"front_delts",["triceps"]],
   /* A fly is shoulder horizontal adduction with the elbow fixed: chest, with
      front delts helping, and no triceps. It shared the press row and handed
      triceps half a set per set of flies (external review, Argon). After the
-     rear-delt row, so a reverse fly is still delts. */
-  [/\bfly\b|flye|pec\s*deck|\bpec\b/i,                 "chest",  ["delts"]],
-  [/bench|chest\s*press|push.?up|\bdips?\b/i,           "chest",  ["triceps","delts"]],
+     rear-delt row, so a reverse fly is still a rear delt. */
+  [/\bfly\b|flye|pec\s*deck|\bpec\b/i,                 "chest",  ["front_delts"]],
+  [/bench|chest\s*press|push.?up|\bdips?\b/i,           "chest",  ["triceps","front_delts"]],
   /* Generic presses, but only after the overhead and leg variants above have
      had their turn — and only when the word "press" is actually there, so
      "incline dumbbell curl" still falls through to biceps. */
-  [/(incline|decline|floor|dumbbell|\bdb\b)[\w\s-]*press/i,"chest",["triceps","delts"]],
+  [/(incline|decline|floor|dumbbell|\bdb\b)[\w\s-]*press/i,"chest",["triceps","front_delts"]],
   [/pull.?up|chin.?up|pull.?down|lat\s*pull|pullover|\brow\b|rows/i,"back",["biceps"]],
   [/tricep|skull\s?crusher|push.?down|press.?down|kick.?back|jm\s*press|close.?grip/i,"triceps",[]],
+  [/wrist\s*curl/i,                                       "forearms",[]],
   [/curl/i,                                               "biceps", ["forearms"]],
   [/wrist|\bgrip\b|farmer|hang(ing)?\s*hold/i,            "forearms",[]],
   [/plank|crunch|sit.?up|leg\s*raise|ab\s*(wheel|roll)|russian\s*twist|woodchop|pallof|\bcore\b|\babs?\b/i,"core",[]]
@@ -638,6 +642,7 @@ function newPlanEx(name){
     metric:met,
     link:false,
     mg:mgN.mg, mg2:(mgN.mg2||[]).slice(),
+    scheme:"double", backPct:0.12, pins:[],     // schema v6: how the engine loads it; nothing reads them yet
     added:Date.now()          // when the row joined the plan; the coach's skipped-lift rule won't judge a row younger than its window
   };
 }
@@ -653,6 +658,9 @@ function planExFromSession(ex){
     inc:ex.inc||null,
     bw:bwMode(ex), bar:barOf(ex), metric:metricOf(ex), link:!!ex.link,
     mg:ex.mg||"", mg2:(ex.mg2||[]).slice(),
+    scheme:ex.scheme==="topback"?"topback":"double",
+    backPct:(num(ex.backPct)>0&&num(ex.backPct)<0.5)?num(ex.backPct):0.12,
+    pins:cleanPins(ex.pins),
     added:Date.now()
   };
 }

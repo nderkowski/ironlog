@@ -76,6 +76,7 @@ if(S.active) TAB="today";
    writeNow() can toast and the DOM has to exist first. */
 if(MIGRATED) writeNow();
 render();
+if(V5_FAIL) toast("Couldn't keep a pre-2.0 copy — export a backup now");
 
 askPersist();
 /* Anything that failed to reach GitHub is retried when the network returns,

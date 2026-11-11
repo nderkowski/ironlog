@@ -210,6 +210,8 @@ function gistSettingsHtml(){
     '<button class="btn" style="flex:1" data-act="gist-restore">Restore from GitHub</button></div>';
   if(beforeRestoreKept())
     h+='<button class="btn block" data-act="put-back">Put back the log from before the restore</button>';
+  if(v5Kept())
+    h+='<button class="btn block" data-act="restore-v5">Restore pre-2.0 data</button>';
   return h;
 }
 
@@ -361,6 +363,37 @@ function putBackBeforeRestore(){
       go("today"); toast("The log from before the restore is back");
     },true);
 }
+
+/* The raw v5 log kept once by load() the first time 2.0 ran (V5_KEY). Offered
+   back from Settings for as long as it exists; the app never deletes it. */
+function v5Kept(){
+  try{ return !!localStorage.getItem(V5_KEY); }
+  catch(e){ return false; }
+}
+function restoreV5(){
+  if(refuseMidWorkout()) return;
+  var p=null;
+  try{ p=JSON.parse(localStorage.getItem(V5_KEY)||"null"); }
+  catch(e){ p=null; }
+  if(!p||typeof p!=="object"||!Array.isArray(p.sessions)){
+    toast("The pre-2.0 copy couldn't be read, so nothing was changed"); return;
+  }
+  confirmSheet("Restore pre-2.0 data?",
+    "The copy kept when 2.0 first ran has "+plural(p.sessions.length,"session")+". This phone has "+
+    plural(S.sessions.length,"session")+". Restoring replaces everything on this phone with that copy, so anything logged since is lost. The copy itself stays kept.",
+    "Restore",function(){
+      if(refuseMidWorkout()) return;
+      try{ localStorage.setItem(BEFORE_KEY,JSON.stringify(S)); }
+      catch(e){ toast("Couldn't keep a copy of this log, so nothing was restored"); return; }
+      try{ replaceLog(p); }                    // normalize() re-migrates it; recomputePRs(); writeNow()
+      catch(e){ toast("The pre-2.0 copy couldn't be read, so nothing was changed"); return; }
+      go("today"); toast("Pre-2.0 data restored");
+    },true);
+}
+$("#view").addEventListener("click",function(e){
+  if(TAB!=="settings") return;
+  if(e.target.closest('[data-act="restore-v5"]')){ restoreV5(); return; }
+});
 
 /* ============================ AI (optional) ============================
    The one door to Claude, shared by the coach's check-in (v26/v27) and the

@@ -174,7 +174,7 @@ ok(weeks.every(w => !w.some(e => e.name === 'Face Pull') && w.some(e => e.name =
 const nw = weeks[0].find(e => e.name === 'Rear Delt Fly'), nw2 = weeks[1].find(e => e.name === 'Rear Delt Fly');
 eq(weeks[0].indexOf(nw), 3, 'accept: same position in the day');
 ok(nw.link === true && nw.inc === 10 && nw.sets === 3 && nw.reps === 12 && nw.repTop === 16, 'accept: carries superset, increment, sets and range (week 1)');
-ok(nw.mg === 'delts' && nw.mg2.join() === 'back,traps' && nw.bar === 0 && nw.bw === 0 && nw.metric === 0, 'accept: carries muscles, bar, load type, metric');
+ok(nw.mg === 'rear_delts' && nw.mg2.join() === 'back,traps' && nw.bar === 0 && nw.bw === 0 && nw.metric === 0, 'accept: carries muscles, bar, load type, metric');
 ok(nw2.sets === 4 && nw2.reps === 10 && nw2.repTop === 15 && nw2.link === false, 'accept: week 2 keeps its own shape');
 ok(nw.id !== 'c4' && nw2.id !== 'd2' && nw.id !== nw2.id && typeof nw.added === 'number', 'accept: new rows with new ids (newPlanEx), dated');
 ok(!('startW' in nw), 'accept: no start weight when the old lift gives nothing to scale from');

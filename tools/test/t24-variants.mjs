@@ -24,7 +24,7 @@ const { browser, page, errors } = await launch();
 /* ---------------------------------------------------------- migration */
 await boot(page, legacy);
 let st = await getState(page);
-eq(st.version, 5, 'state migrates to v5 on load');
+eq(st.version, 6, 'state migrates to v6 on load');
 eq(st.routines[0].variants.length, 1, 'an old routine becomes a single-variant day');
 eq(st.routines[0].variants[0].exercises[0].name, 'Bench Press', 'carrying its exercises across');
 eq(st.routines[0].exercises, undefined, 'and the old field is removed, so the two cannot drift');
@@ -322,7 +322,7 @@ await page.fill('[data-x="paste"]', oldFile);
 await page.click('[data-x="go"]');
 await page.waitForTimeout(300);
 st = await getState(page);
-eq(st.version, 5, 'a v4 backup file is migrated on import');
+eq(st.version, 6, 'a v4 backup file is migrated on import');
 eq(st.routines[0].variants[0].exercises[0].name, 'Front Squat', 'with its exercises intact');
 eq(st.routines[0].exercises, undefined, 'and no stale parallel list left behind');
 await page.click('[data-tab="today"]');
