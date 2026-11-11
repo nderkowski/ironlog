@@ -23,9 +23,10 @@ updated only after the owner's phone check at each milestone.
 | 3F | 1 | a1 fixes: v26.14 single-file bridge with the new worker, then the split on top; cache-first navigation; updates apply only on open; boot integrity gate; real upgrade tests | sonnet (high) / worktree | out | — | — |
 | 4 | 2 | Schema v6 migration scaffold + v5 snapshot + restore button | sonnet (high) / worktree on the a1 branch | done → in review | t48 103/103; 3 assertions re-pointed (delts→head, v5→v6), accepted | worktree-agent-a39952b1dade06539 @ ed223a0 |
 | 4R | 2 | Review A: code (DeepSeek) + real-export migration check (local, aggregates only) | deepseek-v4-pro + sonnet | done | Real export: 8/8 pass (306 sets, 0 changed; credit identical; 0 prescription diffs). DeepSeek: 3 accepted (mixed-tag dup, reverse-curl fallback, block NaN), 1 rejected (settings.v2 — ruled out) | — |
-| 4F | 2 | A review fixes | haiku (exact spec) | out | — | — |
+| 4F | 2 | A review fixes | haiku (exact spec) | done | t48 107/107, t21 43/43, t24 68/68 | worktree-agent-a39952b1dade06539 @ 28439f2 |
 | 5 | 3 | Package B engine: double/topback, no trend cut, stack weights, presc, sim + replay gates | sonnet (high) / worktree on A | out | — | — |
 | 6 | 3 | M2 friction: set-1 cascade, usual-load chip, off-book day, ease-back | sonnet | queued (after #4) | — | — |
-| 7 | 3 | Package E muscles & plan: balance card, S1 suggestions, rotation volume, pump seed | sonnet (high) / worktree on A | out | — | — |
+| 7 | 3 | Package E muscles & plan: balance card, S1 suggestions, rotation volume, pump seed | sonnet (high) / worktree on A | follow-up fixes out | t50 107/107. Real plan: card maths right (helpers ½); fixes: ask frequency instead of assuming 1/wk; find rows by muscle not name ("Lateral Riase" typo hid a suggestion) | worktree-agent-aaba9b28c2ec16973 @ 5834ba3 |
+| 7R | 3 | Review E code | deepseek-v4-pro | out | — | — |
 | 8 | 4 | M4 blocks + scorecard; S2 pump day; S1 plan additions; S3 warm-ups; S4 polish | sonnet ×2 | queued | — | — |
 | 9 | 5 | Full review pass, sim + replay + journeys, beta merge | opus + external reviewers | queued | — | — |
