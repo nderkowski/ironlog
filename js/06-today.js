@@ -1,12 +1,19 @@
 "use strict";
 /* ============================ TODAY ============================ */
+/* The day rotation runs over the main days only. An optional day (the pump
+   day) is never "next" and never moves it: the last session that counts is the
+   newest one of a main day, so a pump session in between changes nothing. A
+   session of a day that no longer exists counts as a main one (it restarts at
+   the first day), as it always did. Unlogged sessions have a routineId, so
+   "Trained Day B, didn't log it" advances the rotation like a logged one. */
 function nextRoutine(){
-  if(!S.routines.length) return null;
-  var last=S.sessions.find(function(s){ return s.routineId; });
-  if(!last) return S.routines[0];
-  var i=S.routines.findIndex(function(r){ return r.id===last.routineId; });
-  if(i<0) return S.routines[0];
-  return S.routines[(i+1)%S.routines.length];
+  var mains=mainRoutines();
+  if(!mains.length) return null;
+  var last=S.sessions.find(function(s){ return s.routineId&&!isOptional(s.routineId); });
+  if(!last) return mains[0];
+  var i=mains.findIndex(function(r){ return r.id===last.routineId; });
+  if(i<0) return mains[0];
+  return mains[(i+1)%mains.length];
 }
 
 function startSession(routine,vix){
@@ -88,7 +95,7 @@ function viewToday(){
 
 function todayIdle(){
   var nr=nextRoutine();
-  var html='<div class="eyebrow">'+esc(new Date().toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"}))+'</div>'+
+  var html='<div class="eyebrow">'+esc(new Date().toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"})+blkEyebrow())+'</div>'+
            '<h1 class="view-title">Ready to lift</h1><div class="stack">';
 
   html+=gistPausedBanner();
@@ -105,7 +112,7 @@ function todayIdle(){
 
   if(nr){
     var nvi=nextVariantIx(nr), nvs=variantsOf(nr);
-    var nex=planExOf(nr,nvi);
+    var nex=planExOf(nr,nvi), pumpOn=blkPumpNext();
     var names=nex.map(function(e){ return e.name; }).join(" · ")||"No exercises yet — add some in Plan";
     html+='<div class="card">'+
       '<div class="hero">'+
@@ -128,6 +135,7 @@ function todayIdle(){
         S.routines.map(function(r){
           return variantsOf(r).map(function(v,vi){
             if(r.id===nr.id&&vi===nvi) return "";
+            if(pumpOn&&r.id===pumpOn.r.id&&vi===pumpOn.vi) return "";     // it is the Pump day button below
             return '<button class="daypick" data-act="start" data-id="'+r.id+'" data-vi="'+vi+'">'+
               '<span class="k">'+esc(r.key)+'</span>'+esc(r.name)+
               (variantsOf(r).length>1?" · "+esc(variantLabel(r,vi)):"")+'</button>';
@@ -135,7 +143,9 @@ function todayIdle(){
         }).join("")+
         '<button class="daypick" data-act="start" data-id=""><span class="k">+</span>Freestyle</button>'+
       '</div>'+
-    '</div>';
+      (nex.length?blkOffBookButton(nr,nvi):"")+
+    '</div>'+
+    blkPumpButton(pumpOn);
   } else {
     html+='<div class="card"><div class="empty">No training days yet.<br>Set up your split in <b>Plan</b>.</div>'+
       '<button class="btn primary block" data-act="tab" data-tab="plan">Build my split</button></div>';
@@ -143,7 +153,7 @@ function todayIdle(){
 
   /* Coach suggestions sit under the day card: they never stand between him and
      the Start button. */
-  html+=coachCard();
+  html+=blockCardHtml()+coachCard();
 
   /* The disaster-recovery moment. A new phone or a cleared browser lands on a
      stock split with empty days — not on "no routines" — so this keys off
@@ -167,11 +177,13 @@ function todayIdle(){
        08:00 is six blocks ago and would print "Sun", which reads as today. */
     var d1=new Date(last.ts), lsets=0, lvol=0, ago=calDaysAgo(last.ts);
     last.exercises.forEach(function(e){ lsets+=working(e.sets).length; lvol+=exVolume(e); });
-    html+='<button class="lastsess" data-act="edit-last" data-id="'+esc(last.id)+'">'+
+    /* A session he only marked as trained has no sets to edit: the row says so
+       and opens the sheet (which can delete it) instead of the editor. */
+    html+='<button class="lastsess" data-act="'+(last.unlogged?"open-session":"edit-last")+'" data-id="'+esc(last.id)+'">'+
       '<span class="ls-t"><span class="ls-k">Last</span> <b>'+esc(last.name||last.key||"Workout")+'</b> · '+
         esc(!isFinite(ago)?"":ago===0?"Today":ago===1?"Yesterday":ago>1&&ago<7?d1.toLocaleDateString(undefined,{weekday:"short"}):shortDate(last.ts))+
-        ' · '+plural(lsets,"set")+(lvol>0?' · '+kfmt(lvol)+' '+unit():'')+(last.deload?' · deload':'')+'</span>'+
-      '<span class="ls-edit">Edit</span></button>';
+        ' · '+(last.unlogged?'not logged':plural(lsets,"set")+(lvol>0?' · '+kfmt(lvol)+' '+unit():''))+(last.deload?' · deload':'')+'</span>'+
+      '<span class="ls-edit">'+(last.unlogged?"Open":"Edit")+'</span></button>';
   }
 
   var d=deloadCheck();
@@ -1198,5 +1210,22 @@ function exerciseMenu(ei){
       };
     });
 }
+
+
+/* ============================ Today idle: its own taps (2.0, package D) ============================
+   A listener of its own, not a branch of the one above: it handles only what
+   Today idle renders for off-book sessions, the pump day and the block
+   scorecard, and does nothing mid-workout. The functions it calls live in
+   11-coach.js, which loads after this file and is also what the Node
+   simulator loads, so no listener can go there. */
+$("#view").addEventListener("click",function(e){
+  if(TAB!=="today"||S.active) return;
+  var t=e.target, b;
+  if((b=t.closest('[data-act="offbook"]'))){ offBook(b.dataset.id,b.dataset.vi===undefined?undefined:+b.dataset.vi); return; }
+  if(t.closest('[data-act="pump"]')){ blkPump(); return; }
+  if((b=t.closest('[data-act="open-session"]'))){ sessionSheet(b.dataset.id); return; }
+  if(t.closest('[data-act="block-next"]')){ blkChoose("next"); return; }
+  if(t.closest('[data-act="block-deload"]')){ blkChoose("deload"); return; }
+});
 
 self.__ilf=(self.__ilf||0)+1;

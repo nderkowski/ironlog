@@ -102,8 +102,8 @@ await page.evaluate(() => { S.settings.targetFreq = 3; writeNow(); viewPlan(); }
 console.log('2 suggestions');
 const sugLabels = async () => page.locator('.sug [data-act="plan-suggest"]').allInnerTexts();
 let labels = (await sugLabels()).map(s => s.trim());
-eq(labels.join(' | '), '+ Cable Crunch on B and C (abs) | + Overhead Cable Tricep Extension on B | Lateral Raise 3 → 4 sets on B | + Leg Extension on C | Run RDL as top set + back-offs | Face Pull 3 → 4 sets on A and C (optional)',
-  '2 the suggested rows, in the spec order (RDL row now live: the engine landed with package B), face pull last and optional');
+eq(labels.join(' | '), '+ Cable Crunch on B and C (abs) | + Overhead Cable Tricep Extension on B | Lateral Raise 3 → 4 sets on B | + Leg Extension on C | Run RDL as top set + back-offs | Add the optional Pump day | Face Pull 3 → 4 sets on A and C (optional)',
+  '2 the suggested rows, in the spec order (RDL row live since package B, the pump row since package D), face pull last and optional');
 ok(!labels.some(l => /calf|calves/i.test(l)), '2 calves is never suggested');
 const hidden = await page.evaluate(() => ({ rdl: typeof schemeOf, pump: typeof isOptional }));
 if (hidden.rdl !== 'function') ok(!labels.some(l => /RDL/.test(l)), '2 the RDL row stays hidden until the engine package lands');
@@ -135,8 +135,10 @@ eq(cEx.filter(e => e.name === 'Face Pull')[0].sets, 4, '2 C: Face Pull 3 -> 4');
 eq(byKey(st, 'A').variants[0].exercises.find(e => e.name === 'Face Pull').sets, 4, '2 A: Face Pull 3 -> 4');
 eq(st.planBackup && st.planBackup.kind, 'v2-additions', '2 planBackup taken, kind "v2-additions"');
 eq(JSON.stringify(st.planBackup.routines), before, '2 and it holds the plan exactly as it was');
-eq((await sugLabels()).length, 0, '2 every button vanishes once applied');
-ok(await page.locator('.sug').count() === 0, '2 the "Suggested additions" block goes with them');
+/* package D made the pump row live: nothing here applies it, so it is the one left (its own behaviour is t52's) */
+eq((await sugLabels()).join(), 'Add the optional Pump day', '2 every row button vanishes once applied; only the optional Pump day is left');
+await page.locator('.sug [data-id="pump"]').tap(); await page.waitForTimeout(200);
+ok(await page.locator('.sug').count() === 0, '2 the "Suggested additions" block goes with them (the Pump day was the last one)');
 const tags = Object.fromEntries(byKey(st, 'B').variants[0].exercises.slice(-2).map(e => [e.name, e.mg]));
 eq(JSON.stringify(tags), '{"Overhead Cable Tricep Extension":"triceps","Cable Crunch":"core"}', '2 new rows carry their muscles (triceps, abs)');
 const bal2 = await rowsText('.bal');
@@ -339,9 +341,9 @@ const typo = () => (rn = 0, [
 ]);
 await boot(page, state({ routines: typo() })); await go('plan');
 labels = (await sugLabels()).map(s => s.trim());
-eq(labels.join(' | '), '+ Cable Crunch on B and C (abs) | + Overhead Cable Tricep Extension on B | Lateral Riase 3 → 4 sets on B | + Leg Extension on C | Facepull / Face pull 3 → 4 sets on A and C (optional)',
-  '8 all five suggestions appear, titled with the rows\' own spellings');
-for (const id of ['side', 'face', 'tri', 'abs', 'quad']) { await page.locator('.sug [data-id="' + id + '"]').tap(); await page.waitForTimeout(150); }
+eq(labels.join(' | '), '+ Cable Crunch on B and C (abs) | + Overhead Cable Tricep Extension on B | Lateral Riase 3 → 4 sets on B | + Leg Extension on C | Add the optional Pump day | Facepull / Face pull 3 → 4 sets on A and C (optional)',
+  '8 all five row suggestions appear (and the pump day), titled with the rows\' own spellings');
+for (const id of ['side', 'face', 'tri', 'abs', 'quad', 'pump']) { await page.locator('.sug [data-id="' + id + '"]').tap(); await page.waitForTimeout(150); }
 st = await getState(page);
 const setsOf = (r, vi, name) => byKey(st, r).variants[vi].exercises.find(e => e.name === name).sets;
 eq(setsOf('B', 0, 'Lateral Riase') + ' ' + setsOf('B', 1, 'Lateral Riase'), '4 4', '8 the misspelt raise goes 3 -> 4 in both week variants');

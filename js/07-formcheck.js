@@ -607,6 +607,14 @@ function finishSheet(){
     html+='<div class="banner warn" style="margin-bottom:12px"><div class="bt">No working sets logged</div>'+
       '<div class="bd">Saving now records an empty session.</div></div>';
   }
+  var optDay=a.routineId&&isOptional(a.routineId);
+  if(optDay){
+    html+='<div class="banner calm" style="margin-bottom:12px"><div class="bt">'+esc(a.name)+' is extra work</div>'+
+      '<div class="bd">It counts toward your sets and sessions, and leaves your A/B/C rotation where it was.</div></div>';
+  } else if(mainRoutines().some(function(r){ return r.id===a.routineId; })&&!a.deload&&!inDeloadWeek()&&blockSlots()+1>=mainRoutines().length*blkR()){
+    html+='<div class="banner calm" style="margin-bottom:12px"><div class="bt">Last session of the block</div>'+
+      '<div class="bd">Saving it closes block '+blkShape().num+'. The scorecard waits on Today.</div></div>';
+  }
   if(extras.length&&a.routineId){
     html+='<div class="eyebrow" style="margin-bottom:6px">Keep the extras in '+esc(a.name)+'?</div>';
     extras.forEach(function(e,i){
@@ -657,6 +665,13 @@ function commitSession(){
   a.exercises=a.exercises.filter(function(e){ return e.sets.length; });
   S.sessions.unshift(a);
   S.active=null; stopRest();
+  /* The block counts this session (and closes the block if it filled the last
+     slot) before the coach looks, so a stall card raised at the close is in
+     the open count the rules see. A fault here must not stand between the
+     workout and the save either. */
+  var blockNum=blkShape().num;
+  try{ blockAfterSession(a); }catch(e){ if(window.console) console.error("block:",e); }
+  var closed=S.block.num!==blockNum?blockNum:0;
   /* The coach's two-weekly look at the log. It may add cards; it can't change
      the plan, and a fault in it must never stand between the workout and the
      save. */
@@ -669,7 +684,7 @@ function commitSession(){
   var auto=autoBackup();
   gistBackupNow();                    // a finished workout is not left to the debounce
   closeSheet(); go("progress");
-  toast(auto?"Workout saved · backup written":"Workout saved");
+  toast((auto?"Workout saved · backup written":"Workout saved")+(closed?" · Block "+closed+" done, scorecard on Today":""));
 }
 /* Returns whether a file was actually written, so we don't claim one was. */
 function autoBackup(){

@@ -30,7 +30,7 @@ var COACH_ACCEPT_COOL=42*864e5;
 var COACH_LONG=90;          // active minutes; over this a day is "running long" (Nick: up to 1.5 h is fine)
 var COACH_BUSY=80;          // a day already this long (active) doesn't get another set
 var COACH_BUSY_SETS=21;     // ...nor one already planned at this many working sets
-var COACH_MIN_WEEKLY=6;     // weekly sets per muscle under which the volume rule speaks
+var COACH_THIN=2/3;         // the volume rule speaks under this share of a muscle's band floor: 6 sets for the 9–16 muscles, 4 for the 6–12 ones
 var COACH_UI={busy:false, err:""};
 
 function coachShape(c){
@@ -214,14 +214,16 @@ function coachDayActive(r){
   var d=coachDaySessions(r).slice(0,4).map(coachActiveMin).filter(function(x){ return x!==null; });
   return d.length>=3?coachMedian(d):null;
 }
-/* A day's sessions, newest first, deloads left out (they are short on purpose).
-   For a lift in only some of a day's weeks, only the weeks it is planned in. */
+/* A day's sessions, newest first, deloads left out (they are short on purpose)
+   and so are the ones he only marked as trained (no lifts in them: every lift
+   would read as skipped). For a lift in only some of a day's weeks, only the
+   weeks it is planned in. */
 function coachDaySessions(r,name){
   var k=name?normName(name):"", vs=variantsOf(r);
   var ids=name?vs.filter(function(v){ return v.exercises.some(function(e){ return normName(e.name)===k; }); })
     .map(function(v){ return v.id; }):null;
   return S.sessions.filter(function(s){
-    return s.routineId===r.id&&!s.deload&&(!ids||vs.length<2||ids.indexOf(s.variantId)>=0);
+    return s.routineId===r.id&&!s.deload&&!s.unlogged&&(!ids||vs.length<2||ids.indexOf(s.variantId)>=0);
   }).sort(function(a,b){ return b.ts-a.ts; });
 }
 function coachMk(o){
@@ -238,6 +240,7 @@ function coachMk(o){
 function coachRuleSkipped(){
   var out=[];
   S.routines.forEach(function(r){
+    if(r.optional) return;           // the pump day is taken when wanted: not doing it is not skipping it
     var seen={};
     variantsOf(r).forEach(function(v){ v.exercises.forEach(function(e){
       var k=normName(e.name); if(seen[k]) return; seen[k]=1;
@@ -299,35 +302,42 @@ function coachRuleLong(){
 
 /* RULE 3 — too few weekly sets. RARE on purpose. Weekly sets per muscle
    (tagsOf(), a helper's sets at ½) averaged over the last 3 complete weeks,
-   under COACH_MIN_WEEKLY (6), for a muscle the plan trains with a primary (mg)
-   lift, while he trains ≥2 times a week. Under 10 would fire on nearly every
-   muscle of the recommended plan at 2.5 sessions a week (chest and quads ≈ 7.5,
-   biceps and triceps ≈ 8.75), so the bar is "thin", not "short of the review's
-   10". Skipped when any of the three weeks had a deload or no session (volume
-   was low on purpose or by absence), and never offered a set on a day that is
-   already long (active median over COACH_BUSY minutes) or planned at
-   COACH_BUSY_SETS working sets or more. Offers one more set on that muscle's
-   isolation lift. */
+   under a share of the muscle's band floor (COACH_THIN of it, bandOf(): 6 sets
+   for the 9–16 muscles, 4 for abs, rear delts, forearms and traps), for a
+   muscle the plan trains with a primary (mg) lift, while he trains ≥2 times a
+   week. Under the floor itself would fire on nearly every muscle of the
+   recommended plan at 2.5 sessions a week (chest and quads ≈ 7.5, biceps and
+   triceps ≈ 8.75), so the bar is "thin", not "short". A muscle he chose not to
+   track (settings.excludedMuscles) is never raised. Skipped when any of the
+   three weeks had a deload, no session, or a session he only marked as trained
+   (its sets were done but not logged, so the week would read thin for no
+   reason), and never offered a set on a day that is already long (active
+   median over COACH_BUSY minutes) or planned at COACH_BUSY_SETS working sets
+   or more. Offers one more set on that muscle's isolation lift, on a main day
+   (the pump day is extra, not a place to fix the plan). */
 function coachRuleVolume(){
-  var wk=[1,2,3].map(weekBounds), tot={}, sess=0;
+  var wk=[1,2,3].map(weekBounds), tot={}, sess=0, skip=S.settings.excludedMuscles||[];
   if(!S.sessions.length||Math.min.apply(null,S.sessions.map(function(s){ return s.ts; }))>wk[2].start) return [];
+  MUSCLES.forEach(function(m){ tot[m.k]=0; });
   for(var i=0;i<3;i++){
     var inWk=S.sessions.filter(function(s){ return s.ts>=wk[i].start&&s.ts<wk[i].end; });
-    if(!inWk.length||inWk.some(function(s){ return s.deload; })) return [];
+    if(!inWk.length||inWk.some(function(s){ return s.deload||s.unlogged; })) return [];
     sess+=inWk.length;
-    var by=setsByMuscle(wk[i].start,wk[i].end).by;
-    MUSCLES.forEach(function(m){ tot[m.k]=(tot[m.k]||0)+by[m.k]; });
+    var by=setsByMuscleIn(inWk).by;
+    MUSCLES.forEach(function(m){ tot[m.k]+=by[m.k]; });
   }
   if(sess<6) return [];
   var idx=mgIndex(), rows={};
   eachPlanEx(function(e,r,v){
+    if(r.optional) return;
     var t=tagsOf(e,idx); if(!isMuscle(t.mg)) return;
     (rows[t.mg]=rows[t.mg]||[]).push({e:e,r:r,v:v});
   });
   var low=[];
   MUSCLES.forEach(function(m){
-    var avg=tot[m.k]/3;
-    if(rows[m.k]&&avg<COACH_MIN_WEEKLY&&avg>0) low.push({m:m,avg:avg});   // avg 0: a missed day, not a thin plan
+    var avg=tot[m.k]/3, thin=bandOf(m.k)[0]*COACH_THIN;
+    if(skip.indexOf(m.k)>=0) return;
+    if(rows[m.k]&&avg<thin&&avg>0) low.push({m:m,avg:avg,thin:thin});   // avg 0: a missed day, not a thin plan
   });
   low.sort(function(a,b){ return a.avg-b.avg; });
   for(var k=0;k<low.length;k++){
@@ -343,26 +353,29 @@ function coachRuleVolume(){
       var ia=movementClass(a.e.name)==="iso"?0:1, ib=movementClass(b.e.name)==="iso"?0:1;
       return ia-ib||num(a.e.sets)-num(b.e.sets);
     });
-    var pick=cand[0], worst=low[k];
+    var pick=cand[0], worst=low[k], b=bandOf(worst.m.k);
     return [coachMk({kind:"volume", key:"volume|"+worst.m.k, lift:pick.e.name, rid:pick.r.id,
       title:worst.m.n+" gets few sets",
       reason:worst.m.n+" averaged "+fmt(round(worst.avg,1))+" sets a week over the last 3 weeks (a set counts 1 for the main muscle, "+
-        "½ for a helper), while you trained "+(sess/3).toFixed(1)+" times a week.",
-      evidence:"More weekly sets grow more muscle, with diminishing returns (Schoenfeld 2017; Pelland 2026); about 10 or "+
-        "more a week is the usual floor (ACSM 2026). This only speaks under "+COACH_MIN_WEEKLY+", well short of that, "+
-        "and only on a day with room. Those are short trials, mostly 6–12 weeks, so a guide, not a target.",
+        "½ for a helper), while you trained "+(sess/3).toFixed(1)+" times a week. Your plan is built for "+fmt(targetFreqOf())+" a week.",
+      evidence:"More weekly sets grow more muscle, with diminishing returns (Schoenfeld 2017; Pelland 2026); the usual band is "+
+        b[0]+"–"+b[1]+" a week for "+worst.m.n.toLowerCase()+" (ACSM 2026). This only speaks under "+fmt(round(worst.thin,1))+", well short of "+
+        "that, and only on a day with room. Those are short trials, mostly 6–12 weeks, so a guide, not a target.",
       options:[{act:"add", lift:pick.e.name, n:1, label:"Add a set to "+pick.e.name+" ("+pick.r.name+")"}]})];
   }
   return [];
 }
 
-/* RULE 4 — stalled lift. Deliberately hard to trigger: a naive stall rule
-   fired on ~35% of exposures while strength was rising (ROADMAP v25 F4), and
-   no validated plateau rule exists (RESEARCH.md). Needs ≥6 exposures in a row
-   at the SAME working load (workLoad()) — at least a whole progression cycle
-   — spanning ≥4 weeks, the least-squares slope of the best set (rep-out if
-   present) over that run not above zero, the range no wider than 8 sessions
-   of climb (deloadCheck's limit), and trend() not "up".
+/* RULE 4 — stalled lift, judged on blocks (2.0). Deliberately hard to trigger:
+   a naive stall rule fired on ~35% of exposures while strength was rising
+   (ROADMAP v25 F4), and no validated plateau rule exists (RESEARCH.md). The
+   old "six sessions at one load" rule (26 cards a year on a lifter who was
+   getting stronger) is gone: a lift is called flat only when the block
+   scorecard (blockScorecard) found it flat in TWO blocks in a row — a block is
+   six rotations, so about ten weeks without a gain on the same lift, on 4+
+   sessions in each block (a lift that sits in only some of a day's weeks has
+   fewer: it needs 6 across the two blocks, blockStall). The rule runs once, as
+   a block closes (blockAfterSession), never on the 14-day check.
 
    A LADDER, history first. A swap throws away a lift's history, so it is the
    second rung, not the first:
@@ -370,99 +383,43 @@ function coachRuleVolume(){
         for the same reps), or out of its superset if it is paired;
      2. a swap for a close variation — only if it stalls AGAIN after a rung-1
         change was accepted (≥42 days and ≥4 exposures later), or at once when
-        one of its last three notes mentions pain, soreness or a pinch. */
-/* Least-squares slope of a run of scores (newest first in), as % per 3
-   sessions — the same units and shape as trendAt(), over the run only. */
-function coachSlope(newestFirst){
-  var v=newestFirst.slice().reverse(), n=v.length;
-  var ym=v.reduce(function(a,b){ return a+b; },0)/n; if(!ym) return 0;
-  var xm=(n-1)/2, sxy=0, sxx=0;
-  for(var i=0;i<n;i++){ sxy+=(i-xm)*(v[i]-ym); sxx+=(i-xm)*(i-xm); }
-  return sxx?(sxy/sxx)/ym*100*3:0;
-}
-var COACH_STALL_N=6;       // at least this many exposures in a row at one load...
-var COACH_STALL_CYCLES=3;  // ...and this many progression cycles' worth of them (an 8–12 lift: 15)
+        one of its last three notes mentions pain, soreness or a pinch.
+   coachStallOpts() is the ladder: {stage, opts, why}, or null when there is
+   nothing to offer. */
 var COACH_PAIN=/pain|hurt|ache|pinch|tweak|sore/i;
 function coachNoteOf(x,name){
   var se=S.sessions.filter(function(s){ return s.id===x.sessionId; })[0];
   var ex=se&&se.exercises.filter(function(e){ return normName(e.name)===normName(name); })[0];
   return ex?String(ex.note||"").trim():"";
 }
-function coachRuleStall(){
-  var out=[];
-  trackedLifts().forEach(function(name){
-    var h=exWorkingP(name,planExByName(name)||{}); if(h.length<6) return;   // a top-set lift reads its top set
-    var mode=h[0].bw, W=workLoad(h[0].sets,mode); if(!(W>0)) return;
-    var run=[];
-    for(var i=0;i<h.length&&workLoad(h[i].sets,mode)===W;i++) run.push(h[i]);
-    /* TWO whole double-progression cycles at one load. A lifter on double
-       progression steps the load every cycle (an 8–12 lift: ~5 sessions); two
-       cycles without a step is stuck, not slow. Measured: over 6 sessions a
-       lifter getting stronger by 5–15% a year looks exactly like a stalled one
-       (the rep noise is the size of the gain), and a 6-exposure rule raised
-       ~26 cards a year on him. */
-    if(cycleOf(name)>8) return;          // past this width no threshold separates slow progress from none (deloadCheck)
-    if(run.length<Math.max(COACH_STALL_N,COACH_STALL_CYCLES*cycleOf(name))||run[0].ts-run[run.length-1].ts<28*864e5) return;
-    var key="stall|"+normName(name), tg=coachTargets(name); if(!tg.length) return;
-    var row=tg[0].e;
-    /* A step over 8% of the load (5 lb on a 45 lb dumbbell) is a jump slow
-       progress can't make: sitting at that load for months is ordinary there. */
-    if(W>0&&mode===0){
-      var pn=pinsOf(row);
-      if(pn.length){ var up=pinUp(W,pn); if(up===null||(up-W)/W>0.08) return; }   // a stack: the next pin up is the step; none above, nothing to judge
-      else if(stepFor(row)/W>0.08) return;
-    }
-    /* Slope of the mean reps at the load over the run (the climbing set targets
-       count, not only the rep-out) must not be positive. */
-    var sc=run.slice(0,12).map(function(x){
-      var at=x.sets.filter(function(y){ return isAt(y,W,mode); });
-      return at.reduce(function(a,y){ return a+num(y.r); },0)/Math.max(1,at.length);
-    });
-    if(coachSlope(sc)>0) return;
-    if(trend(name).state==="up") return;
-    /* At the top of the range and not stepping up is the engine waiting out a
-       failed jump (v25), which is its business, not a plateau. */
-    if(num(row.repTop)>num(row.reps)&&sc[0]>=num(row.repTop)) return;
-    var prior=coachState().proposals.filter(function(q){ return q.key===key&&q.status==="accepted"&&q.stage===1; })
-      .sort(function(a,b){ return num(b.decided)-num(a.decided); })[0];
-    var pain=h.slice(0,3).map(function(x){ return {ts:x.ts, n:coachNoteOf(x,name)}; }).filter(function(x){ return COACH_PAIN.test(x.n); })[0];
-    var stage=2, why="";
-    var rung1=[];
-    if(!prior&&!pain){
-      stage=1;
-      var sets=num(row.sets)||3, lo=num(row.reps), top=num(row.repTop);
-      if(sets<6) rung1.push({act:"add", lift:name, n:1, label:"Add a set to "+name});
-      if(lo-2>=3) rung1.push({act:"shift_range", lift:name, n:2, label:"Lower "+name+"'s range by 2 reps ("+lo+(top>lo?"–"+top:"")+" → "+(lo-2)+
-        (top>lo?"–"+Math.max(lo-1,top-2):"")+")"});
-      if(row.link||(tg[0].v.exercises[tg[0].ei+1]&&tg[0].v.exercises[tg[0].ei+1].link))
-        rung1.push({act:"unpair", lift:name, label:"Take "+name+" out of its superset"});
-      if(!rung1.length) stage=2;
-    }
-    if(stage===2){
-      if(prior){
-        var since=h.filter(function(x){ return x.ts>num(prior.decided); }).length;
-        if(since<4||Date.now()-num(prior.decided)<COACH_ACCEPT_COOL) return;
-        why="It stalled again after the change you made on "+shortDate(prior.decided)+".";
-      } else if(pain) why="Your note on "+shortDate(pain.ts)+" says: \""+pain.n.slice(0,120)+"\".";
-    }
-    var opts=stage===1?rung1:coachSwapOpts(name,3);
-    if(!opts.length) return;
-    var best=Math.max.apply(null,run.map(function(x){ return Math.max.apply(null,x.sets.map(function(s){ return num(s.r); })); }));
-    var p=coachMk({kind:"stall", key:key, lift:name,
-      title:name+(stage===1?" has stopped moving":" — time for a variation"),
-      reason:run.length+" sessions in a row at "+entryText({w:W},mode)+" "+unit()+", over "+
-        Math.round((run[0].ts-run[run.length-1].ts)/864e5/7)+" weeks, with the best set no better than before "+
-        "(most reps in a set: "+best+")."+(why?" "+why:""),
-      evidence:"Rule of thumb, not a validated test — no plateau rule has one (the nearest, Bell 2023, is coaches' consensus on deloading), "+
-        "so this waits for six sessions at one load with nothing gained. "+
-        (stage===1?"The lift's history stays with it: a small change first, a swap only if it stalls again. "
-                  :"A swap starts the new lift's history from zero. ")+
-        "A deload week or more food or sleep might help too.",
-      options:opts});
-    p.stage=stage;
-    out.push(p);
-  });
-  return out;
+function coachStallOpts(name){
+  var tg=coachTargets(name); if(!tg.length) return null;
+  var row=tg[0].e, h=exWorkingP(name,row);                 // a top-set lift reads its top set
+  var key="stall|"+normName(name);
+  var prior=coachState().proposals.filter(function(q){ return q.key===key&&q.status==="accepted"&&q.stage===1; })
+    .sort(function(a,b){ return num(b.decided)-num(a.decided); })[0];
+  var pain=h.slice(0,3).map(function(x){ return {ts:x.ts, n:coachNoteOf(x,name)}; }).filter(function(x){ return COACH_PAIN.test(x.n); })[0];
+  var stage=2, why="", rung1=[];
+  if(!prior&&!pain){
+    stage=1;
+    var sets=num(row.sets)||3, lo=num(row.reps), top=num(row.repTop);
+    if(sets<6) rung1.push({act:"add", lift:name, n:1, label:"Add a set to "+name});
+    if(lo-2>=3) rung1.push({act:"shift_range", lift:name, n:2, label:"Lower "+name+"'s range by 2 reps ("+lo+(top>lo?"–"+top:"")+" → "+(lo-2)+
+      (top>lo?"–"+Math.max(lo-1,top-2):"")+")"});
+    if(row.link||(tg[0].v.exercises[tg[0].ei+1]&&tg[0].v.exercises[tg[0].ei+1].link))
+      rung1.push({act:"unpair", lift:name, label:"Take "+name+" out of its superset"});
+    if(!rung1.length) stage=2;
+  }
+  if(stage===2){
+    if(prior){
+      var since=h.filter(function(x){ return x.ts>num(prior.decided); }).length;
+      if(since<4||Date.now()-num(prior.decided)<COACH_ACCEPT_COOL) return null;
+      why="It stalled again after the change you made on "+shortDate(prior.decided)+".";
+    } else if(pain) why="Your note on "+shortDate(pain.ts)+" says: \""+pain.n.slice(0,120)+"\".";
+  }
+  var opts=stage===1?rung1:coachSwapOpts(name,3);
+  if(!opts.length) return null;
+  return {stage:stage, opts:opts, why:why};
 }
 
 /* ---- raising, cooling down, expiring ---- */
@@ -516,7 +473,9 @@ function coachRun(force){
   c.lastCheck=now;
   coachExpire();
   var n=0;
-  [].concat(coachRuleSkipped(),coachRuleLong(),coachRuleVolume(),coachRuleStall())
+  /* Three rules on the 14-day look. The fourth, a stalled lift, is not here: it
+     is judged when a block closes (blockStall), on two flat blocks in a row. */
+  [].concat(coachRuleSkipped(),coachRuleLong(),coachRuleVolume())
     .forEach(function(p){ if(coachRaise(p)) n++; });
   coachPrune();
   return n;
@@ -619,7 +578,7 @@ function coachMeasure(){
       res=(h.act==="swap"?Math.max.apply(null,sc.slice(1))>sc[0]:Math.max.apply(null,sc)>num(h.baseline.score));
     } else {
       var r=S.routines.filter(function(x){ return x.id===h.rid; })[0];
-      var after=S.sessions.filter(function(s){ return s.routineId===h.rid&&!s.deload&&s.ts>h.ts; })
+      var after=S.sessions.filter(function(s){ return s.routineId===h.rid&&!s.deload&&!s.unlogged&&s.ts>h.ts; })
         .sort(function(a,b){ return a.ts-b.ts; }).slice(0,4);
       if(!r||after.length<4) return;
       var d=after.map(coachActiveMin).filter(function(x){ return x!==null; });
@@ -737,7 +696,10 @@ function coachCardHtml(p,compact){
     '</div></div>';
 }
 function coachCard(){
-  var open=coachOpen();
+  /* A stall card the block scorecard is showing lives inside the scorecard;
+     it is not shown twice. */
+  var shown=blkStallShown();
+  var open=coachOpen().filter(function(p){ return p.id!==shown; });
   if(!open.length) return "";
   return '<div class="card co"><div class="eyebrow" style="margin-bottom:8px">Coach</div>'+
     open.map(function(p){ return coachCardHtml(p,true); }).join("")+'</div>';
@@ -869,13 +831,15 @@ function coachSummaryText(per){
   function cut(s,n){ s=String(s||"").replace(/\s+/g," ").trim(); return s.length>n?s.slice(0,n)+"…":s; }
   var first=S.sessions.length?S.sessions[S.sessions.length-1].ts:now;
   var last4w=S.sessions.filter(function(s){ return now-s.ts<28*864e5; }).length;
+  var unl=S.sessions.filter(function(s){ return s.unlogged; }).length;
   L.push("TODAY "+coachYmd(now)+". Unit "+unit()+". "+S.sessions.length+" sessions logged since "+coachYmd(first)+
+    (unl?" ("+unl+" marked trained, not logged)":"")+
     "; "+last4w+" in the last 4 weeks ("+(last4w/4).toFixed(1)+" a week).");
   L.push("");
   L.push("PLAN (sets x rep range; \"+\" = superset with the lift above):");
   S.routines.forEach(function(r){
     variantsOf(r).forEach(function(v,vi){
-      L.push(r.name+(variantsOf(r).length>1?" / "+variantLabel(r,vi):"")+": "+v.exercises.map(function(e){
+      L.push(r.name+(r.optional?" (optional)":"")+(variantsOf(r).length>1?" / "+variantLabel(r,vi):"")+": "+v.exercises.map(function(e){
         return (e.link?"+ ":"")+e.name+" "+num(e.sets)+"x"+num(e.reps)+(num(e.repTop)>num(e.reps)?"-"+num(e.repTop):"");
       }).join(" | "));
     });
@@ -925,6 +889,7 @@ function coachSummaryText(per){
   L.push("");
   L.push("SESSIONS (newest first; active = minutes between logged sets with breaks over 15 min left out, the reliable one; first-to-last-set is often inflated because he ticks sets later; ? if unknown):");
   S.sessions.slice(0,8).forEach(function(s){
+    if(s.unlogged){ L.push("  "+coachYmd(s.ts)+" "+s.name+(s.deload?" (deload)":"")+": (trained, not logged)"); return; }
     var d=coachActiveMin(s), sp=coachSpanMin(s), n=0;
     s.exercises.forEach(function(e){ n+=working(e.sets).length; });
     L.push("  "+coachYmd(s.ts)+" "+s.name+(s.deload?" (deload)":"")+": "+(d===null?"?":Math.round(d))+" min active, "+
@@ -1066,6 +1031,348 @@ function coachAsk(){
       COACH_UI.err=(err&&err.userMsg)||"Couldn't read Claude's answer — try again.";
       coachRefresh(); toast(COACH_UI.err);
     });
+}
+
+/* ============================ today, blocks, pump day (2.0, package D) ============================
+   Three things that live on Today and read the whole log:
+
+   - OFF-BOOK. "Trained Day B, didn't log it": a session with no lifts and
+     `unlogged:true`. It advances the day rotation, the week variant and the
+     frequency counts, and is the one session that is in no volume, trend, PR,
+     coach rule, deload check or scorecard number, because those read lifts and
+     it has none. The readers that read SESSIONS rather than lifts and would
+     count it wrongly each skip it by name: coachDaySessions (skipped / long /
+     day-active / day-miss / baseline), coachMeasure (day mode), coachRuleVolume,
+     coachSummaryText, the Last row, the History rows, sessionSheet, the block
+     scorecard's logged count, and E's rotation window (08-progress).
+   - THE PUMP DAY. An optional routine (`optional:true`) the person slots in
+     whenever he wants. It is never "next", never moves A/B/C (nextRoutine),
+     never counts toward a block slot, is never called "skipped"; its sets and
+     sessions do count toward volume and frequency.
+   - BLOCKS. S.block counts main-day sessions: N main days = one rotation,
+     settings.blockRotations (6) rotations = one block. At the close the
+     scorecard is built from the log and kept in S.block.history; the next
+     block starts at once. Nothing here changes the plan: every button is a tap,
+     and the stall proposal (blockStall) is an ordinary coach card with Keep it
+     and Undo. */
+
+function mainRoutines(){ return S.routines.filter(function(r){ return !r.optional; }); }
+function isOptional(rid){ return S.routines.some(function(r){ return r.id===rid&&r.optional; }); }
+
+/* ---- counting ---- */
+function blkShape(){
+  var b=S.block;
+  if(!b||typeof b!=="object"){
+    b=S.block={num:1, startSessId:null, startTs:0, rotation:0, history:[]};
+  }
+  if(!Array.isArray(b.history)) b.history=[];
+  return b;
+}
+function blkR(){ return Math.max(1,Math.round(num(S.settings.blockRotations))||6); }
+/* The block starts after startTs, set once when the block opens (the time of
+   the session that closed the one before). startSessId is only a note of which
+   session that was: editing or deleting that session, or moving its date, must
+   not move the block that is running. */
+function blkAnchorTs(){ return num(blkShape().startTs); }
+/* What a flat verdict needs: a lift is judged on 2+ sessions in the block, and
+   called flat on 4+ (2+ for a lift on only some of a day's weeks, which has
+   about three a block; blockStall then wants 6 across both blocks). */
+var BLK_JUDGE_N=2, BLK_FLAT_N=4, BLK_FLAT_N_VARIANT=2, BLK_STALL_N_VARIANT=6;
+/* Sessions of main days that fill a slot in (anchor, end]: a deload session
+   doesn't (a deload rotation sits between blocks), a pump or freestyle session
+   doesn't, an unlogged one does. */
+function blkSlotList(anchor,end){
+  var ids=mainRoutines().map(function(r){ return r.id; });
+  return S.sessions.filter(function(s){
+    return s.ts>anchor&&(end===undefined||s.ts<=end)&&ids.indexOf(s.routineId)>=0&&!s.deload;
+  });
+}
+function blockSlots(){ return blkSlotList(blkAnchorTs()).length; }
+function blkRotationNow(){
+  var N=mainRoutines().length; if(!N) return 1;
+  return Math.min(blkR(),Math.floor(blockSlots()/N)+1);
+}
+/* The newest closed block, while it is waiting for a tap and under 10 days old.
+   After that it is let go (choice "none"), set here, lazily. */
+function blkOpenCard(){
+  var h=blkShape().history, last=h[h.length-1];
+  if(!last||last.choice!==null) return null;
+  if(Date.now()-num(last.endTs)>=10*864e5){ last.choice="none"; save(); return null; }
+  return last;
+}
+function blkStallShown(){ var c=blkOpenCard(); return c&&c.stallId?c.stallId:""; }
+function blkEyebrow(){
+  if(!mainRoutines().length) return "";
+  var out=" · Rotation "+blkRotationNow()+" of "+blkR(), c=blkOpenCard();
+  if(c) out+=" · Block "+c.num+" done";
+  return out;
+}
+
+/* ---- the scorecard: every number is a count over the block's window ---- */
+function blkLiftMode(name){ return bwMode(planExByName(name)||{}); }
+function blockScorecard(anchor,end){
+  var b=blkShape();
+  var win=S.sessions.filter(function(s){ return s.ts>anchor&&s.ts<=end; });
+  var slots=blkSlotList(anchor,end);
+  var card={num:b.num, startTs:anchor, endTs:end, slots:slots.length,
+    logged:slots.filter(function(s){ return !s.unlogged; }).length,
+    lifts:[], override:{changed:0, judged:0}, balance:{low:[], high:[]}, flat:[], stallId:"", choice:null,
+    startSessId:b.startSessId||null, closedBy:""};
+
+  /* Per lift, in plan order, main days only (the pump day is extra). The history
+     is the engine's own (exWorkingP: a top-set lift reads its top set), with the
+     eased-back session kept in: an exposure that happened is an exposure. */
+  var onlyVariant={};
+  S.routines.forEach(function(r){
+    if(r.optional) return;
+    var vs=variantsOf(r);
+    var names={};
+    vs.forEach(function(v){ v.exercises.forEach(function(e){ names[normName(e.name)]=(names[normName(e.name)]||0)+1; }); });
+    Object.keys(names).forEach(function(k){ if(vs.length>1&&names[k]<vs.length) onlyVariant[k]=true; });
+  });
+  var done={};
+  eachPlanEx(function(e,r){
+    if(r.optional) return;
+    var k=normName(e.name); if(done[k]) return; done[k]=1;
+    var E=exWorkingP(e.name,e,true).filter(function(x){ return x.ts>anchor&&x.ts<=end; });
+    E=rangeHist(E,e.name,e).slice().reverse();                   // oldest first
+    var n=E.length, L={name:e.name, w0:0, r0:0, w1:0, r1:0, pct:0, verdict:"none", n:n, variantOnly:!!onlyVariant[k]};
+    if(n>=BLK_JUDGE_N){
+      var m0=E[0].bw, m1=E[n-1].bw;
+      L.w0=workLoad(E[0].sets,m0); L.r0=repsAt(E[0],L.w0,m0,true);
+      L.w1=workLoad(E[n-1].sets,m1); L.r1=repsAt(E[n-1],L.w1,m1,true);
+      L.verdict=heavierLoad(L.w1,L.w0,m1)?"up":heavierLoad(L.w0,L.w1,m1)?"down":(L.r1>L.r0?"up":"flat");
+      var s0=trendScore(E[0]), s1=trendScore(E[n-1]);
+      L.pct=s0>0?Math.round((s1/s0-1)*100):0;
+    }
+    card.lifts.push(L);
+    /* Flat or down on enough sessions to say so. A lift on only some of a
+       day's weeks has about three a block: it is judged on two, and blockStall
+       asks for six across both blocks. */
+    if(L.verdict!=="up"&&L.verdict!=="none"&&L.n>=(L.variantOnly?BLK_FLAT_N_VARIANT:BLK_FLAT_N)) card.flat.push(L.name);
+  });
+
+  /* Override rate: how often the weight he logged is not the one the engine
+     prescribed. A day he eased back into, a deload, a pump-less unlogged day and
+     a lift with no prescription (new, or no history) are not judged. */
+  win.forEach(function(s){
+    if(s.deload||s.unlogged||s.easeBack) return;
+    s.exercises.forEach(function(e){
+      var p=e.presc;
+      if(!p||p.w===""||p.w===null||p.w===undefined||e.kind==="new") return;
+      var sets=working(e.sets).filter(function(x){ return x.done!==false&&num(x.r)>0; });
+      if(!sets.length) return;
+      var W=schemeOf(e)==="topback"?num((topSetOf(sets,bwMode(e))||{}).w):workLoad(sets,bwMode(e));
+      card.override.judged++;
+      if(W!==num(p.w)) card.override.changed++;
+    });
+  });
+
+  /* Muscle balance: the window's sets (deload left out) as a week at the
+     sessions a week the plan is built for, against each muscle's own band.
+     Judged are the muscles the PLAN trains (planned sets above 0 on a main
+     day, planBalance()): one the block logged less of than its band floor is
+     low, and so is one it logged nothing of, which is the miss that matters
+     most. A muscle the plan doesn't train, or that he excluded, is not here. */
+  var tot=setsByMuscleIn(win.filter(function(s){ return !s.deload; })).by, f=targetFreqOf();
+  var skip=S.settings.excludedMuscles||[], planned={};
+  planBalance().rows.forEach(function(r){ if(r.weekly>0) planned[r.k]=true; });
+  if(card.logged) MUSCLES.forEach(function(m){
+    if(skip.indexOf(m.k)>=0||!planned[m.k]) return;
+    var wk=num(tot[m.k])*f/card.logged, band=bandOf(m.k);
+    if(wk<band[0]) card.balance.low.push([m.k,round(wk,1)]);
+    else if(wk>band[1]) card.balance.high.push([m.k,round(wk,1)]);
+  });
+  return card;
+}
+
+/* A step over 8% of the load (5 lb on a 45 lb dumbbell) is a jump slow progress
+   can't make: sitting at that load for a block, reps rising and falling inside
+   the range, is ordinary there, and the first rule of this kind raised ~26
+   cards a year on a lifter who was getting stronger because of it. With a stack
+   the next pin up is the step, and with none above there is nothing to judge. */
+function blkStepOk(name,W,mode){
+  var row=planExByName(name)||{};
+  if(mode!==0||!(W>0)) return true;
+  var pn=pinsOf(row);
+  if(pn.length){ var up=pinUp(W,pn); return up!==null&&(up-W)/W<=0.08; }
+  return stepFor(row)/W<=0.08;
+}
+
+/* ---- the two-block stall rule ----
+   A lift flat (or down) in this block AND the one before it, on enough
+   sessions, gets one proposal: the ladder in coachStallOpts. At most one per
+   block close, through the same open cap and cool-downs as every card. Returns
+   the proposal's id, or "". */
+function blockStall(card){
+  var h=blkShape().history, prev=h[h.length-1];
+  if(!prev||num(prev.num)!==num(card.num)-1||!Array.isArray(prev.lifts)) return "";
+  var cands=[];
+  card.flat.forEach(function(name,ix){
+    var k=normName(name);
+    if((prev.flat||[]).map(normName).indexOf(k)<0) return;
+    var a=card.lifts.filter(function(l){ return normName(l.name)===k; })[0];
+    var o=prev.lifts.filter(function(l){ return normName(l.name)===k; })[0];
+    if(!a||!o) return;
+    if(a.variantOnly&&a.n+o.n<BLK_STALL_N_VARIANT) return;                      // ruling: too few sessions to judge
+    if(!blkStepOk(a.name,a.w1,blkLiftMode(a.name))) return;   // a step over 8% of the load: slow progress can't show
+    cands.push({name:name, a:a, o:o, ix:ix});
+  });
+  if(!cands.length) return "";
+  cands.sort(function(x,y){ return x.a.pct-y.a.pct||x.ix-y.ix; });
+  var c=cands[0], so=coachStallOpts(c.name); if(!so) return "";
+  var mode=blkLiftMode(c.name);
+  var p=coachMk({kind:"stall", key:"stall|"+normName(c.name), lift:c.name,
+    title:c.name+(so.stage===1?" has stopped moving":" — time for a variation"),
+    reason:c.name+" was flat for two blocks: "+entryText({w:c.o.w0},mode)+"×"+c.o.r0+" at the start of block "+prev.num+
+      ", "+entryText({w:c.a.w1},mode)+"×"+c.a.r1+" at the end of block "+card.num+"."+(so.why?" "+so.why:""),
+    evidence:"Rule of thumb, not a validated test — no plateau rule has one (the nearest, Bell 2023, is coaches' consensus on deloading), "+
+      "so this waits for two whole blocks (about ten weeks) with nothing gained on the lift. "+
+      (so.stage===1?"The lift's history stays with it: a small change first, a swap only if it stalls again. "
+                   :"A swap starts the new lift's history from zero. ")+
+      "A deload week or more food or sleep might help too.",
+    options:so.opts});
+  p.stage=so.stage;
+  return coachRaise(p)?p.id:"";
+}
+
+/* Called as each session is saved (commitSession) or marked (offBook), after it
+   is in S.sessions and before the coach looks. Keeps the rotation cache and,
+   when the block's last slot has just been filled, closes it. */
+function blockAfterSession(a){
+  var b=blkShape(), N=mainRoutines().length, R=blkR();
+  if(!N) return;
+  var anchor=blkAnchorTs(), slots=blkSlotList(anchor).length;
+  b.rotation=Math.min(R,Math.floor(slots/N)+1);
+  if(slots<R*N) return;
+  if(!a||mainRoutines().map(function(r){ return r.id; }).indexOf(a.routineId)<0||a.deload) return;   // only a session that fills a slot closes it
+  var card=blockScorecard(anchor,a.ts);
+  card.closedBy=a.id;                              // so undoing exactly this session can retire exactly this block
+  card.stallId=blockStall(card);
+  b.history.push(card);
+  if(b.history.length>40) b.history=b.history.slice(-40);
+  S.block={num:b.num+1, startSessId:a.id, startTs:a.ts, rotation:1, history:b.history};
+}
+
+function blkLiftText(l){
+  if(l.verdict==="none") return "—";
+  var m=blkLiftMode(l.name);
+  return entryText({w:l.w0},m)+"×"+l.r0+" → "+entryText({w:l.w1},m)+"×"+l.r1;
+}
+function blkBalanceText(c){
+  var nm=function(k){ return muscleName(k); };
+  var fmtRow=function(r){ var b=bandOf(r[0]); return nm(r[0])+" "+r[1].toFixed(1)+" ("+b[0]+"–"+b[1]+")"; };
+  if(!c.logged) return "No logged sessions to judge balance.";
+  if(!c.balance.low.length&&!c.balance.high.length) return "Every muscle is inside its weekly band.";
+  var out=[];
+  if(c.balance.low.length) out.push("Under its weekly band: "+c.balance.low.map(fmtRow).join(" · "));
+  if(c.balance.high.length) out.push("Over: "+c.balance.high.map(fmtRow).join(" · "));
+  return out.join(". ")+".";
+}
+function blockCardHtml(){
+  var c=blkOpenCard(); if(!c) return "";
+  var judged=c.lifts.filter(function(l){ return l.verdict!=="none"; });
+  var h='<div class="card blk" id="blk-card"><div class="row" style="margin-bottom:6px"><div class="eyebrow">Block '+c.num+' done</div>'+
+    '<span class="tiny muted" style="margin-left:auto">'+plural(c.slots,"session")+(c.logged<c.slots?" · "+(c.slots-c.logged)+" not logged":"")+'</span></div>';
+  if(c.lifts.length){
+    h+='<div class="blk-ls" role="list">'+c.lifts.map(function(l){
+      var chip=l.verdict==="none"?"":'<span class="chip '+(l.verdict==="up"?"good":l.verdict==="down"?"bad":"")+' mono">'+(l.pct>0?"+":"")+l.pct+'%</span>';
+      return '<div class="blk-l" role="listitem"><span class="blk-n">'+esc(l.name)+'</span><span class="blk-m num">'+esc(blkLiftText(l))+'</span>'+chip+'</div>';
+    }).join("")+'</div>'+
+    '<div class="tiny muted" style="margin:6px 0 0">A lift is judged on '+BLK_JUDGE_N+'+ sessions in the block, and called flat on '+BLK_FLAT_N+'+ ('+BLK_FLAT_N_VARIANT+'+ for lifts in only some week variants). '+judged.length+' of '+c.lifts.length+' judged here.</div>';
+  }
+  if(c.override.judged){
+    h+='<div class="tiny" style="margin-top:8px">You changed the weight on '+c.override.changed+' of '+c.override.judged+' lifts ('+
+      Math.round(100*c.override.changed/c.override.judged)+'%).</div>';
+  }
+  h+='<div class="tiny" style="margin-top:6px">'+esc(blkBalanceText(c))+'</div>';
+  var sp=c.stallId?coachState().proposals.filter(function(p){ return p.id===c.stallId&&p.status==="open"; })[0]:null;
+  if(sp) h+='<div class="blk-stall">'+coachCardHtml(sp,true)+'</div>';
+  h+='<div class="co-o"><button class="btn sm primary" data-act="block-next">Start block '+(c.num+1)+'</button>'+
+    '<button class="btn sm" data-act="block-deload">Deload rotation</button></div></div>';
+  return h;
+}
+/* The two taps on the scorecard. Both can be put back. */
+function blkChoose(which){
+  var c=blkOpenCard(); if(!c) return;
+  if(which==="next"){
+    c.choice="next"; writeNow(); render();
+    toastUndo("Block "+(c.num+1)+" it is",function(){ c.choice=null; writeNow(); render(); });
+    return;
+  }
+  var N=Math.max(1,mainRoutines().length), days=Math.max(5,Math.min(10,Math.round(7*N/targetFreqOf())));
+  var was={u:S.settings.deloadUntil, s:S.settings.deloadSnooze};
+  startDeloadWeek(days); c.choice="deload"; writeNow(); render();
+  toastUndo("Deload rotation: "+plural(days,"day"),function(){
+    S.settings.deloadUntil=was.u; S.settings.deloadSnooze=was.s; c.choice=null; writeNow(); render();
+  });
+}
+
+/* ---- off-book: "Trained Day B, didn't log it" ---- */
+function blkOffBookButton(nr,nvi){
+  return '<button class="offbook" data-act="offbook" data-id="'+esc(nr.id)+'" data-vi="'+nvi+'">Trained '+esc(nr.name)+', didn\'t log it</button>';
+}
+function offBook(rid,vi){
+  if(S.active){ toast("Finish or discard the workout first"); return; }
+  var r=S.routines.find(function(x){ return x.id===rid; }); if(!r) return;
+  var ix=vi===undefined||isNaN(vi)?nextVariantIx(r):vi, v=variantAt(r,ix), now=Date.now();
+  var s={id:uid(), ts:now, endTs:now, routineId:r.id, key:r.key, name:r.name, variantId:v?v.id:null,
+    variantName:v?variantLabel(r,variantsOf(r).indexOf(v)):"", deload:inDeloadWeek(),
+    bw:num(S.settings.bodyweight), note:"", unlogged:true, exercises:[]};
+  S.sessions.unshift(s);
+  try{ blockAfterSession(s); }catch(e){ if(window.console) console.error("block:",e); }
+  writeNow(); render();
+  toastUndo(r.name+" marked as trained",function(){ blkUnmark(s.id); });
+}
+/* Undo of an off-book session takes out that session and exactly what it did,
+   and nothing else: anything saved since (a workout, the block progress and any
+   card it raised) is left alone, so no snapshot of the block or the coach is put
+   back. The block is recounted from the sessions that remain; if this session
+   closed a block, that block's scorecard (and the stall card it raised, if still
+   unanswered) is retired and the block is reopened at its own start. */
+function blkUnmark(id){
+  var i=S.sessions.findIndex(function(x){ return x.id===id; });
+  if(i>=0) S.sessions.splice(i,1);
+  var b=blkShape(), h=b.history, hi=-1;
+  h.forEach(function(c,k){ if(c.closedBy===id) hi=k; });
+  if(hi>=0){
+    var c=h[hi];
+    if(c.stallId) coachState().proposals=coachState().proposals.filter(function(p){ return !(p.id===c.stallId&&p.status==="open"); });
+    h.splice(hi,1);
+    if(hi===h.length&&S.block.num===c.num+1)               // nothing has closed since: the block is the one that was open
+      S.block={num:c.num, startSessId:c.startSessId||null, startTs:c.startTs, rotation:0, history:h};
+  }
+  blkShape().rotation=blkRotationNow();
+  /* The count the backup guard compares with moves down only if this entry had
+     already reached the gist; before a push it never moved up, and taking it
+     down anyway would let a later real delete slip under the guard. */
+  if(num(gistLoad().pushedSessions)>S.sessions.length) gistSessionsMoved(-1);
+  recomputePRs(); writeNow(); render(); toast("Unmarked");
+}
+
+/* ---- the pump day ---- */
+function pumpRoutine(){
+  return S.routines.find(function(r){ return r.optional&&r.key==="P"; })||S.routines.find(function(r){ return r.optional; })||null;
+}
+function blkPumpNext(){
+  var r=pumpRoutine(); if(!r) return null;
+  return {r:r, vi:nextVariantIx(r)};
+}
+function blkPumpButton(on){
+  var lab=on?variantLabel(on.r,on.vi):"Arms & delts";
+  return '<button class="btn ghost block pumpbtn" data-act="pump"><span class="pb-t">Pump day'+(lab?' · '+esc(lab):'')+'</span>'+
+    '<span class="pb-s">Extra work, whenever you want it. It never moves your rotation.</span></button>';
+}
+/* Creates the day from E's seed the first time (it then lives in Plan like any
+   other day, tagged OPTIONAL) and starts its next menu. */
+function blkPump(){
+  if(S.active) return;
+  var r=pumpRoutine(), added=false;
+  if(!r){ r=pumpSeed(); S.routines.push(r); added=true; writeNow(); }
+  var vi=nextVariantIx(r);
+  if(!planExOf(r,vi).length){ go("plan"); toast("Add exercises to the Pump day first"); return; }
+  startSession(r,vi);
+  if(added) toast("Pump day added to your plan");
 }
 
 self.__ilf=(self.__ilf||0)+1;

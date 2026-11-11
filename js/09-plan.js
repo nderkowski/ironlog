@@ -212,7 +212,7 @@ function viewPlan(){
     html+='<section class="card" style="padding:0">'+
       '<div class="ex-head" style="align-items:center">'+
         '<div class="daymark" style="width:40px;height:40px;flex:0 0 auto"><div class="letter" style="font-size:18px">'+esc(r.key)+'</div></div>'+
-        '<div class="t" style="margin-left:2px"><div class="ex-name" style="font-size:15px">'+esc(r.name)+'</div>'+
+        '<div class="t" style="margin-left:2px"><div class="ex-name" style="font-size:15px">'+esc(r.name)+(r.optional?' <span class="chip tag">OPTIONAL</span>':"")+'</div>'+
         '<div class="ex-meta">'+plural(list.length,"exercise")+
           (vs.length>1?' · next up: '+esc(variantLabel(r,nextVariantIx(r))):"")+'</div></div>'+
         '<button class="kebab" data-act="day-menu" data-ri="'+ri+'" aria-label="Day options">⋯</button>'+

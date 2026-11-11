@@ -20,7 +20,7 @@
      superseded while it was still waiting is never activated, so its cache
      can linger until the next version activates; it is never read, only
      wasted space. */
-const BUILD = "2.0-a5i";
+const BUILD = "2.0-a6";
 const CACHE = "ironlog-" + BUILD;
 // The file list is js/files.js, shared with the page and the tests; the query
 // string is what makes the browser re-read it with every new BUILD (an imported

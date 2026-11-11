@@ -60,6 +60,7 @@ const DRIVER = (policy, skip, pace) => `
         s.exercises=s.exercises.filter(function(e){ return e.name!==${JSON.stringify(skip)}||(++n%10)<3; });   // done ~30% of the time
       }
       s.exercises.forEach(function(e){ e.sets.forEach(function(x){ x.ts=s.ts+Math.round(k*${pace}*60e3); k++; }); });
+      T.ev('blockAfterSession')(s);   // 2.0: the block counts the session (and closes at 18 main sessions) before the coach looks, as commitSession() does
       T.ev('coachMeasure')();
       T.ev('coachRun')(false);
       T.S.coach.proposals.forEach(function(p){

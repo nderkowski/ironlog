@@ -798,3 +798,22 @@ nav.tabs .t.on{color:var(--accent-ink);background:var(--accent-soft)}
 .plate-ed .pr-row .rm:active{background:var(--panel-2)}
 .empty{text-align:center;color:var(--ink-3);font-size:14px;padding:26px 10px}
 hr.sep{border:none;border-top:1px solid var(--line);margin:18px 0 14px}
+
+/* ---------- Today: off-book, pump day, block scorecard (2.0, package D) ---------- */
+.offbook{
+  display:inline-flex;align-items:center;min-height:44px;margin-top:4px;padding:0 2px;
+  font-size:13px;font-weight:600;color:var(--ink-2);text-decoration:underline;
+  text-decoration-color:var(--line);text-underline-offset:3px;text-align:left;
+}
+.offbook:active{color:var(--ink)}
+.pumpbtn{display:flex;flex-direction:column;align-items:flex-start;gap:1px;height:auto;min-height:48px;padding:8px 14px;text-align:left;white-space:normal}
+.pumpbtn .pb-t{font-weight:700;font-size:14px;color:var(--ink)}
+.pumpbtn .pb-s{font-size:12px;font-weight:500;color:var(--ink-3)}
+.blk-ls{display:flex;flex-direction:column}
+.blk-l{display:flex;align-items:center;gap:8px;min-height:30px;padding:3px 0;border-top:1px solid var(--line);font-size:13px}
+.blk-l:first-child{border-top:0}
+.blk-n{flex:1 1 40%;min-width:0;font-weight:600;overflow-wrap:anywhere}
+.blk-m{flex:0 1 auto;font-size:12px;color:var(--ink-2);text-align:right}
+.blk-l .chip{flex:0 0 auto}
+.blk-stall{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.blk .co-o .btn{justify-content:center;text-align:center}

@@ -85,7 +85,7 @@ function viewProgress(){
     html+='<button class="sess" data-sess="'+s.id+'">'+
       '<span class="sd">'+esc(shortDate(s.ts))+'</span>'+
       '<span class="sn">'+esc(s.name)+(s.deload?' <span class="chip tag">DELOAD</span>':"")+'</span>'+
-      '<span class="sv">'+plural(sets,"set")+' · '+kfmt(vol)+'</span></button>';
+      '<span class="sv">'+(s.unlogged?'not logged':plural(sets,"set")+' · '+kfmt(vol))+'</span></button>';
   });
   html+='</div>';
 
@@ -410,7 +410,7 @@ function sessionSheet(id){
   var vol=0; s.exercises.forEach(function(e){ vol+=exVolume(e); });
   var html='<h3>'+esc(s.name)+'</h3><div class="sub">'+
     esc(new Date(s.ts).toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))+
-    (s.endTs?' · '+dur(s.endTs-s.ts):"")+' · '+commas(vol)+' '+unit()+
+    (s.unlogged?' · Trained, not logged.':(s.endTs?' · '+dur(s.endTs-s.ts):"")+' · '+commas(vol)+' '+unit())+
     (s.variantName?' · '+esc(s.variantName):"")+
     (s.deload?' · deload':"")+'</div>';
   s.exercises.forEach(function(e){
@@ -425,13 +425,15 @@ function sessionSheet(id){
       fcHistoryHtml(e)+'</div>';
   });
   if(s.note) html+='<div class="card" style="margin-bottom:12px"><div class="eyebrow">Note</div><div style="margin-top:4px">'+esc(s.note)+'</div></div>';
+  /* A session he only marked as trained has no sets to edit; it can be closed
+     or deleted. */
   html+='<div class="row" style="gap:8px;margin-top:8px">'+
     '<button class="btn ghost" style="flex:1" data-x="close">Close</button>'+
-    '<button class="btn primary" style="flex:1" data-x="edit">Edit</button></div>'+
+    (s.unlogged?'':'<button class="btn primary" style="flex:1" data-x="edit">Edit</button>')+'</div>'+
     '<button class="btn danger block" style="margin-top:8px" data-x="del">Delete session</button>';
   sheet(html,function(el){
     $('[data-x="close"]',el).onclick=closeSheet;
-    $('[data-x="edit"]',el).onclick=function(){ editSession(id); };
+    if(!s.unlogged) $('[data-x="edit"]',el).onclick=function(){ editSession(id); };
     $('[data-x="del"]',el).onclick=function(){
       confirmSheet("Delete this session?","It's removed from your history and stats.","Delete",function(){
         var i=S.sessions.findIndex(function(x){ return x.id===id; });
