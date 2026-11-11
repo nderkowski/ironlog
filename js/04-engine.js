@@ -56,7 +56,11 @@ function easierEx(w,ex){                           // deload: about 10% off
    the lowest pin) it is the top itself and the card says so. */
 function backOffW(top,ex){
   var T=num(top), t=T*(1-(num(ex.backPct)||0.12)), p=pinsOf(ex);
-  if(p.length){ var c=p.filter(function(x){ return x<T-1e-9; }); return c.length?nearestPin(t,c):T; }
+  if(p.length){
+    var bar0=barOf(ex);                            // never below the bar either
+    var c=p.filter(function(x){ return x<T-1e-9&&x>=bar0-1e-9; });
+    return c.length?nearestPin(t,c):T;
+  }
   var s=stepFor(ex), b=Math.round(t/s)*s;
   if(b>=T) b=T-s;
   if(b<=0) return T;
@@ -153,7 +157,14 @@ function projectTop(h){ var t=topSetOf(h.sets,h.bw); return t?Object.assign({},h
    exposure is its top set alone, so every rule in prescribe() runs unchanged. */
 function exWorkingP(name,ex,withEased){
   var h=exWorking(name,withEased);
-  return schemeOf(ex)==="topback"?h.map(projectTop):h;
+  return schemeOf(ex)==="topback"?h.map(projectTop):h.map(dropBackSets);
+}
+/* A row switched back to "double" still reads sessions logged as top + back-offs:
+   the planned back-offs (role "back") are not working sets of that lift. */
+function dropBackSets(h){
+  if(!h.sets.some(function(s){ return s.role==="back"; })) return h;
+  var k=h.sets.filter(function(s){ return s.role!=="back"; });
+  return k.length?Object.assign({},h,{sets:k}):h;
 }
 
 /* A 10% cut on the step grid is fine on a 185 lb bar and brutal on a 15 lb
@@ -316,6 +327,29 @@ function prescribeRow(name,ex,opts){
     nm=nmR>=Math.max(low,top-nmSlack)&&at.slice(0,-1).every(function(s){ return num(s.r)>=top; });
   }
 
+  /* Out of reach for now — so step back, rather than "run it back" for
+     months. Judged on the BEST set at the load, not the worst: replayed on
+     the real log, judging by the worst set cut an incline press after
+     65×8,6,4 (fatigue, not failure — next session was 65×8×3) and halved a
+     cable fly after 20×10,14,16. Right after a jump, go back to the load
+     it came from whatever the percentage, since that load was being made.
+     At an established load, only after two sessions in a row and never by
+     more than MAX_CUT; a 10 lb step on a 20 lb fly holds instead. Plain
+     shortfalls only. Double progression and straight sets share it: with the
+     trend cut gone it is the only way a load that can't be met comes down. */
+  function stepBackCall(){
+    if(noLoad||!hist[1]||!(repsAt(last,w,mode,true)<low)) return null;
+    var w1=workLoad(hist[1].sets,mode), bk=0;
+    if(heavierLoad(w,w1,mode)) bk=w1;
+    else if(w1===w&&repsAt(hist[1],w,mode,true)<low&&last.lo===hist[1].lo){
+      bk=lighterEx(w,ex);
+      if(mode!==2&&w-bk>w*MAX_CUT) bk=0;
+    }
+    if(bk&&bk!==w) return {w:bk,r:low,sets:nsets,
+      why:"Couldn't reach "+amtText(low,met)+" at "+fmt(w)+" — back to "+fmt(bk)+" and build up",kind:"deload"};
+    return null;
+  }
+
   if(top>low){                                        // double progression
     if(minR>=top||nm){
       if(noLoad) return {w:w,r:minR+rstep,sets:nsets,
@@ -331,34 +365,24 @@ function prescribeRow(name,ex,opts){
       }
       var nx=harderEx(w,ex);
       /* The end of a stack: nothing heavier to go to, so reps are the only way up. */
-      if(nx===w&&pinsOf(ex).length)
-        return {w:w,r:minR+rstep,sets:nsets,why:"Top of the stack — go for "+(minR+rstep),kind:"reps"};
+      if(nx===w&&pinsOf(ex).length){
+        var tr=Math.max(minR,nmR)+rstep;
+        return {w:w,r:tr,sets:nsets,why:"Top of the stack — go for "+tr,kind:"reps"};
+      }
       return {w:nx,r:low,sets:nsets,
               why:(minR>=top?"Hit "+amtText(top,met)+" on every set":
                      "Hit "+top+", "+(at[at.length-1].out?"rep-out ":"last set ")+nmR)+" — "+harderPhraseEx(w,nx,ex),kind:"up"};
     }
+    /* At the end of a stack there is no heavier weight to earn: when every set but
+       the last has reached the top, the next target is the top itself, so the last
+       set is asked to join them rather than a rep above its own. */
+    if(minR>=low&&!noLoad&&pinsOf(ex).length&&harderEx(w,ex)===w&&at.length>=2&&at.slice(0,-1).every(function(s){ return num(s.r)>=top; }))
+      return {w:w,r:top,sets:nsets,why:"Same weight — go for "+top+" this time",kind:"reps"};
     if(minR>=low)
       return {w:w,r:nextR,sets:nsets,
               why:(noLoad?"Same as last time":"Same weight")+" — go for "+nextR+" this time",kind:"reps"};
-    /* Out of reach for now — so step back, rather than "run it back" for
-       months. Judged on the BEST set at the load, not the worst: replayed on
-       the real log, judging by the worst set cut an incline press after
-       65×8,6,4 (fatigue, not failure — next session was 65×8×3) and halved a
-       cable fly after 20×10,14,16. Right after a jump, go back to the load
-       it came from whatever the percentage, since that load was being made.
-       At an established load, only after two sessions in a row and never by
-       more than MAX_CUT; a 10 lb step on a 20 lb fly holds instead. Plain
-       shortfalls only — never on top of the trend back-off above (17b). */
-    if(!noLoad&&hist[1]&&repsAt(last,w,mode,true)<low){
-      var w1=workLoad(hist[1].sets,mode), bk=0;
-      if(heavierLoad(w,w1,mode)) bk=w1;
-      else if(w1===w&&repsAt(hist[1],w,mode,true)<low&&last.lo===hist[1].lo){
-        bk=lighterEx(w,ex);
-        if(mode!==2&&w-bk>w*MAX_CUT) bk=0;
-      }
-      if(bk&&bk!==w) return {w:bk,r:low,sets:nsets,
-        why:"Couldn't reach "+amtText(low,met)+" at "+fmt(w)+" — back to "+fmt(bk)+" and build up",kind:"deload"};
-    }
+    var sb=stepBackCall();
+    if(sb) return sb;
     return {w:w,r:low,sets:nsets,why:"Fell short of "+amtText(low,met)+" — run it back",kind:"hold"};
   }
 
@@ -371,6 +395,8 @@ function prescribeRow(name,ex,opts){
     return {w:nx2,r:low,sets:nsets,
             why:"Hit all "+amtText(low,met)+" — "+harderPhraseEx(w,nx2,ex),kind:"up"};
   }
+  var sb2=stepBackCall();
+  if(sb2) return sb2;
   return {w:w,r:low,sets:nsets,why:"Missed "+amtText(low,met)+" last time — run it back",kind:"hold"};
 }
 

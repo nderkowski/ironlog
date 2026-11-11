@@ -347,7 +347,57 @@ await discard();
   const pj = await page.evaluate(() => { const h = exWorkingP('RDL', planExByName('RDL'))[0]; return [h.sets.length, h.sets[0].w, h.sets[0].role]; });
   eq(pj.join(), '1,225,top', '9 exWorkingP on a topback row: one set, the top');
   const plain = await page.evaluate(() => exWorkingP('RDL', {})[0].sets.length);
-  eq(plain, 3, '9 ...and all sets for a plain row');
+  eq(plain, 1, '9 ...a plain row reads a role-tagged session by its top set too (back-offs are not working sets of it)');
+}
+
+/* ======================= 10. review fixes ======================= */
+{
+  /* 10.1 straight-set rows step back too (the trend cut was the only thing that ever took a straight lift down) */
+  const SQ = { name:'Back Squat', reps:8, repTop:0 };
+  await start(state(SQ, [ { sets:[[100, 6], [100, 6], [100, 5]] }, { sets:[[100, 7], [100, 7], [100, 6]] } ]));
+  eq((await setVals())[0], '95x8', '10.1 straight 3×8: 100×7,7,6 after 100×6,6,5 → one step lighter (95), not "run it back" for ever');
+  has(await why(), 'back to 95', '10.1 ...with the words  [' + await why() + ']');
+  await discard();
+  await start(state(SQ, [ { sets:[[100, 7], [100, 7], [100, 6]] } ]));
+  eq((await setVals())[0], '100x8', '10.1 one miss alone holds');
+  has(await why(), 'run it back', '10.1 ...and says so');
+  await discard();
+  await start(state(SQ, [ { sets:[[95, 8], [95, 8], [95, 8]] }, { sets:[[100, 6], [100, 6], [100, 5]] } ]));
+  eq((await setVals())[0], '95x8', '10.1 straight: right after a jump that failed, back to the load it came from');
+  await discard();
+  await start(state(Object.assign({}, SQ, { pins:[80, 90, 100, 110] }), [ { sets:[[100, 6], [100, 6], [100, 5]] }, { sets:[[100, 7], [100, 7], [100, 6]] } ]));
+  eq((await setVals())[0], '90x8', '10.1 straight on a stack: the pin below (10% is the MAX_CUT edge)');
+  await discard();
+  await start(state(Object.assign({}, SQ, { pins:[50, 100] }), [ { sets:[[100, 6], [100, 6], [100, 5]] }, { sets:[[100, 7], [100, 7], [100, 6]] } ]));
+  eq((await setVals())[0], '100x8', '10.1 a step bigger than MAX_CUT (50%) holds instead');
+  await discard();
+  /* 10.2 a row switched to double reads only the top of top + back-off sessions */
+  const DBL = Object.assign({}, RDL, { scheme:'double' });
+  await start(state(DBL, [ TB(225, 8, 200, 10) ]));
+  eq((await setVals()).join(), '225x9,225x9,225x9', '10.2 topback → double: 225×8 top + 200×10,10 back-offs prefills a 225 prescription (not 205×6)');
+  await discard();
+  await start(state(DBL, [ TB(225, 10, 200, 6) ]));
+  eq((await setVals())[0], '230x6', '10.2 ...the back-offs never hold or cut the top');
+  await discard();
+  /* 10.3 back-offs on a stack never go below the bar */
+  eq(await fn('backOffW', 50, { bar:45, pins:[42.5, 47.5, 50], inc:5, backPct:0.12 }), 47.5, '10.3 top 50, bar 45, pins [42.5,47.5,50]: 47.5, not 42.5');
+  eq(await fn('backOffW', 50, { bar:45, pins:[42.5, 50], inc:5, backPct:0.12 }), 50, '10.3 nothing at or above the bar below the top: back-off = the top');
+  eq(await fn('backOffW', 50, { bar:0, pins:[42.5, 47.5, 50], inc:5, backPct:0.12 }), 42.5, '10.3 no bar: nearest pin to 44 (42.5)');
+  await start(state({ name:'Leg Extension', reps:6, repTop:10, bar:45, scheme:'topback', pins:[42.5, 47.5, 50] }, [ TB(50, 7, 47.5, 7) ]));
+  eq((await setVals()).join(), '50x8,47.5x8,47.5x8', '10.3 on the card: back-offs 47.5');
+  await discard();
+  /* 10.4 the end of a stack: a near-miss or a top-reached target never drops below the top */
+  const ST = { name:'Cable Row', reps:8, repTop:10, pins:[20, 27.5, 35] };
+  await start(state(ST, [ { sets:[[35, 10], [35, 10], [35, 8]] } ]));
+  eq((await setVals())[0], '35x10', '10.4 8–10 at the top pin, 35×10,10,8: the target is 10, not 9');
+  await discard();
+  await start(state(Object.assign({}, ST, { reps:8, repTop:12 }), [ { sets:[[35, 12], [35, 12], [35, 11]] } ]));
+  eq((await setVals())[0], '35x12', '10.4 near-miss at the end of the stack (12,12,11): go for 12');
+  has(await why(), 'Top of the stack — go for 12', '10.4 ...says so  [' + await why() + ']');
+  await discard();
+  await start(state(ST, [ { sets:[[35, 9], [35, 9], [35, 8]] } ]));
+  eq((await setVals())[0], '35x9', '10.4 an ordinary 9,9,8 at the end of the stack: one more rep');
+  await discard();
 }
 
 ok(errors.length === 0, 'no page errors  ' + errors.join(' | '));

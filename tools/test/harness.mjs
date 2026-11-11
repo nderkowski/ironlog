@@ -28,7 +28,7 @@ export async function launch() {
   const ctx = await browser.newContext({ ...devices['Pixel 5'], viewport: { width: 390, height: 844 } });
   const page = await ctx.newPage();
   const errors = [];
-  page.on('pageerror', e => errors.push(String(e)));
+  page.on('pageerror', e => errors.push(String(e) + (process.env.IRONLOG_DEBUG ? ' @ ' + String(e.stack).split('\n').slice(1, 3).join(' / ') : '')));
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
   return { browser, ctx, page, errors };
 }

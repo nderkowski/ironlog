@@ -22,7 +22,7 @@ const NL = +(process.argv[2] || 200);
 const COPIES = {
   base: [],
   'abl-jump': [['if(jf&&repsAt(hist[jf.i],jf.w,mode)<low-1){', 'if(false&&jf&&repsAt(hist[jf.i],jf.w,mode)<low-1){']],
-  'abl-step': [['if(!noLoad&&hist[1]&&repsAt(last,w,mode,true)<low){', 'if(false&&!noLoad&&hist[1]&&repsAt(last,w,mode,true)<low){']],
+  'abl-step': [['if(noLoad||!hist[1]||!(repsAt(last,w,mode,true)<low)) return null;', 'return null;']],
 };
 export const CONFIGS = {
   classic:      { copy: 'base', engine: 'classic', coach: true },
