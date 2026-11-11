@@ -985,3 +985,53 @@ Ownership note on tests: t50 §3 (off-book) belongs to **D** (move it into t52);
    blocks. Otherwise the scorecard reports and does not judge.
 6. **`presc`** (the prescribed load and reps snapshot per session exercise)
    is accepted, for the override-rate metric.
+
+## Cross-family review amendments (DeepSeek V4 Pro, 11 Nov). These override the sections they name.
+
+All 15 findings were accepted. Implementers must apply these.
+
+1. **Ownership (Blocker).** `coachRuleVolume()` moves from E to **D**, and
+   D merges after E. It reads E's `targetFreqOf`/`setsByMuscleIn` through the
+   §8 contracts.
+   - Unowned functions are assigned: `liftSheet` → E; `editSession`,
+     `drawEditor` → C; `finishSheet` → D.
+2. **Off-book undo vs the backup guard (Blocker).** Undo of an off-book entry
+   calls `gistSessionsMoved(-1)` **only if** `pushedSessions` is greater than
+   the session count after removal, i.e. the entry had already been pushed.
+   - Test: off-book + undo, repeated 5 times before any push, leaves
+     `pushedSessions` unchanged.
+3. **Eased sessions in the block scorecard (findings 3 + 12).**
+   - Per-lift progression and exposure counts use a history that **includes**
+     `easeBack` sessions (via `projectTop`).
+   - The override rate uses a **separate** filter that excludes `easeBack`
+     and `unlogged`.
+   - Test: a block with one eased day still reports the lift's full `n`.
+4. **Variant-only lifts.** Scorecard lifts carry `variantOnly`. `blockStall`
+   requires `prev.n + cur.n ≥ 6` for them (ruling §9.5).
+5. **`presc` is set after every internal prefill adjustment**, including
+   `stepBack`, and before any user chip or edit.
+   - Test: an untouched step-back session counts as **not** overridden.
+6. **`planExFromSession()` and `newPlanEx()`** carry `scheme`, `backPct` and
+   `pins` (trap 13).
+   - Test: keeping a topback extra from the finish sheet keeps its scheme and
+     pins.
+7. **`retagDelts()` preserves each set's total credit.** If `mg2` also held
+   `"delts"`, that helper moves to a distinct delt head, never dropped.
+   - The migration test asserts Σ credited sets per session is unchanged.
+8. **`targetFreq`** is clamped to 1–7 and rounded to 0.5 in `normalize()`.
+9. **The ease-back banner hides in place** (`[data-act="easeback"]`) from
+   `toggleSet()` and the stepper and input paths once any working set is done.
+   No re-render (trap 1).
+10. **`backOffW()`.** When no lighter legal load exists (bar or stack floor),
+    back-offs equal the top, and the card shows "no lighter back-off here".
+    Never below the bar or the lowest pin.
+11. **`droppedSets()`** keeps its `forEach` (where `return` = continue). If it
+    is ever turned into a `for` loop, use `continue`.
+    - Test: a legacy dropped set after a `role:"back"` set is still counted.
+12. *(merged into 3)*
+13. *(merged into 1)*
+14. **`S.block.history`** is capped at the newest 40 in both
+    `blockAfterSession()` and `normalize()`.
+15. **S1 apply records link (superset) changes** from `pairNew()` in the same
+    undo diff as the rows.
+    - Test: apply then undo restores the exact pre-apply links.
