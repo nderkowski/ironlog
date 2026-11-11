@@ -99,7 +99,7 @@ deload.**
   a tool for advanced lifters fixing a specific lag. They're **not** the
   right default for "grow everything evenly"; evenly planned volume is. If a
   muscle ever clearly lags, a specialization block can be an option later.
-- **Problem: today's plan is uneven.** Rough weekly hard sets per muscle on
+- **Problem: today's plan is uneven** (calves excluded by choice; see §8). Rough weekly hard sets per muscle on
   the current A/B/C at 3 sessions a week (a helper set counts ½):
 
   | Muscle | Sets a week |
@@ -298,9 +298,21 @@ Starting now puts 2.0 around **late December 2026 to early January 2027**.
 - One-tap undo.
 - The coach never changes the plan by itself.
 
-## 8. Questions still open
+## 8. Owner answers, round 3 (11 Nov)
 
-1. **Calves and abs:** do you want them in the plan? They're the two muscles
-   at zero.
-2. **Equipment:** do you have a calf raise machine, a cable stack and a leg
-   extension? That decides what the balance suggestions can offer.
+- **Calves: excluded on purpose.** They're big enough, and they cramp and feel
+  tight. The balance check marks a muscle the owner excluded as "by choice"
+  and never suggests sets for it. This is a per-muscle setting.
+- **Abs: yes.** He's never found an ab exercise he likes, so the balance check
+  offers 2–3 to try and remembers which he keeps. All are easy on the lower
+  back and shoulders:
+  - kneeling **cable crunch**, which uses the cable stack and progresses by
+    load like everything else
+  - **reverse crunch** on a bench
+  - **dead bug**
+  - **Pallof press**, which uses the cable stack
+  - Sit-ups, hanging leg raises and the ab wheel are left out: they load the
+    lower back or shoulders.
+- **Equipment:** leg extension and cable stack, yes. So the quad, triceps and
+  abs suggestions are leg extension, overhead cable extension and cable
+  crunch.

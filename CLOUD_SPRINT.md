@@ -135,10 +135,10 @@ on the diff + `/code-review high` → Playwright run of the changed flow at
 ## Real-log replay (owner sent the export at 16:47; kept in the scratchpad, never committed)
 `tools/review/replay.mjs` (from the review branch), v26.1 vs the near-miss
 prototype: **1 of 102 real calls changes**, the same one at slack 1 and 2:
-DB Curl 8–12, 9 Sep. History: 25×12,12,9 → app said "go for 10" (the target
-slid from 12 to 10 off the rep-out) → 25×12,12,11 → v26.1 "go for 12",
-prototype "30×8" → he did 25×12,12,12, then 25×14,12, then 30×8,8,8. The jump
-the prototype asks for was made at the bottom of the range when he finally
+a curl at 8–12: after 12,12,9 the app had lowered the target to 10 (the
+target slid off the rep-out); after 12,12,11 v26.1 said "go for 12" and the
+prototype said add the step. He made the heavier load at the bottom of the
+range when he took it himself, about a month later. the prototype asks for was made at the bottom of the range when he finally
 took it, a month later. Supports lane A;
 
 Real-log **load agreement** (replayed `prescribe()` load = load he used, non-deload,
