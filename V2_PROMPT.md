@@ -50,10 +50,14 @@ second edition of the idea", designed with everything 26 versions taught us.
 
 ## What I want from 2.0 (owner's answers)
 - **Audience.** Just me. No accounts, payments, app stores or sharing.
-- **Goal.** Size. I have a long history of tweaking something on barbell
-  bench, squat and deadlift, so the current plan avoids them (DB presses,
-  leg press, split squats, RDL). I'd like them back if that can be done
-  safely.
+- **Goal.** Even size across every muscle, with no imbalances. I'm not
+  interested in barbell bench, squat or deadlift. My lower back and
+  shoulders get tweaked most, and heavy squats have hurt my hip and made my
+  knees sore. No pain-flag button.
+- **The log gaps.** They are a mix of breaks and unlogged sessions, and I
+  can't say which is which.
+- **Modules.** I'm OK with splitting the single file into modules, as long
+  as nothing can get lost: offline cache, every function, every behaviour.
 - **Hard constraints.** It must stay usable mid-set: logging a set stays
   one tap. It must work offline. No ads and no tracking. My data stays mine
   (export, plus the existing private GitHub-gist backup).

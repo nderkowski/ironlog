@@ -1,4 +1,4 @@
-# Iron Log 2.0 — review and plan (revised 11 Nov with the owner's answers)
+# Iron Log 2.0 — review and plan (revised 11 Nov with the owner's answers, round 2)
 
 Owner's answers, 11 Nov:
 - **Frequency:** usually 3 sessions a week, sometimes 4.
@@ -8,6 +8,16 @@ Owner's answers, 11 Nov:
   and deadlift. Would like to do them if they could be done safely.
 - **Audience:** **just for me.**
 - **Modules:** didn't know what "splitting into modules" meant (explained in §4).
+
+Round 2, same day:
+- **The empty weeks:** both breaks and unlogged sessions, and he can't say
+  which was which.
+- **Modules:** yes, provided nothing can get lost.
+- **No "felt that" button,** and no interest in the barbell big three.
+- **Joints that go:** lower back and shoulders most. Heavy squats have hurt
+  his hip and made his knees sore.
+- **Muscles:** grow all of them evenly, and avoid imbalances. He asked whether
+  a block means training one muscle for 5 weeks; it doesn't (§3, M1).
 
 The first draft was built on the logged 1.4 sessions a week. That was wrong:
 it was the app's view, not the training (§1). Real-log figures are aggregates
@@ -48,142 +58,146 @@ repo.
 
 ## 2. Thesis
 
-> **Iron Log 2.0: build size steadily without getting hurt — and earn back
-> the big lifts safely if you want them.**
-
-Directions considered:
-
-| Direction | Verdict |
-|---|---|
-| **A. Size without injury** (chosen) | It matches your goal and the thing that has cost you most over the years. It reuses the engine, weekly sets per muscle, the coach's swap families (`COACH_FAMILIES`) and form check. |
-| B. Coach the week (first draft) | Built on a frequency problem you don't have. Its useful part, picking the most overdue day after a break, becomes S2. |
-| C. Share it with others | Out: it's just for you. |
+> **Iron Log 2.0: even, steady size across every muscle, a log that doesn't
+> lose your training, and a codebase that's safe to keep building on.**
 
 ## 3. Scope
 
-### Must (5)
+### Must (4)
 
-**M0 — Find out why weeks are missing, then close the gap. Do this first.**
-- **Problem:** 5 empty weeks, and 4 weeks of one session each, in a
-  3–4-a-week routine. Either you took breaks, or sessions happened and
-  weren't logged.
-  - If they weren't logged, nothing else in 2.0 can work: a size block
-    can't plan volume it never sees.
-- **Change, depending on your answer (question 1):**
-  - **"Didn't log it":**
-    - Add "Log a past workout" on Today. Pick the day, pick the date, and the
-      sets prefill from what the engine would have prescribed. That turns a
-      forgotten session into ~10 taps instead of a lost one.
-    - Add a gentle line if a planned day passes unlogged ("Tuesday's Day B —
-      did you train? Log it").
-    - Separately, find out what stopped you logging: phone left in the bag,
-      the app being slow, a bug.
-  - **"Took a break":**
-    - A re-entry session after a gap of 10+ days. Today the app only steps
-      back after 28 days (`makeSessionEx`, `stepBack`).
-    - Mark the break so trend and stall maths don't read it as a stall.
-- **Cost at the bar:** none, because it happens after the fact.
-- **Measured by:** logged sessions per week over the 2.0 block matches what
-  you actually trained, which you confirm at the end of the block. No week at
-  0 unless it was a break.
-
-**M1 — Size blocks: planned volume per muscle, planned deload.**
-- **Problem:**
-  - Size is driven mostly by weekly hard sets per muscle (Schoenfeld 2017;
-    Pelland 2026).
-  - The app counts those sets but never plans them.
-  - Deloads are reactive.
+**M0 — Never lose a session, and handle breaks properly.**
+- **Problem:** 5 of 16 weeks are empty and September shows one session a
+  week. That's a mix of breaks and sessions that were never logged, and
+  nothing in the log can tell them apart. So trends, stalls and set counts
+  have been read from partial data.
 - **Change:**
-  - A block is 5 weeks plus a deload week. Each muscle gets a weekly set
-    target that ramps from a floor toward a ceiling (the usual
-    MEV → MAV conventions, labelled as conventions). At 3–4 sessions of
-    60–90 min there's room for ~12–18 sets a week on priority muscles.
-  - Set counts per session come from the block, prefilled as today.
-  - The block ends in a scheduled deload using the existing
-    `startDeloadWeek()`. `deloadCheck()` stays as an early-exit prompt.
-  - You pick 1–2 priority muscles per block, which get the higher end.
+  - **Log a past workout.** From Today, pick the day and the date. Sets
+    prefill from what the engine would have prescribed. That's about 10 taps.
+  - **Ask once when a gap opens.** After 7 or more days with nothing logged,
+    Today asks once: "Nothing since Tue 3 Nov — trained without logging, or
+    took a break?" **Log it** opens the past-workout entry; **Break** marks
+    the gap. The question is one tap to dismiss and is never asked twice for
+    the same gap. It is the only way the app can know which kind of gap it
+    was.
+  - **Breaks are handled.** A marked break is kept out of trend and stall
+    maths, so it doesn't read as a stall. After 10+ days the first session
+    back steps loads back one step. Today that only happens after 28 days
+    (`makeSessionEx`, `stepBack`).
+- **Cost at the bar:** none, because everything happens outside a workout.
+- **Measured by:**
+  - Logged sessions per week match the 3–4 you train, which you confirm at
+    the end of the block.
+  - No unexplained empty weeks.
+
+**M1 — Balanced size blocks: every muscle, every week, with a planned
+deload.**
+- **Not a specialization block.** Every muscle is trained every week, as now.
+  The block plans *how many* hard sets each muscle gets, adds a little across
+  the weeks, and ends in an easy week before the next block.
+- **Is a one-muscle block a good strategy?** Specialization blocks exist:
+  pushing 1–2 lagging muscles hard while the rest sit at maintenance. They're
+  a tool for advanced lifters fixing a specific lag. They're **not** the
+  right default for "grow everything evenly"; evenly planned volume is. If a
+  muscle ever clearly lags, a specialization block can be an option later.
+- **Problem: today's plan is uneven.** Rough weekly hard sets per muscle on
+  the current A/B/C at 3 sessions a week (a helper set counts ½):
+
+  | Muscle | Sets a week |
+  |---|---|
+  | Chest | ~9 |
+  | Upper back and lats | ~9 |
+  | Hamstrings | ~9 |
+  | Side delts | ~7 |
+  | Rear delts | ~6 (face pull appears twice under two spellings) |
+  | Biceps | ~6 |
+  | Quads | ~6 |
+  | Triceps | ~4–5 |
+  | Calves | 0 |
+  | Abs | ~0 |
+
+  Some muscles get half what others do, and two get nothing. The
+  weekly-sets card (`weeklySetsCard`) shows this, but nothing acts on it.
+- **Change:**
+  - **Balance check.** Each block starts with a check: every muscle should be
+    at least at a floor. The usual convention is ~8–10 hard sets a week for
+    growth, ramping toward ~12–16; these are conventions and are labelled as
+    such.
+  - **Suggestions for any muscle below the floor,** each one tap to accept:
+    add a set to a lift you already do, or add a lift.
+  - **What gets suggested, given your joints:**
+    - Calves: standing or seated calf raise.
+    - Quads: leg extension, or more leg press sets (both easy on hips and
+      knees compared with heavy squats).
+    - Triceps: overhead cable extension.
+    - Abs: cable crunch.
+    - Nothing that loads the lower back or shoulders heavily.
+  - **The ramp.** Weekly sets ramp gently, about +1 set per muscle every 1–2
+    weeks, up to the block's ceiling. Set counts are prefilled, so nothing is
+    typed.
+  - **The deload.** Week 6 is a scheduled deload using the existing
+    `startDeloadWeek()`. `deloadCheck()` stays as an early "this block is
+    stale — deload now?" prompt.
+  - **Fit.** The block respects 60–90 min sessions: it won't add sets past
+    the coach's long-session rule.
 - **Cost at the bar:** none. Sets are already prefilled.
 - **Measured by:**
-  - Weekly sets per muscle inside the block's band in ≥ 80% of weeks.
+  - Every muscle's weekly sets inside its band in ≥ 80% of weeks.
+  - The largest muscle-to-muscle gap in weekly sets shrinks from ~9 to ≤ 4.
   - The deload happens on schedule.
-  - Over the next blocks, rep and load gains on the priority muscles' lifts.
-    This is a real-world signal and a slow one.
+  - Over the following blocks, rep and load gains spread across all muscles'
+    lifts, not just a few.
 
-**M2 — "Felt that" — one tap to flag a niggle, and the app remembers.**
-- **Problem:** years of tweaks, and today the app can't tell a lift that
-  aggravates your shoulder from one that doesn't.
+**M2 — Split the app into modules, with nothing able to get lost.**
+- **Can something get lost? Yes, and here's how:**
+  - A file isn't in the offline cache, so the app breaks offline.
+  - A function ends up referenced from one file but defined in none.
+  - A file is loaded twice, or in the wrong order.
+  - A file exists but nothing loads it.
+- **Change and guards:**
+  - **One list of modules in one place.** The page and the offline cache both
+    read the same list, so they can't disagree.
+  - **A check that runs with every test pass:**
+    - Every module is on the list and in the cache.
+    - Every name used is defined exactly once.
+    - All 374 functions of today's file still exist somewhere after the split.
+    - Nothing on the list goes unused.
+  - **Same behaviour, proven:**
+    - All 28 test suites pass unchanged.
+    - Replaying your real log gives 102 of 102 prescriptions identical.
+    - The tap and accessibility numbers are identical.
+  - **Offline-update test:** install the old version, update to the split
+    one, go offline, reload. The app must boot and log a set. That's the
+    failure you'd notice in the gym, so it's tested directly, then checked on
+    your phone before merging.
+  - **No new dependencies, no build step.** The browser loads the files
+    directly.
+- **Cost to you:** nothing visible.
+- **Measured by:** the checks above pass on every run, not just once.
+
+**M3 — Warm-up sets generated for your compound lifts.**
+- **Problem:** your lower back and shoulders are the usual victims, and a
+  cold first working set on RDL, overhead press, leg press or split squats is
+  the classic setup for that.
+  - Warm-ups are typed by hand today.
 - **Change:**
-  - **The flag:**
-    - After a set, never between taps on the set row, the lift's ⋯ menu gets
-      "Felt it: shoulder / elbow / lower back / knee / hip / other".
-    - It is stored per exercise and session.
-  - **What the app does with it:**
-    - Next time, that lift holds its load (no jump) and the target drops a
-      rep.
-    - A second flag in 3 weeks makes the coach offer 2–3 same-muscle
-      alternatives that load the joint less. It reuses `COACH_FAMILIES`,
-      extended with a joint-stress tag.
-    - Never automatic, always one-tap undo.
-  - **The history:** Progress shows which lifts and joints get flagged over
-    time ("left shoulder: 3 flags, all on overhead press").
-- **Cost at the bar:** zero during the set, and one optional tap after it.
-- **Measured by:**
-  - Flags per block trending down.
-  - No lift flagged 3 or more times while still in the plan without you
-    choosing "keep it".
-- **This is not medical advice.** A joint that keeps getting flagged gets a
-  plain "worth seeing a physio" line, the way form check already does.
-
-**M3 — Earn-back ladders for bench, squat and deadlift (opt-in, one at a time).**
-- **Problem:** you'd like the big three, and in your experience they bite.
-  Most tweaks come from too much load too soon, grinding reps, or skipping
-  the warm-up. The app can control all three.
-- **Change:** each lift becomes a ladder of rungs, each one easier on the
-  joints than the next:
-
-  | Lift | Rungs |
-  |---|---|
-  | Squat | goblet squat → heels-elevated goblet → safety-bar or box squat → back squat |
-  | Bench | DB bench (you have this) → DB floor press → barbell floor press → close-grip barbell bench → bench |
-  | Deadlift | RDL (you have this) → trap bar from blocks → trap bar from the floor → conventional |
-
-  Rules on a ladder lift (these are conservative conventions and are
-  labelled as such):
-  - **Reps:** 6–10, never singles.
-  - **Effort:** last set stops about 2 short of failure. The rep-out ends at
-    "2 in the tank", not form breaking.
-  - **Load steps:** ≤ 5% of the load.
-  - **Moving up a rung:** after 6 clean sessions, meaning no M2 flag and no
-    missed reps. A form check video (v28, already built) is suggested at each
-    rung change.
-  - **A flag sends you down one rung,** not out.
-- **Cost at the bar:** none extra. It's an ordinary plan row with a stricter
-  rule set.
-- **Measured by:** rungs climbed, against flags on ladder lifts. The target is
-  zero flags per rung.
-
-**M4 — Warm-up ramps on every compound.**
-- **Problem:** cold, heavy first sets are a classic tweak.
-  - Warm-ups are typed by hand today, so they get skipped when you're in a
-    hurry.
-- **Change:**
-  - Generate 2–4 warm-up sets from today's working weight, the bar and your
-    plates (plate maths exists). Each is one tap to log.
-  - Ladder lifts (M3) always get a ramp.
+  - 2–3 warm-up sets from today's working weight and your equipment, e.g.
+    RDL 225: 95×8, 135×5, 185×3. One tap each.
+  - They are on by default for compounds, and can be turned off per lift.
 - **Cost at the bar:** fewer taps than typing.
-- **Measured by:** warm-ups logged on compounds before the first working set
+- **Measured by:** warm-ups logged before the first working set on compounds
   in ≥ 90% of sessions.
 
 ### Should (4)
 
-- **S1 A simulator that can judge program design.**
-  - Port the review's stimulus lifter (`tools/review/sim.mjs`) to check M1's
-    volume ramps before you train them.
-  - It is a gate for M1, not a feature.
-- **S2 Most-overdue day after a break.**
-  - After 7+ days off, Today suggests the day whose muscles have gone longest
-    untrained, not the next in strict rotation (`nextRoutine()`,
-    index.html:2694).
+- **S1 Joint-aware caps on the lifts that load your lower back and shoulders.**
+  - The lifts: RDL, DB overhead press, Bulgarian split squat.
+  - The cap: smaller load jumps (≤ 5%), and the last set stops about 1 short
+    of form breaking instead of going further.
+  - It's opt-in per lift and shown on the card.
+  - Measured in the simulator: no loss of progress beyond noise.
+- **S2 A simulator that can judge M1's volume ramps.**
+  - Port the review's stimulus lifter (`tools/review/sim.mjs`) as a gate
+    before training a block.
 - **S3 Learn from overrides.**
   - You change the prescribed load in ~37% of exposures.
   - When a lift is overridden the same way in 3 of its last 4 exposures, the
@@ -192,40 +206,29 @@ Directions considered:
   - Two blocks with no gain at one load counts as a stall.
   - It replaces the 15-exposure rule (review #7).
 
-### Won't, for now
+### Won't
 
-- **Accounts, sync, sharing, onboarding for strangers.** It's just for you.
-  The gist backup covers it.
+- **A "felt that" button.** Your decision.
+- **Barbell bench, squat or deadlift ladders.** Your decision. The swap
+  suggestions will steer away from them.
+- **Specialization blocks** as a default (above).
+- **Accounts, sync, sharing, onboarding for others.** It's just for you.
 - **A short-day button.** Your sessions are 60–90 min by choice.
-- **A check-in before every session.** It adds a tap to every workout. M2
-  covers the injury half of it.
+- **A check-in before every session.**
 - **The rep-out method as default.** It has 0 real uses against its gate.
 - **Auto-scroll.** Your decision.
 - **Social, exercise database, videos, food tracking.**
 
 ## 4. Architecture and data
 
-**"Splitting into modules", in plain words.** Today the whole app is one
-7,600-line file, `index.html`.
-- **What it means:** split it into ~8 smaller files (the engine, the coach,
-  backup, each screen). The browser loads them together.
-- **What changes for you:** nothing. Same app, same URL, still offline, still
-  no installs or dependencies.
-- **What it buys:** faster and safer work for whoever builds 2.0. In the last
-  sprint, four streams of work had to be merged by hand into one file.
-- **What it costs:** a one-time move with some risk around offline updates.
-  The 28 test suites and a phone check are the safety net.
-- **Recommendation:** worth doing at the start of 2.0, but optional.
-  Everything above works either way.
-
 | Layer | 1.x | 2.0 |
 |---|---|---|
-| State | `version:5` (index.html:823) | `version:6`. Adds `program.block` (weeks, per-muscle targets, priority muscles, deload week); `flags[]` per exercise per session (joint, ts); `ladder` per plan row (lift, rung, clean count); `breaks[]`. Migration in `normalize()` (index.html:854) only adds fields. A v5 snapshot is kept under `ironlog.v1.before-v6`. |
-| Next set | `prescribe()` | Unchanged for ordinary lifts. Ladder lifts get stricter caps (≤ 5% steps, stop 2 short), and a flagged lift holds. |
-| Next session | strict rotation | Unchanged, except S2 after a break. |
-| Deload | reactive | Scheduled by the block. `deloadCheck()` is an early-exit prompt. |
-| Coach | rules + Claude check-in | Adds flag-driven swaps (M2) and override cards (S3). Stall judged at block ends (S4). Flags and ladder state go into the check-in summary. |
-| Tests | 28 suites | Adds block invariants, flag and ladder rules (UI-driven), the v5→v6 migration diff on a synthetic export, and warm-up generation against plate maths. |
+| Code | one 7,600-line `index.html` | A shell plus ~8 module files (state, engine, coach, planner, backup, each screen), loaded from one list that the offline cache also uses. Guards as in M2. |
+| State | `version:5` (index.html:823) | `version:6`. Adds `program.block` (start, week, per-muscle floor/ceiling/target, deload week), `breaks[]` (start, end, kind: break or unlogged), and a warm-up setting per plan row. The migration in `normalize()` (index.html:854) only adds fields. A v5 snapshot is kept under `ironlog.v1.before-v6`. |
+| Next set | `prescribe()` | Unchanged, plus S1 caps on lifts you opt in. |
+| Deload | reactive `deloadCheck()` | Scheduled by the block. `deloadCheck()` is an early-exit prompt. |
+| Coach | rules + Claude check-in | Adds balance suggestions (M1) and override cards (S3). Stall judged at block ends (S4). Breaks excluded from stall maths (M0). |
+| Tests | 28 suites | Adds the module guard check, the offline-update test, block and balance invariants, a v5→v6 migration diff on a synthetic export, gap and past-workout journeys, and warm-up generation against plate maths. |
 
 **Not losing a set:** the migration only adds fields. A test migrates a
 synthetic v5 export, exports it again, and diffs every session against the
@@ -233,22 +236,24 @@ original. `t31` and `t34` (backup and data safety) must pass.
 
 ## 5. Validation plan
 
-1. **Answer question 1 first.** It decides M0.
-2. **Before training on M1,** check the block's volume ramp in the stimulus
-   simulator (S1) and the existing `yearsim`. Pre-register:
-   - weekly sets in band ≥ 80%
-   - the deload on schedule in 100% of blocks
-   - no prescription under-loaded more than today's 32%
+1. **The module split ships alone and first, behind every guard in M2.**
+   Nothing else changes in that release, so if anything looks different it's
+   the split.
+2. **Before training a block,** check its ramp in the stimulus simulator
+   (S2) and `yearsim`. Pre-register:
+   - every muscle in band ≥ 80% of weeks
+   - the deload on schedule
+   - under-loading no worse than today's 32%
    - all `t43` invariants holding
-3. **Real-log replay** after each alpha. Set prescriptions must be identical
+3. **Real-log replay** after each step. Set prescriptions must be identical
    except where a feature intends a change.
-4. **In the gym: one size block** (5 weeks + deload, ~6 weeks), with at most
-   one ladder lift active. The numbers we read:
-   - sessions logged per week vs trained (you confirm)
-   - weekly sets in band
-   - flags per week
-   - ladder rung and clean sessions
+4. **In the gym: one block** (5 weeks + deload, ~6 weeks). The numbers we
+   read:
+   - logged vs trained sessions (you confirm)
+   - weekly sets per muscle in band
+   - the muscle-to-muscle gap
    - override rate (baseline 37%)
+   - warm-ups logged
    - taps to log, which must not rise
 
 ## 6. Milestones
@@ -261,49 +266,41 @@ ETAs use this sprint's measured pace. With review and fixes:
 
 | Stage | Contents | Agent time | Gate |
 |---|---|---|---|
-| **2.0-a0** | M0 (whichever way question 1 goes) and M4 warm-up ramps | ~1.5 h | Journeys: logging a past workout ≤ 10 taps; warm-ups 1 tap each |
-| **2.0-a1** | Optional: module split, schema v6, migration. No behaviour change. | ~3 h | 28/28 suites; 102/102 replay identical; offline update checked on the phone |
-| **2.0-a2** | M2 niggle flags and flag-driven swaps | ~1.5 h | Flag → hold → swap card works by real taps; undo works |
-| **2.0-a3** | M1 size blocks, S1 simulator gate, S4 stall-on-blocks | ~3 h | Simulator pre-registration met |
-| **2.0-a4** | M3 ladders (all three defined, one active at a time) | ~2 h | Ladder rules in `t43`-style invariants; rung change by real taps |
-| **2.0-beta** | S2–S3, full review pass, merge to `main` | ~1.5 h | All suites green; one gym session with no blockers |
-| **Gym block** | You run one size block on the beta | **~6 weeks calendar** | Gate in §5.4 met; no data loss |
+| **2.0-a1** | M2 module split with all guards. No behaviour change. | ~3.5 h | Guards pass; 28/28 suites; 102/102 replay identical; offline update checked on your phone |
+| **2.0-a2** | M0 past workouts, gap question, breaks; M3 warm-ups | ~2 h | Past workout ≤ 10 taps; gap asked once; warm-ups 1 tap each |
+| **2.0-a3** | M1 balanced blocks, S2 simulator gate, S4 stall-on-blocks | ~3 h | Simulator pre-registration met |
+| **2.0-beta** | S1, S3, a full review pass, merge to `main` | ~1.5 h | All suites; one gym session with no blockers |
+| **Gym block** | One block on the beta | **~6 weeks calendar** | §5.4 numbers read; no data loss |
 | **2.0** | Fixes from the block, docs | ~1 h | — |
 
-Total: **~11 hours of agent work without the split, ~14 with it**, plus a
-6-week block in the gym. Starting now puts 2.0 around **late December 2026
-to early January 2027**.
+Total: **about 11 hours of agent work, plus a 6-week block in the gym.**
+Starting now puts 2.0 around **late December 2026 to early January 2027**.
 
 ## 7. Risks, and what stays untouched
 
 **Risks**
-- **The app can't see your joints.** Flags, ladders and caps lower the usual
-  causes of tweaks (load jumps, grinding, cold sets). They don't guarantee
-  anything, and they're not a substitute for a physio when something keeps
-  recurring.
-- **Volume targets are conventions, not measurements.** Start at the floor.
-  The ceiling is labelled as a guess, and the block reads your recovery
-  through flags and stalls.
-- **If the log gaps were unlogged sessions,** every number the engine and
-  coach have computed so far was on partial data. Expect trends to move once
-  logging is complete.
-- **Scope creep.** Five Musts and four Shoulds. Anything new waits for 2.1.
+- **The module split is the riskiest step.** It ships alone, behind the M2
+  guards and the offline test, and is checked on your phone before merging.
+- **Volume floors and ceilings are conventions, not measurements.** Start at
+  the floor, ramp gently, and read recovery from stalls and how you feel.
+- **Adding calves and abs adds time.** If sessions would run past 90 min, the
+  block trims sets elsewhere instead of making the day longer.
+- **The app can't see your joints.** Warm-ups and the S1 caps reduce common
+  causes of tweaks. They're not a guarantee, and a recurring problem is worth
+  a physio.
+- **Scope creep.** Four Musts and four Shoulds. Anything new waits for 2.1.
 
 **Kept from 1.x untouched**
 - One-tap logging with no re-render on the set path (trap 1).
-- `prescribe()`'s rules for ordinary lifts.
+- `prescribe()`'s rules.
 - The backup safety rules.
 - `normalize()` as the only way into the state.
 - One-tap undo.
 - The coach never changes the plan by itself.
 
-## 8. Questions only you can answer
+## 8. Questions still open
 
-1. **The empty weeks:** Aug 10, Aug 24, Oct 5–19, and the one-a-week stretch
-   through September. Were they breaks, or did you train without logging? If
-   the latter, what got in the way?
-2. **Which big lift would you most like back first:** squat, bench or
-   deadlift? Or none, and stay with what works?
-3. **Which joints tend to go?** Shoulder, lower back, knee, elbow? It decides
-   which flags and swaps matter most.
-4. **Any muscles you most want to grow** for the first block?
+1. **Calves and abs:** do you want them in the plan? They're the two muscles
+   at zero.
+2. **Equipment:** do you have a calf raise machine, a cable stack and a leg
+   extension? That decides what the balance suggestions can offer.
