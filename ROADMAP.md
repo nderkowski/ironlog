@@ -12,10 +12,15 @@ Ship in slices; each slice should leave the app fully usable.
 
 ## Next session starts here — 2.0 beta (build `v2.0-b2`, 11 Nov 2026)
 
-Branch `cloud/sprint-1108`, **not on `main`**. All 2.0 work packages are in one
-build (commit `03324e5`); the independent end-to-end acceptance review on real
-data (ledger #9) was out when this was written, so anything it finds is not
-here yet. How 2.0 works: [PROJECT_STATE.md](PROJECT_STATE.md) ("2.0
+Branch `cloud/sprint-1108`, **not on `main`** (`main` is still v26.13; v26.14
+waits for the owner's OK). All 2.0 work packages are in one build, plus the
+acceptance fixes (b1) and b2 (no face-pull suggestion: the owner dropped face
+pulls in August). The independent end-to-end acceptance review on his real
+data said **ship as a beta**, with no blockers and no majors: the upgrade from
+v26.14 kept 21/21 sessions and 306/306 sets; it works offline; no reload
+mid-workout; screens scored 7–9/10. Its two leftover minors behave the same in
+v26.14: the lateral-raise text at two ranges, and a stale skipped-face-pull
+coach card (his plan spells it two ways). How 2.0 works: [PROJECT_STATE.md](PROJECT_STATE.md) ("2.0
 architecture", "What 2.0 changed in the engine", traps 24–29). Scope and
 reasoning: [V2_PLAN.md](V2_PLAN.md), [V2_SPEC.md](V2_SPEC.md). Who built and
 reviewed what: [LEDGER_V2.md](LEDGER_V2.md).
@@ -77,7 +82,7 @@ Do 1–3 at home before you leave.
 1. **Footer.** Plan tab, bottom: shows the 2.0 build, not `v26.14`. If not, close and open the app twice.
 2. **Rotation line.** Today's date line ends "· Rotation 1 of 6" (or the number your history gives).
 3. **Backup copy.** Settings shows "Restore pre-2.0 data" (don't tap it).
-4. **Warm-ups.** Start a session. A heavy compound (bench, squat, press) shows one or more light warm-up rows above the working sets; one tap ticks each. A curl or raise shows none.
+4. **Warm-ups.** Start a session. A compound (leg press, RDL, a DB press) shows two or three light warm-up rows above the working sets; one tap ticks each. A curl or raise shows none.
 5. **Set-1 cascade.** On any lift, change the weight of set 1 with the − / + buttons: sets 2 and 3 follow. Then type a deliberately silly number into set 1 (say 5 on a 135 lift): the other sets must **not** follow.
 6. **Usual chip.** If you go lighter on a lift than last time and the app has seen you heavier before, the card offers "Usual: W × R" — tap it once and check it fills every unticked set.
 7. **RDL.** Use Plan → balance card → "Run RDL as top set + back-offs" (or the row's menu). Next session: one top set plus lighter back-offs. Log the top set at or over the top of the range; the session after prescribes more weight on the top set.
