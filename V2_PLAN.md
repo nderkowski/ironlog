@@ -1,6 +1,6 @@
 # Iron Log 2.0 — the reconciled plan
 
-Status: **proposed, waiting on 5 owner questions (§7)**. Written 11 Nov 2026
+Status: **agreed scope; all owner questions answered 11 Nov (§7). Ready for 2.0-a1.** Written 11 Nov 2026
 from three sources:
 - my plan (rounds 1–3, kept in git history)
 - an independent Gemini review run with [V2_PROMPT.md](V2_PROMPT.md)
@@ -91,9 +91,10 @@ questions for Gemini are needed; the open questions are yours (§7).
   - **Keep** the step-back and the failed-jump memory.
   - **Retire** the rep-out shadow and its "Use" strip (0 real uses; it
     contradicts the main call).
-  - **Learned stack pins:** the next weight up or down snaps to weights
-    actually logged on that lift within about 1.6 steps. Optionally, type the
-    stack's numbers once per machine.
+  - **Stack weights per machine** (owner, §7 Q5): a "Stack weights" field
+    on the plan row, typed once (e.g. `20, 27.5, 35, 42.5`). The next weight
+    up or down snaps to that list. With no list, the fixed step applies as
+    today. Nothing is learned silently.
 - **Why:** sim +0.12 to +0.24 pp/yr vs v26.13; the RDL hold ends; no more
   32.5 on a stack that jumps 27.5 → 35.
 - **Cost at the bar:** fewer overrides; the second strip goes away.
@@ -181,17 +182,33 @@ questions for Gemini are needed; the open questions are yours (§7).
 
 ### Should (5)
 
-- **S1 — The 2.0 A/B/C split.** Gemini's split, adjusted to hit its own
-  band:
-  - +3 rear-delt sets
-  - abs on two days, not one
-  - a lateral raise variant that doesn't replace abs
-  - **RDL and overhead press depend on your answers (§7).**
-  - Applied with `S.planBackup`, so your current plan is one tap away.
-- **S2 — Optional bonus pump day** as a routine marked optional:
-  - outside the rotation and the skipped-lift rule
-  - cables and isolations only, so it suits a back-to-back day
-  - only if you want it (§7)
+- **S1 — Keep the current plan and add only what's missing** (owner, §7 Q3).
+  - Gemini's split would have replaced ~15 of ~20 exercises, each starting
+    with no history.
+  - The additions, put into both week variants of B and C through
+    `eachPlanEx()` and `newPlanEx()`:
+    - **B:** + Cable Crunch 3 × 10–15, + Overhead Cable Tricep Extension
+      3 × 10–15, Lateral Raise 3 → 4.
+    - **C:** + Cable Crunch 3 × 10–15, + Leg Extension 3 × 10–15.
+  - Per rotation (helpers ½):
+    - abs 0 → 6
+    - quads 6 → 9
+    - triceps ~7.5 → ~10.5
+    - side delts ~8.5 → ~9.5
+    - the rest unchanged at ~7.5–9
+  - Session sets: A 22, B ~25, C 24. Supersetting the new cable moves keeps
+    B and C inside 90 min.
+  - Offered from the balance card as one-tap additions, never applied
+    silently. `S.planBackup` keeps the old plan one tap away.
+  - RDL stays (owner: it hasn't hurt) and runs `topback`. The seated DB
+    overhead press stays.
+- **S2 — A "Pump day" button on Today** (owner: yes).
+  - It's an optional routine you slot in when you want. It never moves the
+    A/B/C rotation, never triggers skipped-lift cards, and counts toward
+    volume and frequency.
+  - Cables and isolations only, so it's fine on a back-to-back day.
+  - It starts from Gemini's two menus as its week variants (arms/delts;
+    chest/lats/core), and is editable like any day.
 - **S3 — Warm-up sets generated** for compounds (my round-3 item), one tap
   each. That matters most for the hinge and the presses.
 - **S4 — Hit-target polish:**
@@ -271,26 +288,11 @@ this week, 2.0 lands around **early-to-mid January 2027**. Each alpha merges
 to `main` only after your phone check, behind `settings.v2` where behaviour
 changes.
 
-## 7. Questions only you can answer
+## 7. Owner answers (11 Nov), all questions closed
 
-1. **RDL.** Your lower back is the joint that goes most, and the RDL is the
-   one lift in your plan that loads it heavily. Do you:
-   - (a) keep it as top set + back-offs, the way you already lift it, which
-     2.0 will finally progress properly; or
-   - (b) swap it for something easier on the back, such as a 45° back
-     extension, and let leg curls carry the hamstrings?
-2. **Overhead press.** Shoulders are your second joint. Do you:
-   - (a) keep a DB overhead press (Gemini suggests a ~70° incline version);
-     or
-   - (b) drop vertical pressing and let incline press plus lateral raises
-     cover the delts?
-3. **Split.** Do you:
-   - (a) adopt the new A/B/C (S1: more cable and machine work, abs twice,
-     balanced); or
-   - (b) keep your current exercises and only add what's missing (abs,
-     triceps, quads, rear delts)?
-4. **The optional 4th "pump" day** (cables and isolations only, never moves
-   the rotation): want it?
-5. **Cable stack weights.** Is it OK for the app to learn your stack's real
-   weights from what you log, or would you rather type each machine's numbers
-   once?
+1. **RDL:** it hasn't hurt the back. Keep it, as `topback` (top set +
+   back-offs, the way it's lifted).
+2. **Overhead press:** keep the seated DB overhead press.
+3. **Split:** keep the current exercises and add only what's missing (S1).
+4. **Pump day:** yes, as an optional button to slot in when wanted (S2).
+5. **Cable stacks:** type each machine's weights once (M1).
