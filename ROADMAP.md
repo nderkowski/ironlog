@@ -10,7 +10,109 @@ Ship in slices; each slice should leave the app fully usable.
 
 ---
 
-## Next session starts here — the 8 Nov cloud sprint (v26.1 → v26.13)
+## Next session starts here — 2.0 beta (build `v2.0-a6`, 11 Nov 2026)
+
+Branch `cloud/sprint-1108`, **not on `main`**. All 2.0 work packages are in one
+build (commit `03324e5`); the independent end-to-end acceptance review on real
+data (ledger #9) was out when this was written, so anything it finds is not
+here yet. How 2.0 works: [PROJECT_STATE.md](PROJECT_STATE.md) ("2.0
+architecture", "What 2.0 changed in the engine", traps 24–29). Scope and
+reasoning: [V2_PLAN.md](V2_PLAN.md), [V2_SPEC.md](V2_SPEC.md). Who built and
+reviewed what: [LEDGER_V2.md](LEDGER_V2.md).
+
+### What shipped, by package
+
+- **v26.14 — the bridge release.** Offline-update design: one cache per version,
+  cache-first navigation, updates only at an open when idle (`t48`).
+- **M5 / 2.0-a1 — the file split.** `css/app.css`, `js/01..12`, one file list,
+  the inline integrity gate, a byte-identical join proof against v26.14 pinned
+  to tag `2.0-a1` (`t47`).
+- **A — schema v6.** Migration, raw v5 snapshot + "Restore pre-2.0 data", three
+  delt heads, `excludedMuscles`, `targetFreq`, block state (`t53`).
+- **B — one engine.** `double` / `topback` schemes, the trend load cut removed,
+  stack weights, `presc`, step-back for straight-set rows, the scheme-switch
+  rule (`t49`, `t43`).
+- **C — workout screen.** Set-1 weight cascade (with a 0.5–1.5× guard for typed
+  values), usual-load and ease-back chips, generated warm-ups, 44 px hit areas
+  (`t51`).
+- **E — muscles and plan.** Delt heads and abs in Progress, rotation volume,
+  Plan balance card with an asked frequency, one-tap suggestions (`t50`).
+- **D — blocks.** "Rotation N of 6", block scorecard, stall judged on two flat
+  blocks, the optional pump day, "Trained Day B, didn't log it" with undo (`t52`).
+
+### Before / after (measured)
+
+| | before | 2.0 (`v2.0-a6`) | source |
+|---|---|---|---|
+| engine vs plain double progression, simulated lifters, logged schedule / 3+ a week (pp a year) | −0.06 / −0.14 (v26.13) | **+0.057 ± 0.018 / +0.093 ± 0.021** | review simulator; V2_PLAN commit `9e5dbe6`, ledger #5 |
+| prescriptions ≥1 step lighter than the lifter could do mid-range | 37.3% (v26.1) | **31.3%** | `node tools/sprint/yearbase.mjs 20`; ledger I1 |
+| load flips per year | 14.75 (v26.11) | **11.45** | same; ledger #5 |
+| real log, calls changed by the engine (of 102) | 1 (v26.11) | 3, all hold → reps, two on RDL top-set | `tools/review/replay.mjs`; ledger #5 |
+| taps to carry a changed weight over 3 sets | 6 | **2** | `t51`; ledger #6 |
+| edit the session you just finished | 5 taps, 2 scrolls (v26.1) | 3 taps, 0 scrolls (since v26.4) | `tools/sprint/journeys.mjs` |
+| active-workout controls with effective hit area < 44 px | 64 (v26.11) | 60 (90 with warm-up ramps on) | journeys; ledger #6 |
+| coach cards a year, healthy simulated lifter | — | 3.0–3.3 | `t39b`; ledger #8F |
+| suites | 27 suites, 1,139 checks (v26.11) | **36 suites, rc=0 on all; 2,206 checks passed, 0 failed** (35 print a summary line; `t43-trend-flat` prints none and exits 0) — my run of `runall.sh` on this tree, 11 Nov | `tools/sprint/runall.sh` |
+
+Not a 2.0 gain, and recorded as a cost: the simulator's `hold8` reads 112 and
+`spiral` 98 against limits of 109 and 97 — the price of removing the trend cut
+(0.2% of lift-years), accepted in the ledger.
+
+### Rollout, in this order
+
+1. **v26.14 to `main` first** (branch `cloud/v26.14`, commit `c5b5a29`). It is the
+   bridge: the 2.0 split must never reach a phone whose worker is still v26.13's
+   network-first one (trap 25).
+2. Open the app twice (the new version downloads on the first open, applies on
+   the second). **Owner confirms the Plan footer reads `v26.14`.**
+3. Only then merge 2.0 (this branch) to `main`. Open twice again; the footer
+   shows the 2.0 build (`v2.0-a6` at the time of writing). Settings should now
+   offer **Restore pre-2.0 data**. That copy is the way back; don't export over it.
+4. Run the gym test plan below, then export a backup.
+
+### Gym test plan (phone in hand, one or two sessions)
+
+Do 1–3 at home before you leave.
+
+1. **Footer.** Plan tab, bottom: shows the 2.0 build, not `v26.14`. If not, close and open the app twice.
+2. **Rotation line.** Today's date line ends "· Rotation 1 of 6" (or the number your history gives).
+3. **Backup copy.** Settings shows "Restore pre-2.0 data" (don't tap it).
+4. **Warm-ups.** Start a session. A heavy compound (bench, squat, press) shows one or more light warm-up rows above the working sets; one tap ticks each. A curl or raise shows none.
+5. **Set-1 cascade.** On any lift, change the weight of set 1 with the − / + buttons: sets 2 and 3 follow. Then type a deliberately silly number into set 1 (say 5 on a 135 lift): the other sets must **not** follow.
+6. **Usual chip.** If you go lighter on a lift than last time and the app has seen you heavier before, the card offers "Usual: W × R" — tap it once and check it fills every unticked set.
+7. **RDL.** Use Plan → balance card → "Run RDL as top set + back-offs" (or the row's menu). Next session: one top set plus lighter back-offs. Log the top set at or over the top of the range; the session after prescribes more weight on the top set.
+8. **Plan balance.** Plan tab: the card asks "how often do you train", answer it, tap the suggestions you want, then **Undo** from the toast and check the plan is back as it was.
+9. **Pump day.** Add it from the card's suggestion, then do one with Today's Pump day button. Afterwards the big button still names the next *main* day: the rotation did not move.
+10. **Off-book.** Tap "Trained Day B, didn't log it": the rotation advances, History shows "not logged". Tap Undo inside the 10 s and check it's gone and the next day is as before. Then do it once for real if you really did train and didn't log.
+11. **Edit last.** After finishing a session, Today → "Last … Edit": change a rep, Save, no scrolling needed.
+12. **Ease back** (only if you've had 10+ days off): the banner "N days since you last trained" at the top of the workout; tap it, weights drop ~10%; the next session after is prescribed from before the gap.
+13. **Offline.** Put the phone in airplane mode, kill the app, reopen it, log a set. It must work.
+14. **Muscles.** Progress shows delts as front / side / rear and "Sets per rotation"; calves read "not tracked, by choice".
+15. **Export a backup** afterwards (Settings) so the next session can replay it. Note anything that annoyed you in the gym; that beats this list.
+
+### Measured and rejected, or decided against (don't redo without new evidence)
+
+- Keeping the trend load cut: it made the engine trail double progression (−0.06 / −0.14); removing it beat it.
+- The rep-out shadow ("Use" suggestion): retired, it never beat double progression on the simulator or the real log.
+- A `settings.v2` feature flag: ruled out in the review of package A.
+- The first spec's frequency thesis (+8 pp headline): set aside — the log's 1.4 sessions a week came from five empty weeks in sixteen. Frequency is asked instead of guessed.
+- Owner's rulings (V2_PLAN, 8–10 Nov): no pain-flag button, no big-three earn-back ladders, calves excluded, abs included, no auto-scroll.
+- All still stand from the v26 sprint: target never slides below set 1, two steps at rep-out ≥ top+4, skipping the target ahead to rep-out−2, a relative-step gate on the near-miss.
+
+### Backlog, in order
+
+1. Whatever the acceptance review leaves open (see HANDOFF.md, P1).
+2. Gemini cross-review of the plan and engine (the ledger lists it as waiting for the owner's Google key).
+3. Heavy-lift under-loading (Leg Press, RDL, Pulldown, Ham Curl ≈90–100% of exposures behind by the yearbase metric): a decision, not yet a problem (see the v26 backlog below).
+4. Controls still under 44 px effective: outer steppers, "+ Note on this lift", the Keep revert, the plate-editor ✕.
+5. Unit conversion snapping 5 lb ↔ 2.5 kg (v26 review #9).
+6. Slice 4 — sync and accounts (below).
+
+---
+
+## Previously: the 8 Nov cloud sprint (v26.1 → v26.14)
+
+(Kept as written on 8–10 Nov; its "merge" steps are superseded by the rollout above.)
 
 Branch `cloud/sprint-1108`, **not merged**. `main` is still **v21** — v22–v26
 were never merged either, so the phone has been running v21. Review, then
