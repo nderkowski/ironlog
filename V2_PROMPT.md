@@ -26,13 +26,15 @@ second edition of the idea", designed with everything 26 versions taught us.
    (`tools/review/REVIEW.md`).
 
 ## Facts you can rely on (measured, Nov 2026)
-- **Real use.** 21 sessions in 15 weeks, which is **1.4 sessions a week**.
-  Three gaps were 10 days or more. Each lift comes up about every 8.5 days. I
-  change the prescribed load in ~37% of exposures.
-- **Engine review finding.** The engine is within ~1 pp/yr of plain double
-  progression. The biggest lever on my results is **training frequency**:
-  1.4 → 2–3 sessions a week is worth about +8 pp of strength a year, more
-  than any engine change.
+- **Real use, and its limit.** The export holds 21 sessions in 15 weeks.
+  The owner trains **3–4 times a week, 1–1.5 h a session**. Fully logged
+  weeks match that, but 5 of 16 weeks are empty, so the log has gaps
+  (breaks or unlogged sessions — the owner is checking). I change the
+  prescribed load in ~37% of exposures.
+- **The engine review.** It found the engine within ~1 pp/yr of plain
+  double progression. Its headline ("train 2–3× a week instead of 1.4×,
+  +8 pp") was computed from the gappy log, so treat it as not applicable
+  until the gaps are explained.
 - **The sprint.** It cut under-loaded prescriptions from 37% to 32% in a
   20-seed simulated year. The core loop is already minimal: start 1 tap, log a
   set 1 tap, finish 2.
@@ -47,9 +49,11 @@ second edition of the idea", designed with everything 26 versions taught us.
   measured.
 
 ## What I want from 2.0 (owner's answers)
-- **Audience.** Me first. It should be *ready* to hand to a few friends,
-  but accounts, payments and app stores are **out** unless you argue they
-  are necessary.
+- **Audience.** Just me. No accounts, payments, app stores or sharing.
+- **Goal.** Size. I have a long history of tweaking something on barbell
+  bench, squat and deadlift, so the current plan avoids them (DB presses,
+  leg press, split squats, RDL). I'd like them back if that can be done
+  safely.
 - **Hard constraints.** It must stay usable mid-set: logging a set stays
   one tap. It must work offline. No ads and no tracking. My data stays mine
   (export, plus the existing private GitHub-gist backup).
