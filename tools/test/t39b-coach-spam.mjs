@@ -16,7 +16,7 @@ import { launch, URL, ok, report } from './harness.mjs';
 import fs from 'fs';
 
 const SIM = fs.readFileSync(new globalThis.URL('./yearsim.js', import.meta.url), 'utf8');
-const HOOK = 'window.__t={get S(){return S}, set S(v){S=v}, prescribe:prescribe, shadowPrescribe:shadowPrescribe,' +
+const HOOK = 'window.__t={get S(){return S}, set S(v){S=v}, prescribe:prescribe,' +
   ' deloadCheck:deloadCheck, deloadStatus:deloadStatus, makeSessionEx:makeSessionEx, exWorking:exWorking,' +
   ' ev:function(src){ return eval(src); }};';
 

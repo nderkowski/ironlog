@@ -121,16 +121,22 @@ function exSessions(name){
       var e=s.exercises[j];
       if(normName(e.name)!==k) continue;
       var sets=working(e.sets).filter(function(x){ return x.done!==false&&num(x.r)>0; });
-      if(sets.length) out.push({ts:s.ts,sets:sets,sessionId:s.id,deload:!!s.deload,bw:bwMode(e),metric:metricOf(e),
+      if(sets.length) out.push({ts:s.ts,sets:sets,sessionId:s.id,deload:!!s.deload,easeBack:!!s.easeBack,bw:bwMode(e),metric:metricOf(e),
                                 kind:e.kind||"", lo:num(e.reps), top:num(e.repTop),
-                                tgt:(e.shadow&&e.shadow.used)?num(e.shadow.r):num(e.targetReps)});
+                                scheme:e.scheme||"double", presc:e.presc||null});
     }
   }
   return out;
 }
 /* Same, minus anything logged during a deliberate deload — those must never
-   read as a decline, or the app would chase its own tail. */
-function exWorking(name){ return exSessions(name).filter(function(x){ return !x.deload; }); }
+   read as a decline, or the app would chase its own tail — and minus a session
+   the lifter eased back into on purpose (easeBack: the first day after a
+   break, taken ~10% light). Both still count for volume, PRs and frequency;
+   only what the engine learns from is filtered. `withEased` puts the eased
+   sessions back: the block scorecard counts an exposure that happened. */
+function exWorking(name,withEased){
+  return exSessions(name).filter(function(x){ return !x.deload&&(withEased||!x.easeBack); });
+}
 function lastPerf(name){ var h=exWorking(name); return h.length?h[0]:null; }
 /* Most recent session's raw sets, warm-ups included, for prefill. */
 function lastRawSets(name){

@@ -390,7 +390,7 @@ await page.reload(); await page.waitForSelector('#view');
 eq(await raw(page, V5), null, '8 a fresh install writes no v5 copy');
 await openSettings(page);
 ok((await page.$('[data-act="restore-v5"]')) === null, '8 and offers no restore');
-eq(await page.evaluate(() => BUILD), 'v2.0-a2', '8 BUILD is v2.0-a2');
+eq(await page.evaluate(() => BUILD), 'v2.0-a3', '8 BUILD is v2.0-a3');
 
 const blocked = await browser.newContext({ viewport:{ width:390, height:844 } });
 const bp = await blocked.newPage();

@@ -1,7 +1,7 @@
 /* Pre-registered metrics (REVIEW.md §0.2), computed per lifter from the
    compact exposure records sim-page.js returns. Record layout:
    [0 day, 1 lift, 2 kind, 3 prescribedW, 4 prescribedReps, 5 prescribedSets, 6 deload, 7 W done,
-    8 logged reps[], 9 performed reps[], 10 true1RM before, 11 true1RM after, 12 E, 13 low, 14 top, 15 step, 16 shadow used] */
+    8 logged reps[], 9 performed reps[], 10 true1RM before, 11 true1RM after, 12 E, 13 low, 14 top, 15 step, 16 (unused: was shadow used)] */
 export const MAIN = ['leg press', 'incline db press', 'cable row', 'bulgarian split squat', 'db overhead press', 'lat pulldown', 'rdl', 'db row'];
 const e1 = (w, r) => (w > 0 && r > 0 ? w * (1 + r / 30) : 0);
 const mean = a => a.reduce((x, y) => x + y, 0) / (a.length || 1);

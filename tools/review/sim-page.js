@@ -1,5 +1,5 @@
 /* Phase 2 closed loop, run INSIDE the hooked app page. The engine is the app's
-   own code (makeSessionEx -> prescribe/shadowPrescribe, nextRoutine,
+   own code (makeSessionEx -> prescribe, nextRoutine,
    deloadCheck/startDeloadWeek, coachRun); only the lifter and the two
    baselines (DP, LIN) are written here. The lifter model is mine and does not
    borrow from tools/test/yearsim.js (not read while writing this).
@@ -10,7 +10,7 @@
   const T = window.__t;
   const A = T.ev(`({makeSessionEx, nextRoutine, nextVariantIx, variantAt, variantLabel, inDeloadWeek, deloadCheck,
     startDeloadWeek, repOutApplies, working, workLoad, isAt, num, normName, exWorking, coachRun, coachState, uid,
-    today, stepFor, movementClass})`);
+    today, stepFor, movementClass, eachPlanEx, schemeOf: typeof schemeOf === 'function' ? schemeOf : () => 'double'})`);
   // The loop must not touch storage, the DOM or the network.
   T.ev('writeNow=function(){}; save=function(){}; render=function(){}; coachRefresh=function(){}');
   window.__initState = JSON.stringify(T.S);
@@ -96,7 +96,7 @@
     const sets = []; for (let i = 0; i < p.sets; i++) sets.push({ w: p.w === '' ? '' : String(p.w), r: String(p.r), done: false });
     return { id: A.uid(), planId: pe.id, name: pe.name, targetReps: p.r, reps: A.num(pe.reps) || p.r, repTop: A.num(pe.repTop) || 0,
       inc: pe.inc || null, bw: 0, bar: 0, metric: 0, link: !!pe.link, mg: pe.mg || '', mg2: (pe.mg2 || []).slice(),
-      supplemental: false, note: '', why: '', kind: p.kind, shadow: null, lastW: null, lastR: null, sets };
+      supplemental: false, note: '', why: '', kind: p.kind, lastW: null, lastR: null, sets };
   }
 
   /* ---------- the lifter ---------- */
@@ -150,6 +150,8 @@
     P.F = P.F * Math.exp(-(t - P.Ft) / DAY / TAU_F); P.Ft = t;
     const Mday = P.M * (1 - PHI * P.F / FREF) * (1 + V.dayNoise * N(L.seed, 'day', si, k));
     const work = ex.sets.filter(s => !s.warm);
+    /* W is the top (first working) set: what the metrics read. A top + back-offs lift
+       does its later sets at their own, lighter loads. */
     let W = A.num(work[0] && work[0].w);
     if (!(W > 0)) {                                             // he picks a start: about low+3 in the tank
       const step = A.stepFor(ex), lo = A.num(ex.reps) || 8;
@@ -157,9 +159,14 @@
       work.forEach(s => { s.w = String(W); });
     }
     const ranged = A.repOutApplies(ex), iso = A.movementClass(ex.name) === 'iso';
-    let c = rtf(W / Mday, P.E), eff = 0;
+    /* Fatigue is carried as the fraction of capacity left, so a lighter back-off
+       starts from its own (larger) capacity, scaled by what the top set took. */
+    let fr = 1, eff = 0;
     const perf = [];
     work.forEach((s, i) => {
+      const Ws = A.num(s.w) > 0 ? A.num(s.w) : W;
+      const c0 = rtf(Ws / Mday, P.E);
+      let c = c0 * fr;
       const tgt = A.num(s.r) || A.num(ex.targetReps);
       const last = ranged && i === work.length - 1;
       let r;
@@ -169,12 +176,13 @@
       let logged = r;
       if (r >= tgt && U(L.seed, 'tick', si, k, i) < V.tick) logged = tgt;   // ticks the prefill
       const rir = Math.max(0, c - r);
-      eff += prox(rir) * inten(W / P.M);
+      eff += prox(rir) * inten(Ws / P.M);
       /* Rep loss into the next set: 30% of the reps for a set taken to failure,
          much less for one stopped short. Sets to failure at 70% with 2-min rest
          lose ~52% (Heredia-Elvar 2022, 10.3390/biology11060851); his rest is
          3 min, which keeps more (Willardson & Burkett 2006, 10.1519/R-17735.1). */
       c = Math.max(0, c - LOSS * r * Math.pow(Math.min(1, r / Math.max(c, 1e-9)), 3));
+      fr = c0 > 0 ? c / c0 : 0;
       perf.push(r);
       s.r = String(logged); s.done = logged > 0; s.ts = t + 60e3 * (8 + 3.2 * (si % 7) + 3.2 * i);
     });
@@ -203,8 +211,9 @@
     T.ev('S=JSON.parse(window.__initState)');
     const S = T.S;
     S.coach = { proposals: [], history: [], lastCheck: 0 };
-    S.settings.repOutDefault = cfg.engine === 'repout';
     S.settings.deloadUntil = 0; S.settings.deloadSnooze = 0;
+    /* cfg.topback: lifts (lower-case names) whose plan rows become one top set + back-offs. */
+    if (cfg.topback) A.eachPlanEx(e => { if (cfg.topback.includes(A.normName(e.name))) e.scheme = 'topback'; });
     LOSS = cfg.variant.loss ?? 0.3;
     const L = makeLifter(cfg, li); L.Emul = cfg.variant.Emul;
     Object.values(L.lifts).forEach(P => { P.M0 = P.M; });
@@ -215,7 +224,7 @@
         const t = cfg.t0 + (w * 7 + d) * DAY + 18 * 36e5;
         window.__now = t;
         // He takes the deload week the app asks for at "high" (pre-registered).
-        if ((cfg.engine === 'classic' || cfg.engine === 'repout') && !cfg.noDeload && !A.inDeloadWeek()) {
+        if (cfg.engine === 'classic' && !cfg.noDeload && !A.inDeloadWeek()) {
           const dc = A.deloadCheck();
           if (dc && dc.level === 'high') { A.startDeloadWeek(7); deloads.push(t); }
         }
@@ -233,10 +242,11 @@
           const pw = A.num(work0[0] && work0[0].w), pr = A.num(ex.targetReps), ps = work0.length;
           const P = liftOf(L, ex.name, t);
           const o = perform(cfg, L, ex, t, si);
-          const logged = ex.sets.filter(s => !s.warm && s.done).map(s => A.num(s.r));
-          recs.push([Math.round((t - cfg.t0) / DAY), A.normName(ex.name), ex.kind || '', pw, pr, ps, deload ? 1 : 0, o.W,
-            logged, o.perf, +o.Mbefore.toFixed(2), +P.M.toFixed(2), +P.E.toFixed(2), A.num(ex.reps), A.num(ex.repTop), A.stepFor(ex),
-            ex.shadow && ex.shadow.used ? 1 : 0]);
+          let logged = ex.sets.filter(s => !s.warm && s.done).map(s => A.num(s.r)), perf = o.perf, psN = ps;
+          /* A top-set lift is scored on its top set alone, like the engine judges it: the metrics read one load per exposure. */
+          if (A.schemeOf(ex) === 'topback') { logged = logged.slice(0, 1); perf = perf.slice(0, 1); psN = 1; }
+          recs.push([Math.round((t - cfg.t0) / DAY), A.normName(ex.name), ex.kind || '', pw, pr, psN, deload ? 1 : 0, o.W,
+            logged, perf, +o.Mbefore.toFixed(2), +P.M.toFixed(2), +P.E.toFixed(2), A.num(ex.reps), A.num(ex.repTop), A.stepFor(ex), 0]);
         });
         // commitSession(), minus the UI: rep-out flag by position, undone sets dropped, newest first
         sess.endTs = t + 75 * 60e3; sess.bw = A.num(S.settings.bodyweight); sess.deload = !!sess.deload || A.inDeloadWeek();

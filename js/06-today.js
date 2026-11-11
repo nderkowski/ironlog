@@ -33,36 +33,43 @@ function startSession(routine,vix){
    Warm-ups carry over from last time so you don't retype them. */
 function makeSessionEx(planEx,planId){
   var p=prescribe(planEx.name,planEx);
-  var sp=shadowPrescribe(planEx.name,planEx);
-  /* v25: once the rep-out method has earned it (repOutCard) and been made the
-     default, it is the prescription wherever there is a rep-out to read, and
-     still recorded as used so the scorecard keeps judging it. Lifts with no
-     rep-out yet stay on the classic engine. */
-  var auto=!!(S.settings.repOutDefault&&sp);
-  if(auto) p={w:sp.w, r:sp.r, sets:sp.sets, why:"Rep-out method · "+sp.why,
-              kind:sp.steps>0?"up":sp.steps<0?"deload":"reps"};
   var last=lastPerf(planEx.name);
   /* A lift the coach swapped in that has been done before but not for 4+ weeks
      starts one step lighter. Here and not in prescribe(): it is a prefill, not
      a progression rule. */
   if(planEx.stepBack&&last&&p.w!==""&&p.kind!=="deload"&&bwMode(planEx)===0&&metricOf(planEx)===0&&Date.now()-last.ts>28*864e5){
-    var lighter=num(p.w)-stepFor(planEx);
-    if(lighter>0){ p.w=lighter; p.why=(p.why?p.why+" · ":"")+"back after "+Math.round((Date.now()-last.ts)/864e5/7)+" weeks — one step lighter"; }
+    var lighter=lighterEx(num(p.w),planEx);
+    if(lighter>0&&lighter!==num(p.w)){
+      p.w=lighter; p.why=(p.why?p.why+" · ":"")+"back after "+Math.round((Date.now()-last.ts)/864e5/7)+" weeks — one step lighter";
+      if(p.back) p.back={w:backOffW(p.w,planEx),r:p.r};      // back-offs follow the lighter top
+    }
   }
   var raw=lastRawSets(planEx.name);
   var sets=[];
   if(raw) raw.forEach(function(s){ if(s.warm) sets.push({w:String(s.w),r:String(s.r),warm:true,done:false}); });
   var n=Math.max(1,num(p.sets)||3);
-  for(var i=0;i<n;i++) sets.push({w:p.w===""?"":String(p.w),r:String(p.r),done:false});
+  for(var i=0;i<n;i++){
+    /* A top-set lift: the first working set is the top set, the rest are the
+       planned back-offs (never judged, never "dropped"). */
+    if(p.back) sets.push(i===0?{w:String(p.w),r:String(p.r),role:"top",done:false}
+                              :{w:String(p.back.w),r:String(p.back.r),role:"back",done:false});
+    else sets.push({w:p.w===""?"":String(p.w),r:String(p.r),done:false});
+  }
   return {
     id:uid(), planId:planId||null, name:planEx.name,
     targetReps:p.r, reps:num(planEx.reps)||p.r, repTop:num(planEx.repTop)||0,
     inc:planEx.inc||null, bw:bwMode(planEx), bar:barOf(planEx), metric:metricOf(planEx),
     link:!!planEx.link,
     mg:planEx.mg||"", mg2:(planEx.mg2||[]).slice(),
+    scheme:planEx.scheme==="topback"?"topback":"double",
+    backPct:(num(planEx.backPct)>0&&num(planEx.backPct)<0.5)?num(planEx.backPct):0.12,
+    pins:cleanPins(planEx.pins),
     supplemental:!planId, note:"",
     why:p.why, kind:p.kind,
-    shadow:sp?{w:sp.w,r:sp.r,why:sp.why,steps:sp.steps,stall:false,used:auto,auto:auto}:null,
+    /* What the engine prescribed, after every adjustment above (the step-back
+       included) and before any chip or edit: the override rate compares what
+       was logged against this. */
+    presc:{w:p.w,r:p.r},
     lastW:last?num(last.sets[0].w):null, lastR:last?num(last.sets[0].r):null,
     sets:sets
   };
@@ -231,7 +238,8 @@ function exerciseCard(ex,ei){
         /* "target" and "range" were too alike to read as different modes of
            progression, which is exactly how an exercise stuck on straight sets
            went unnoticed for weeks. "straight" names what it does. */
-        '<span>'+nWork+' × '+esc(range)+(ex.repTop>ex.reps?" range":" straight")+'</span>'+
+        '<span>'+(schemeOf(ex)==="topback"?"top + "+Math.max(0,nWork-1)+" back-off"+(nWork===2?"":"s")+" · "+esc(range):
+                  nWork+' × '+esc(range)+(ex.repTop>ex.reps?" range":" straight"))+'</span>'+
         (met?'<span class="chip tag">'+(met===1?"TIME":"DISTANCE")+'</span>':"")+
         (mode===1?'<span class="chip tag">BODYWEIGHT</span>':mode===2?'<span class="chip tag">ASSISTED</span>':"")+
         (ex.supplemental?'<span class="chip tag">EXTRA</span>':"")+
@@ -261,18 +269,13 @@ function exerciseCard(ex,ei){
   }
   var outSi=-1, outNo=0;
   if(repOutApplies(ex)) ex.sets.forEach(function(s,si){ if(!s.warm){ outSi=si; outNo++; } });
-  var sh=ex.shadow;
-  if(sh&&!sh.auto){
-    var same=String(sh.w)===String(working(ex.sets)[0]?working(ex.sets)[0].w:"")&&
-             String(sh.r)===String(working(ex.sets)[0]?working(ex.sets)[0].r:"");
-    html+='<div class="shadow" data-shadow="'+ei+'"><span>Rep-out method: '+esc(entryText({w:sh.w},mode))+' × '+sh.r+
-      ' <span class="muted" style="font-weight:500">· '+esc(sh.why)+'</span></span>'+
-      (sh.used?'<span class="tiny muted" style="margin-left:auto">using it</span>':
-       same?'<span class="tiny muted" style="margin-left:auto">same</span>':
-       '<button class="use" data-act="use-shadow" data-ei="'+ei+'">Use</button>')+'</div>';
-  }
   if(outSi>=0)
     html+='<div class="outhint">Set '+outNo+' is a rep-out: as many as you can — '+esc(repOutHint(ex.name))+'.</div>';
+  if(schemeOf(ex)==="topback"){
+    var tw=working(ex.sets)[0];
+    if(tw&&num(tw.w)>0&&backOffW(num(tw.w),ex)>=num(tw.w)&&working(ex.sets).length>1)
+      html+='<div class="outhint">No lighter back-off here — the back-offs stay at the top weight.</div>';
+  }
   html+='</div>';
 
   html+='<div class="sets">';
@@ -280,7 +283,7 @@ function exerciseCard(ex,ei){
   ex.sets.forEach(function(s,si){
     if(!s.warm) wi++;
     html+='<div class="set'+(s.warm?" warm":"")+(s.done?" done":"")+(s.done&&s.pr?" pr":"")+(si===outSi?" out":"")+'" data-ei="'+ei+'" data-si="'+si+'">'+
-      '<button class="idx" data-act="warm" aria-label="'+(s.warm?"Warm-up: make it a working set":"Set "+wi+": make it a warm-up")+'">'+(s.warm?"W":wi)+'</button>'+
+      '<button class="idx" data-act="warm" aria-label="'+(s.warm?"Warm-up: make it a working set":(s.role==="top"?"Top set":"Set "+wi)+": make it a warm-up")+'">'+(s.warm?"W":s.role==="top"?"T":wi)+'</button>'+
       '<div class="grp">'+
         '<button data-act="step" data-f="w" data-d="-1" aria-label="Less weight">−</button>'+
         '<input inputmode="decimal" enterkeyhint="done" type="number" step="any" data-f="w" value="'+esc(s.w)+'" placeholder="'+esc(mode===1?"+":mode===2?"−":unit())+'" aria-label="Weight">'+
@@ -370,16 +373,6 @@ $("#view").addEventListener("click",function(e){
     S.settings.deloadSnooze=Date.now()+14*864e5; writeNow(); render(); toast("Muted for two weeks"); return;
   }
   if(t.closest('[data-act="end-deload"]')){ endDeloadWeek(); render(); toast("Back to normal"); return; }
-  if(t.closest('[data-act="repout-on"]')){
-    confirmSheet("Make the rep-out method the default?",
-      "Wherever a lift has a rep-out to read, its suggestion becomes the prescription. Lifts without one stay on the classic method. You can switch back here at any time.",
-      "Make it the default",function(){ S.settings.repOutDefault=true; writeNow(); render(); toast("Rep-out method is the default"); });
-    return;
-  }
-  if(t.closest('[data-act="repout-off"]')){
-    S.settings.repOutDefault=false; writeNow(); render(); toast("Back to the classic method"); return;
-  }
-
   var editLast=t.closest('[data-act="edit-last"]');
   if(editLast){ editSession(editLast.dataset.id); return; }
 
@@ -396,8 +389,8 @@ $("#view").addEventListener("click",function(e){
     var row=step.closest(".set");
     var f=step.dataset.f, d=num(step.dataset.d);
     var ex=S.active.exercises[+row.dataset.ei], st=ex.sets[+row.dataset.si];
-    var by=f==="w"?stepFor(ex):metricStep(metricOf(ex));
-    st[f]=String(Math.max(0,round(num(st[f])+d*by,2)));
+    if(f==="w") st[f]=String(stepWeight(st[f],d,ex));     // the next stack weight when the row has pins
+    else st[f]=String(Math.max(0,round(num(st[f])+d*metricStep(metricOf(ex)),2)));
     $('input[data-f="'+f+'"]',row).value=st[f];
     if(st.done){ st.load=effLoad(st.w,bwMode(ex)); refreshSummary(); }
     if(f==="w") refreshPlates(+row.dataset.ei,+row.dataset.si,row);
@@ -436,22 +429,6 @@ $("#view").addEventListener("click",function(e){
     $("textarea",wrap).focus();
     return;
   }
-  var use=t.closest('[data-act="use-shadow"]');
-  if(use){
-    var ex6=S.active.exercises[+use.dataset.ei], sh6=ex6.shadow;
-    if(!sh6) return;
-    ex6.sets.forEach(function(s){ if(!s.done&&!s.warm){ s.w=String(sh6.w); s.r=String(sh6.r); } });
-    sh6.used=true;
-    /* The card and the record follow what is actually being lifted: a
-       rep-out step-down taken this way is the app's decision ("deload"), not
-       a drop he chose, so sinceChosenDrop() must not restart the trend on
-       it (external review, Argon). */
-    ex6.kind=num(sh6.steps)>0?"up":num(sh6.steps)<0?"deload":"reps";
-    ex6.why="Rep-out method · "+sh6.why;
-    save(); viewToday(); refreshSummary();
-    toast("Using the rep-out method: "+entryText({w:sh6.w},bwMode(ex6))+" × "+sh6.r);
-    return;
-  }
   var rev=t.closest('[data-act="revert"]');
   if(rev){
     var ex2=S.active.exercises[+rev.dataset.ei];
@@ -466,7 +443,9 @@ $("#view").addEventListener("click",function(e){
     var ex3=S.active.exercises[+addSet.dataset.ei];
     var w3=working(ex3.sets);
     var lastS=w3[w3.length-1]||{w:"",r:ex3.targetReps};
-    ex3.sets.push({w:lastS.w,r:lastS.r,done:false});
+    var ns={w:lastS.w,r:lastS.r,done:false};
+    if(schemeOf(ex3)==="topback") ns.role="back";                // + Set on a top-set lift is another back-off
+    ex3.sets.push(ns);
     save(); viewToday(); refreshSummary(); return;
   }
   var delSet=t.closest('[data-act="del-set"]');

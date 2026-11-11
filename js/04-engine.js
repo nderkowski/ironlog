@@ -6,11 +6,76 @@
      double progression : hold the weight until every working set reaches the top
                           of the range, then add load and drop back to the bottom
      straight sets      : hit the target on every set, then add load
-     autoregulation     : a lift sliding for 3 sessions gets one 10% back-off —
-                          once, not compounding, and never more than MAX_CUT
+     step-back          : a load that cannot reach the bottom of the range is
+                          given up for the one it came from, never by more than
+                          MAX_CUT (the trend no longer cuts load: 2.0)
      deload week        : while one is running, everything goes light and short
    ============================================================================== */
 function stepFor(ex){ return num(ex.inc)||num(S.settings.inc)||5; }
+
+/* ---- 2.0: how a lift is loaded (scheme) and stack weights (pins) ----
+   schemeOf(): the scheme that actually applies. "topback" is one top set and
+   back-offs, and only means anything on plain loaded work.
+   pins: a machine whose weights aren't evenly spaced. When a row has two or
+   more, every notch (harder, easier, step-back, back-offs, the card's ± step)
+   lands on one of them. Typed as the number the machine is set to, so on
+   assisted work "harder" is the next pin DOWN. */
+function schemeOf(ex){ return ex&&ex.scheme==="topback"&&bwMode(ex)===0&&metricOf(ex)===0?"topback":"double"; }
+function pinsOf(ex){ return ex&&Array.isArray(ex.pins)&&ex.pins.length>=2?ex.pins:[]; }
+function pinUp(w,p){ for(var i=0;i<p.length;i++) if(p[i]>w+1e-9) return p[i]; return null; }
+function pinDown(w,p){ for(var i=p.length-1;i>=0;i--) if(p[i]<w-1e-9) return p[i]; return null; }
+function nearestPin(x,c){                          // c is non-empty; a tie goes to the heavier
+  var best=c[0];
+  for(var i=1;i<c.length;i++){
+    var d=Math.abs(c[i]-x), b=Math.abs(best-x);
+    if(d<b-1e-9||(Math.abs(d-b)<=1e-9&&c[i]>best)) best=c[i];
+  }
+  return best;
+}
+function harderEx(w,ex){                           // one notch harder
+  var m=bwMode(ex), p=pinsOf(ex);
+  if(!p.length) return harder(w,stepFor(ex),m);
+  var n=m===2?pinDown(w,p):pinUp(w,p);
+  return n===null?w:n;                             // w back = the end of the stack
+}
+function lighterEx(w,ex){                          // one notch easier (step-back, coach stepBack)
+  var m=bwMode(ex), p=pinsOf(ex), s=stepFor(ex);
+  if(!p.length) return m===2?w+s:Math.max(0,w-s);
+  var n=m===2?pinUp(w,p):pinDown(w,p);
+  return n===null?w:n;
+}
+function easierEx(w,ex){                           // deload: about 10% off
+  var m=bwMode(ex), p=pinsOf(ex);
+  if(!p.length) return easier(w,stepFor(ex),m);
+  if(m===2){ var u=pinUp(w,p); return u===null?w:u; }
+  var c=p.filter(function(x){ return x<w-1e-9; });
+  return c.length?nearestPin(w*0.9,c):w;
+}
+/* The planned back-off load under a top set. Never at or above the top, never
+   under the bar, never at 0; when there is nothing lighter to go to (the bar,
+   the lowest pin) it is the top itself and the card says so. */
+function backOffW(top,ex){
+  var T=num(top), t=T*(1-(num(ex.backPct)||0.12)), p=pinsOf(ex);
+  if(p.length){ var c=p.filter(function(x){ return x<T-1e-9; }); return c.length?nearestPin(t,c):T; }
+  var s=stepFor(ex), b=Math.round(t/s)*s;
+  if(b>=T) b=T-s;
+  if(b<=0) return T;
+  var bar=barOf(ex);
+  if(bar>0&&b<bar) b=bar;
+  if(b>=T) return T;                               // the bar is the top: nothing lighter
+  return round(b,2);
+}
+function harderPhraseEx(w,next,ex){
+  return pinsOf(ex).length?(bwMode(ex)===2?"assist down to "+fmt(next):"up to "+fmt(next))
+                          :harderPhrase(stepFor(ex),bwMode(ex));
+}
+/* The ± stepper on a set's weight: "+" is the bigger number whatever the load type. */
+function stepWeight(cur,d,ex){
+  var p=pinsOf(ex), w=num(cur);
+  if(!p.length) return Math.max(0,round(w+d*stepFor(ex),2));
+  var n=d>0?pinUp(w,p):pinDown(w,p);
+  return n===null?w:n;
+}
 
 /* On assisted work the number is help, so progress means the number goes DOWN.
    Everywhere else harder means the number goes up. */
@@ -64,10 +129,31 @@ function isAt(s,w,mode){ return blankW(s,mode)||num(s.w)===w; }
 function droppedSets(sets,w,mode){
   var seen=false, n=0;
   sets.forEach(function(s){
+    if(s.role==="back") return;                 // a planned back-off is not a drop (forEach: return = continue)
     if(isAt(s,w,mode)) seen=true;
     else if(seen&&!blankW(s,mode)&&heavierLoad(w,num(s.w),mode)) n++;
   });
   return n;
+}
+
+/* The set a top-set-and-back-offs lift is judged on: the one tagged "top";
+   failing that (history from before 2.0, hand-logged) the heaviest set, most
+   reps among equals, the first among exact ties. */
+function topSetOf(sets,mode){
+  var t=sets.filter(function(s){ return s.role==="top"; }); if(t.length) return t[0];
+  var best=null;
+  sets.forEach(function(s){
+    if(blankW(s,mode)) return;
+    if(!best||heavierLoad(num(s.w),num(best.w),mode)||(num(s.w)===num(best.w)&&num(s.r)>num(best.r))) best=s;
+  });
+  return best;
+}
+function projectTop(h){ var t=topSetOf(h.sets,h.bw); return t?Object.assign({},h,{sets:[t]}):h; }
+/* The history the engine reads for one plan row: for a top-set lift every
+   exposure is its top set alone, so every rule in prescribe() runs unchanged. */
+function exWorkingP(name,ex,withEased){
+  var h=exWorking(name,withEased);
+  return schemeOf(ex)==="topback"?h.map(projectTop):h;
 }
 
 /* A 10% cut on the step grid is fine on a 185 lb bar and brutal on a 15 lb
@@ -87,17 +173,6 @@ function repsAt(h,w,mode,best){
   var v=h.sets.filter(function(s){ return isAt(s,w,mode); }).map(function(s){ return num(s.r); });
   if(!v.length) return 0;
   return best?Math.max.apply(null,v):Math.min.apply(null,v);
-}
-/* True when the lifter stepped up to W and has met the bottom of the range at
-   every session since — the case where a "down" trend is the double-progression
-   reset, not a decline. */
-function steppedUpAndMaking(hist,W,mode,low){
-  for(var i=0;i<hist.length;i++){
-    var wi=workLoad(hist[i].sets,mode);
-    if(wi!==W) return i>0&&heavierLoad(W,wi,mode);
-    if(repsAt(hist[i],W,mode)<low) return false;
-  }
-  return false;
 }
 /* Newest exposure (index ≥ 1) heavier than W whose previous one was at W. */
 function jumpAwayFrom(hist,W,mode){
@@ -131,15 +206,22 @@ function rangeHist(hist,name,ex){
 }
 
 var NEAR_SLACK=2;                                     // reps the rep-out may fall short of the top
-function prescribe(name,ex){
-  var step=stepFor(ex);
+/* What to do today for one plan row. A top-set lift (schemeOf) is judged on its
+   top set alone (exWorkingP) and also says where the back-offs go: `back`. */
+function prescribe(name,ex,opts){
+  var r=prescribeRow(name,ex,opts);
+  if(schemeOf(ex)==="topback"&&r.w!==""&&num(r.w)>0) r.back={w:backOffW(r.w,ex),r:r.r};
+  return r;
+}
+function prescribeRow(name,ex,opts){
   var met=metricOf(ex);
   var rstep=metricStep(met);
   var low=Math.max(1,num(ex.reps)||num(S.settings.repLow)||8);
   var top=num(ex.repTop)||0;
   var mode=bwMode(ex);
   var nsets=Math.max(1,num(ex.sets)||3);
-  var hist=rangeHist(exWorking(name),name,ex);
+  var hist=rangeHist(exWorkingP(name,ex),name,ex);
+  if(opts&&opts.skip) hist=hist.filter(function(h){ return h.sessionId!==opts.skip; });   // "what would it say without that one"
   var last=hist[0];
   if(!last){
     /* v26: a lift the coach swapped in has no history to read, so the plan row
@@ -160,61 +242,16 @@ function prescribe(name,ex){
   var climb=(top>low&&minR>=low)?Math.min(top,minR+rstep):low;
 
   if(inDeloadWeek()){
-    return {w:easier(w,step,mode),r:low,sets:Math.max(1,Math.round(nsets*0.6)),
+    return {w:easierEx(w,ex),r:low,sets:Math.max(1,Math.round(nsets*0.6)),
             why:"Deload week — light and short on purpose",kind:"deload"};
   }
 
-  /* Not straight after a step up that is being made. The trend is read from
-     sets stopped at their target, so after a long climb the reset that
-     follows a load step reads as a decline: since at least v23 a lifter
-     getting stronger every session, who made 190×8 and 190×9 at the new
-     load, was cut to 170 (t28). A same-weight slide still gets its back-off. */
-  if(trend(name).state==="down"&&!steppedUpAndMaking(hist,w,mode,low)){
-    /* One cut, then hold and rebuild — and the two halves of that have to be
-       measured over the SAME window, or they fight each other.
-
-       The guard used to look at the last 3 sessions while the verdict it
-       guards is a slope over cycle+3 (≈9). Three obedient sessions at the cut
-       weight pushed every heavier one out of the lookback, so "already backed
-       off" went false while the slope still contained the pre-cut scores and
-       stayed down — a second cut, then a third, every 4 sessions. Simulated
-       closed-loop, that walked a lifter whose true 1RM was *rising* from
-       190 lb to 115. The guard window must be at least the trend window:
-       never cut again while today's load is still below the best working
-       load anywhere the "down" verdict was computed from. */
-    var recent=hist.slice(1,1+trendWin(name)).map(function(h){ return workLoad(h.sets,mode); });
-    /* On assisted work the best session is the one with the LEAST help, so
-       "peak" inverts with the load direction like harder()/easier() do. */
-    var peak=recent.length?(mode===2?Math.min.apply(null,recent):Math.max.apply(null,recent)):w;
-    var alreadyDown=mode===2?(w>peak):(w<peak);
-    if(alreadyDown)
-      /* Hold the load, but let the reps keep climbing. Pinning them to the
-         bottom of the range every session meant an obedient lifter could never
-         produce a rising e1RM — the hold suppressed exactly the evidence that
-         would clear the verdict, so the verdict never cleared. */
-      /* Same hold either way; say who backed off. When the heavier sessions
-         in the window all predate a drop he chose (sinceChosenDrop), "already
-         backed off" credits the app with his decision. External review
-         (Argon) proposed reading the guard from sinceChosenDrop() instead —
-         on the real log that turns this hold into a 10% cut (55 → 50) off a
-         four-session dip after a 25-day gap, so only the words change. */
-      return {w:w,r:climb,sets:nsets,
-              why:sinceChosenDrop(hist).slice(1).some(function(h){ return heavierLoad(workLoad(h.sets,mode),w,mode); })||
-                  sinceChosenDrop(hist).length===hist.length?
-                  "Already backed off — beat this before adding":
-                  "You dropped to "+fmt(w)+" — build reps here before adding",kind:"hold"};
-    if(mode===1&&w<=0)
-      return {w:0,r:climb,sets:Math.max(1,nsets-1),
-              why:"Sliding 3 sessions — drop a set rather than adding load",kind:"deload"};
-    var back=easier(w,step,mode);
-    /* On a light dumbbell the step grid turns 10% into a third, or into
-       nothing at all (5 lb "backed off to 0"). Take a set instead, and keep
-       the reps free to climb so a recovered lifter can clear the verdict —
-       the same reason the hold above doesn't pin them. */
-    if(back===w||(mode!==2&&w-back>w*MAX_CUT))
-      return {w:w,r:climb,sets:Math.max(1,nsets-1),why:"Sliding 3 sessions — drop a set this week",kind:"deload"};
-    return {w:back,r:low,sets:nsets,why:"Sliding 3 sessions — back off to "+fmt(back),kind:"deload"};
-  }
+  /* No trend back-off here any more (2.0). The slope of the last few sessions
+     used to cut 10% off the bar when it read "down"; the simulated lifter and
+     the real log both said the cut cost more sessions than it saved (the
+     verdict is a badge now: trend() still feeds the card, Progress and the
+     coach). A load that genuinely can't be met is handled by the step-back
+     below, and a jump that failed is remembered (jumpAwayFrom). */
 
   /* If last time was already a grind, adding load buys a stall. Only fires
      when RPE was actually recorded on at least half the working sets, so it is
@@ -292,9 +329,13 @@ function prescribe(name,ex){
           return {w:w,r:minR+rstep,sets:nsets,
                   why:"Building reps before "+fmt(jf.w)+" again (it cost "+cost+" reps last time) — go for "+(minR+rstep),kind:"reps"};
       }
-      return {w:harder(w,step,mode),r:low,sets:nsets,
+      var nx=harderEx(w,ex);
+      /* The end of a stack: nothing heavier to go to, so reps are the only way up. */
+      if(nx===w&&pinsOf(ex).length)
+        return {w:w,r:minR+rstep,sets:nsets,why:"Top of the stack — go for "+(minR+rstep),kind:"reps"};
+      return {w:nx,r:low,sets:nsets,
               why:(minR>=top?"Hit "+amtText(top,met)+" on every set":
-                     "Hit "+top+", "+(at[at.length-1].out?"rep-out ":"last set ")+nmR)+" — "+harderPhrase(step,mode),kind:"up"};
+                     "Hit "+top+", "+(at[at.length-1].out?"rep-out ":"last set ")+nmR)+" — "+harderPhraseEx(w,nx,ex),kind:"up"};
     }
     if(minR>=low)
       return {w:w,r:nextR,sets:nsets,
@@ -312,7 +353,7 @@ function prescribe(name,ex){
       var w1=workLoad(hist[1].sets,mode), bk=0;
       if(heavierLoad(w,w1,mode)) bk=w1;
       else if(w1===w&&repsAt(hist[1],w,mode,true)<low&&last.lo===hist[1].lo){
-        bk=mode===2?w+step:Math.max(0,w-step);
+        bk=lighterEx(w,ex);
         if(mode!==2&&w-bk>w*MAX_CUT) bk=0;
       }
       if(bk&&bk!==w) return {w:bk,r:low,sets:nsets,
@@ -324,139 +365,27 @@ function prescribe(name,ex){
   if(minR>=low){                                      // straight sets
     if(noLoad) return {w:w,r:minR+rstep,sets:nsets,
             why:"Hit all "+amtText(low,met)+" — go for "+(minR+rstep),kind:"up"};
-    return {w:harder(w,step,mode),r:low,sets:nsets,
-            why:"Hit all "+amtText(low,met)+" — "+harderPhrase(step,mode),kind:"up"};
+    var nx2=harderEx(w,ex);
+    if(nx2===w&&pinsOf(ex).length)
+      return {w:w,r:minR+rstep,sets:nsets,why:"Top of the stack — go for "+(minR+rstep),kind:"reps"};
+    return {w:nx2,r:low,sets:nsets,
+            why:"Hit all "+amtText(low,met)+" — "+harderPhraseEx(w,nx2,ex),kind:"up"};
   }
   return {w:w,r:low,sets:nsets,why:"Missed "+amtText(low,met)+" last time — run it back",kind:"hold"};
 }
 
-/* ============================ v24: rep-out shadow ============================
+/* ============================ the rep-out label ============================
    The last working set of a ranged rep exercise is a rep-out: as many as you
    can (compounds stop one short of form breaking, isolation goes to failure).
-   That is the one number in the log that measures capacity rather than echoing
-   the target, and shadowPrescribe() decides the next session from it alone.
-
-   It is a SHADOW: shown beside prescribe()'s answer, applied only when you
-   tap Use, recorded either way, so whether it should replace double
-   progression is decided from evidence (ROADMAP v24/v25), not assumed.
-
-   APRE-style (Mann 2010), relative to the range and counted in equipment
-   steps. No e1RM anywhere, so it is valid at 12–20 reps where rep-to-1RM
-   formulas aren't (Reynolds 2006):
-     A < low−1        one step lighter       working sets at low
-     low−1 ≤ A < low  hold                   working sets at low
-     low ≤ A < top    hold                   working sets at A
-     top ≤ A < top+4  one step heavier       working sets at low
-     A ≥ top+4        two steps heavier      working sets at low
-   The step comes when the rep-out REACHES the top, not when it passes it.
-   The rep-out is the last set, already tired by the ones before it, so it
-   reads about three reps under fresh capacity; waiting for top+1 asked for
-   more reserve than double progression ever does, and in the closed loop
-   (t32) a lifter with reserve parked at 195 while v23's engine reached 200.
-   Working sets match the rep-out's count for the same reason: sets 1–2 are
-   fresher than the set that produced A, so A reps leaves them 2–3 short of
-   failure — inside the 1–3 the evidence supports. A−2 left about five.
+   commitSession() flags it (`out`), the card labels it, and trendScore() reads
+   it as the best evidence of capacity in the session. (The v24 "rep-out
+   shadow" that prescribed from it alone, and its "Use" button, were retired in
+   2.0: it never beat double progression on the simulator or the real log.
+   `shadow` on an old logged exercise is inert data now.)
+   A top-set lift's last set is a back-off, not a rep-out.
    =============================================================================== */
-var OUT_JUMP2=4;
-function repOutApplies(ex){ return metricOf(ex)===0&&num(ex.repTop)>num(ex.reps); }
+function repOutApplies(ex){ return schemeOf(ex)!=="topback"&&metricOf(ex)===0&&num(ex.repTop)>num(ex.reps); }
 function repOutHint(name){
   return movementClass(name)==="iso"?"take it to failure":"stop 1 short of form breaking";
 }
-function repOutOf(h){
-  var o=h.sets.filter(function(x){ return x.out; });
-  return o.length?o[o.length-1]:null;
-}
-function shadowPrescribe(name,ex){
-  if(inDeloadWeek()||!repOutApplies(ex)) return null;
-  var low=Math.max(1,num(ex.reps)), top=num(ex.repTop), mode=bwMode(ex);
-  var step=stepFor(ex), nsets=Math.max(1,num(ex.sets)||3);
-  var hist=rangeHist(exWorking(name),name,ex), last=hist[0];   // v26.1: own range's exposures (rangeHist)
-  var o=last&&repOutOf(last);
-  if(!o) return null;
-  /* The rep-out has to be AT the working load to say anything about it.
-     External review (Argon), confirmed on the real log: after RDL
-     225×8, 185×8, 135×8 the shadow read the last set and suggested 135×8;
-     after Cable Row 75×8, 75×8, 65×10 it suggested 65. A set dropped after
-     the working load is a back-off, not a measurement — hold there exactly
-     as prescribe() does, and let the next real rep-out decide. */
-  var wl=workLoad(last.sets,mode);
-  var W=blankW(o,mode)?wl:num(o.w), A=num(o.r);
-  if(W!==wl||droppedSets(last.sets,wl,mode)>0){
-    var atW=last.sets.filter(function(x){ return isAt(x,wl,mode); });
-    var mr=atW.length?Math.min.apply(null,atW.map(function(x){ return num(x.r); })):low;
-    return {w:wl, r:Math.max(low,Math.min(top,mr)), sets:nsets, steps:0, stall:false,
-            why:"last set was lighter than "+fmt(wl)+" — hold there and get every set to it"};
-  }
-  var k=A<low-1?-1:A<top?0:A<top+OUT_JUMP2?1:2;
-  var held="";
-  /* (b) Two steps only when two steps are a small jump: the +2 rule fired 142
-     times in 20 simulated years and every one was over 10% (10 → 20 on a fly).
-     Measured on the load actually moved — on assisted work that is bodyweight
-     minus the help, not the help. */
-  if(k===2&&2*step>0.10*effLoad(W,mode,num(S.settings.bodyweight))) k=1;
-  /* (a) The last jump from W failed: don't retry it until the mean of the
-     newest two rep-outs at W has recovered what it cost. The cost is smoothed
-     over up to three rep-outs before the jump — one noisy pair blocked a
-     curl for good in simulation. */
-  if(k>0){
-    for(var i=1;i+1<hist.length;i++){
-      var oh=repOutOf(hist[i]), op=repOutOf(hist[i+1]);
-      if(!oh||!op) continue;
-      if(heavierLoad(num(oh.w),W,mode)&&num(op.w)===W){
-        if(num(oh.r)<low-1){
-          var pre=[];
-          for(var y=i+1;y<hist.length&&pre.length<3;y++){
-            var q=repOutOf(hist[y]); if(!q||num(q.w)!==W) break; pre.push(num(q.r));
-          }
-          var cost=pre.reduce(function(a,b){ return a+b; },0)/pre.length-num(oh.r);
-          var o2=hist[1]&&repOutOf(hist[1]);
-          var now2=(o2&&num(o2.w)===W)?(A+num(o2.r))/2:A;
-          if(now2<low-1+cost){ k=0; held=num(oh.w); }
-        }
-        break;
-      }
-    }
-  }
-  /* (c) One low rep-out at an established load is a bad day, not a reason to
-     cut: step down only straight after a jump, or when the rep-out before
-     this one, at this load, was short too. 9.3 → 2.6 false compound cuts a
-     year in simulation. */
-  var bad=false;
-  if(k<0&&hist[1]){
-    var pw=workLoad(hist[1].sets,mode), po=repOutOf(hist[1]);
-    if(!heavierLoad(W,pw,mode)&&!(po&&num(po.w)===W&&num(po.r)<low)){ k=0; bad=true; }
-  }
-  var w=W;
-  if(k<0) w=mode===2?W+step:Math.max(0,W-step);
-  for(var j=0;j<k;j++) w=harder(w,step,mode);
-  if(k<0&&w===W) k=0;                        // nothing lighter to go to
-  /* While a jump is being earned the working sets follow the rep-out past
-     the top — rep progression grows muscle about as well as load (Plotkin
-     2022), and it is what earns the jump back. */
-  var r=k===0?(held!==""&&A>=top?A:Math.max(low,Math.min(top,A))):low;
-  /* A last set that reads exactly the prefilled target says "I ticked it",
-     not "that was all I had" — and half of Nick's logged exercises sit
-     exactly on target. Taken at face value the method then repeats the same
-     number for ever. If every set at the load made that target, ask for one
-     more, as double progression would. External review (Argon); simulated
-     year: sessions progressing 38% → 55%, and for a lifter who ticks the
-     prefill half the time 25% → 58%, with unreachable loads, flips and the
-     85% gate unchanged. (Its other two ideas — step compounds at top−1 twice,
-     and never lower the target on one low day — were simulated too: the first
-     changed nothing, the second made progress slower.) */
-  if(k===0&&held===""&&!bad&&A>=low&&last.tgt&&A===last.tgt&&last.tgt<top&&repsAt(last,W,mode)>=last.tgt)
-    r=Math.min(top,last.tgt+1);
-  var why=held!==""?"last set "+A+" — building reps before "+fmt(held)+" again":
-          bad?"last set "+A+", one low day — repeat it":
-          k===2?"last set "+A+", well past "+top+" — two steps up":
-          k===1?"last set "+A+", at the top — one step up":
-          k<0?"last set "+A+", under "+low+" — one step down":
-          A<low?"last set "+A+" — repeat it":"last set "+A+" — same weight";
-  /* No stall flag (v25). Simulated, the v24 rule fired on ~35% of exposures
-     while strength was rising, and a stricter slope rule caught only 47% of
-     real plateaus. It comes back with v26's coach, with a rule that can tell
-     slow progress from none. */
-  return {w:w,r:r,sets:nsets,why:why,steps:k,stall:false};
-}
-
 self.__ilf=(self.__ilf||0)+1;

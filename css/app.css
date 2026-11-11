@@ -242,18 +242,12 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .why.reps{background:var(--good-soft);color:var(--good-ink)}
 .why.deload{background:var(--bad-soft);color:var(--bad-ink)}
 .why.hold{color:var(--ink-2)}
-/* v24: the rep-out instruction and the shadow prescription. Same strip shape
-   as .why so the callout reads as one block. */
-.callout .outhint,.callout .shadow{
+/* The rep-out instruction, in the same strip shape as .why so the callout reads
+   as one block. */
+.callout .outhint{
   display:flex;align-items:center;gap:7px;
   padding:7px 10px;font-size:12.5px;border-top:1px solid var(--line);color:var(--ink-2);
 }
-.callout .shadow{font-weight:600;color:var(--ink)}
-.callout .shadow .use{
-  margin-left:auto;font-size:12px;font-weight:700;padding:3px 10px;border-radius:7px;
-  background:var(--accent);color:var(--on-accent);white-space:nowrap;flex:0 0 auto;
-}
-.callout .shadow.stall{color:var(--bad-ink);font-weight:600}
 .set.out .idx{color:var(--accent-ink);font-weight:800}
 /* Per-lift notes: a quiet tap line until there is something to say. */
 .exnote{padding:2px var(--pad) 0}

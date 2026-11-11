@@ -53,7 +53,6 @@ function viewProgress(){
   html+=coachSection();
   html+=weeklySetsCard(tw,lw);
   html+=sinceStartCard();
-  html+=repOutCard();
 
   var names=trackedLifts();
   allExerciseNames().forEach(function(x){ if(names.indexOf(x.name)<0) names.push(x.name); });
@@ -147,45 +146,6 @@ function weeklySetsCard(tw,lw){
 }
 
 /* ============================ v25: the scorecard and the look back ============================ */
-/* How the rep-out method has done when it was actually lifted: a tapped (or,
-   once default, automatic) suggestion counts as landed when that session's
-   rep-out reached the bottom of the range. The gate is ROADMAP's: at least
-   nine uses, at least 85% landed — the simulated year put it at 93%. */
-var OUT_GATE_N=9, OUT_GATE_SHARE=0.85;
-function repOutScore(){
-  var offered=0, used=0, landed=0;
-  S.sessions.forEach(function(x){
-    if(x.deload) return;
-    x.exercises.forEach(function(e){
-      if(!e.shadow) return;
-      offered++;
-      if(!e.shadow.used) return;
-      var o=null; working(e.sets).forEach(function(st){ if(st.out) o=st; });
-      if(!o) return;
-      used++; if(num(o.r)>=num(e.reps)) landed++;
-    });
-  });
-  return {offered:offered, used:used, landed:landed, share:used?landed/used:0,
-          ready:used>=OUT_GATE_N&&landed/used>=OUT_GATE_SHARE};
-}
-function repOutCard(){
-  var sc=repOutScore(), on=!!S.settings.repOutDefault;
-  if(!sc.offered&&!on) return "";
-  var pct=sc.used?Math.round(sc.share*100)+"%":"—";
-  var body;
-  if(on) body="It's your default wherever a lift has a rep-out to read. Used "+plural(sc.used,"time")+
-    ", and the last set landed in your range "+pct+" of the time.";
-  else if(sc.ready) body="You've used it "+plural(sc.used,"time")+" and the last set landed in your range "+pct+
-    " of the time — past the 85% it needs. It can take over from here.";
-  else body="Used "+sc.used+" of "+plural(sc.offered,"time")+" it was offered; the last set landed in your range "+pct+
-    " of the time. It can take over after "+OUT_GATE_N+" uses at 85% or better"+
-    (sc.used>=OUT_GATE_N?" — not there yet.":" ("+Math.max(0,OUT_GATE_N-sc.used)+" to go).");
-  return '<div class="eyebrow" style="margin-bottom:7px">Rep-out method</div>'+
-    '<div class="card" style="margin-bottom:12px"><div class="tiny" style="line-height:1.45">'+esc(body)+'</div>'+
-    (on?'<button class="btn sm ghost" style="margin-top:9px" data-act="repout-off">Go back to the classic method</button>':
-     sc.ready?'<button class="btn sm primary" style="margin-top:9px" data-act="repout-on">Make it the default</button>':"")+
-    '</div>';
-}
 /* The screen that has to answer "did it work?" a year from now: per lift in
    the current plan, the first four weeks of its history against the latest
    four, by best working weight and best trend score (e1RM, or the rep-out

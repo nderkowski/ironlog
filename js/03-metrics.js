@@ -195,19 +195,26 @@ function trendScore(s){
 /* A load drop the lifter chose — not one the app prescribed (kind "deload")
    — is a reset, not a decline. The trend starts after it, so going 65 → 55
    by choice doesn't read as "slipping" for the next nine sessions. Newest
-   first in, newest first out. */
+   first in, newest first out.
+   2.0: a drop is a reset only if the lifter stayed there. One light day
+   followed by a session back at the old load (or heavier) is a bad day, not a
+   new baseline, and no longer restarts the trend. */
 function sinceChosenDrop(h){
   for(var i=0;i+1<h.length;i++){
     var a=workLoad(h[i].sets,h[i].bw), b=workLoad(h[i+1].sets,h[i+1].bw);
     /* Only when the session recorded what the app prescribed: a log without
        it (old, hand-built) can't tell a choice from a decline, so it keeps
        its whole history. */
-    if(heavierLoad(b,a,h[i].bw)&&h[i].kind&&h[i].kind!=="deload") return h.slice(0,i+1);
+    if(heavierLoad(b,a,h[i].bw)&&h[i].kind&&h[i].kind!=="deload"){
+      var back=false;
+      for(var j=0;j<i;j++) if(!heavierLoad(b,workLoad(h[j].sets,h[j].bw),h[j].bw)) back=true;   // newer, at b or heavier
+      if(!back) return h.slice(0,i+1);
+    }
   }
   return h;
 }
 function trendAt(name,win){
-  var h=sinceChosenDrop(exWorking(name));
+  var h=sinceChosenDrop(exWorkingP(name,planExByName(name)||{}));
   if(h.length<4) return {state:"new",n:h.length,pct:0};
   var vals=h.slice(0,win).map(trendScore).reverse();   // oldest first
   var n=vals.length;
@@ -353,14 +360,17 @@ function convertUnits(to){
     if(!n) return n;
     return (n===oldBar||n===defaultBar(to==="kg"?"lb":"kg"))?defaultBar(to):cv(n);
   }
-  /* A session exercise also carries weights that aren't sets: the shadow
-     prescription and last time's first set, behind "Use" and "Keep". Left
-     behind, a mid-workout switch to kg made Use fill 65 kg where 65 lb was
-     meant, and the shadow outcome in history read against the wrong unit. */
+  /* A session exercise also carries weights that aren't sets: last time's
+     first set (behind "Keep") and what was prescribed (presc, and the old
+     shadow of a log from before 2.0). Left behind, a mid-workout switch to kg
+     made Keep fill 65 kg where 65 lb was meant. Stack weights are weights too. */
   function cvEx(e){
     e.inc=e.inc?cv(e.inc):e.inc; e.bar=cvBar(e.bar);
     if(e.startW) e.startW=cv(e.startW);          // the coach's suggested first weight is a weight too
     if(e.shadow&&num(e.shadow.w)) e.shadow.w=cv(e.shadow.w);
+    if(e.presc&&num(e.presc.w)) e.presc.w=cv(e.presc.w);
+    if(e.usual&&num(e.usual.w)) e.usual.w=cv(e.usual.w);
+    if(Array.isArray(e.pins)&&e.pins.length) e.pins=cleanPins(e.pins.map(cv));
     if(e.lastW) e.lastW=cv(e.lastW);
   }
   function cvSets(sets){

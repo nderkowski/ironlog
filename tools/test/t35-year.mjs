@@ -19,7 +19,7 @@ import { launch, URL, ok, report } from './harness.mjs';
 import fs from 'fs';
 
 const SIM = fs.readFileSync(new globalThis.URL('./yearsim.js', import.meta.url), 'utf8');
-const HOOK = 'window.__t={get S(){return S}, set S(v){S=v}, prescribe:prescribe, shadowPrescribe:shadowPrescribe,' +
+const HOOK = 'window.__t={get S(){return S}, set S(v){S=v}, prescribe:prescribe,' +
   ' deloadCheck:deloadCheck, deloadStatus:deloadStatus, makeSessionEx:makeSessionEx, exWorking:exWorking,' +
   ' ev:function(src){ return eval(src); }};';
 
@@ -84,23 +84,15 @@ const mean = (a, k) => a.reduce((s, x) => s + x[k], 0) / a.length;
 const SEEDS = [1, 2, 3, 4];
 
 /* ---- following prescribe() only ---- */
-const s1 = []; for (const sd of SEEDS) s1.push(measure(await year(sd, { useShadow: false })));
+const s1 = []; for (const sd of SEEDS) s1.push(measure(await year(sd, {})));
 console.log('  prescribe only: unmeetable ' + mean(s1, 'unmeet').toFixed(1) + ', progressing ' +
   (mean(s1, 'prog') * 100).toFixed(0) + '%, flips ' + mean(s1, 'flips').toFixed(1));
 ok(mean(s1, 'unmeet') <= 25, 'prescribe: almost never asks for a load he cannot reach the range at  [' + mean(s1, 'unmeet').toFixed(1) + '/yr, v24.1: 146]');
 ok(mean(s1, 'prog') >= 0.48, 'prescribe: about half of all sessions progress  [' + (mean(s1, 'prog') * 100).toFixed(0) + '%, v24.1: 40%]');
 ok(mean(s1, 'flips') <= 30, 'prescribe: load rarely flips up and down  [' + mean(s1, 'flips').toFixed(1) + ']');
 
-/* ---- always tapping Use ---- */
-const s2 = []; for (const sd of SEEDS) s2.push(measure(await year(sd, { useShadow: true })));
-console.log('  always Use:     flips ' + mean(s2, 'flips').toFixed(1) + ', rep-out ≥ low ' + (mean(s2, 'usedOK') * 100).toFixed(0) +
-  '%, unmeetable ' + mean(s2, 'unmeet').toFixed(1));
-ok(mean(s2, 'flips') <= 45, 'rep-out method: no flip-flopping on light lifts  [' + mean(s2, 'flips').toFixed(1) + '/yr, v24.1: 198]');
-ok(mean(s2, 'usedOK') >= 0.85, 'rep-out method: clears its own 85% gate  [' + (mean(s2, 'usedOK') * 100).toFixed(0) + '%, v24.1: 81%]');
-ok(mean(s2, 'unmeet') <= 25, 'rep-out method: almost never an unreachable load  [' + mean(s2, 'unmeet').toFixed(1) + ', v24.1: 73]');
-
 /* ---- an illness mid-year: the deload loop ---- */
-const s3 = []; for (const sd of SEEDS) s3.push(measure(await year(sd, { useShadow: true, illness: { from: 22, len: 6, depth: 0.10, rec: 6 } })));
+const s3 = []; for (const sd of SEEDS) s3.push(measure(await year(sd, { illness: { from: 22, len: 6, depth: 0.10, rec: 6 } })));
 console.log('  illness:        deload weeks ' + mean(s3, 'weeks').toFixed(1) + ', back to back ' + mean(s3, 'backToBack').toFixed(1));
 ok(mean(s3, 'weeks') <= 5, 'illness: a handful of deload weeks, not a dozen  [' + mean(s3, 'weeks').toFixed(1) + ', v24.1: 10.8]');
 ok(s3.every(m => m.backToBack === 0), 'illness: never a deload week straight after another  [' + s3.map(m => m.backToBack).join(',') + ']');

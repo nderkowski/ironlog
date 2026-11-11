@@ -9,7 +9,7 @@
      tapped (coachApply), and every accepted change is one tap to undo.
    - It NEVER sets a weight or a rep. The only actions are swap a lift, trim
      or add a set, remove a lift, pair two as a superset. Progression stays
-     with prescribe()/shadowPrescribe(). The one number a swap does write is
+     with prescribe(). The one number a swap does write is
      `startW` on the NEW row, read by prescribe()'s "new" branch only, so the
      first card for a lift with no history isn't blank.
    - At most COACH_OPEN_MAX proposals are open at once, and a lift+reason
@@ -145,8 +145,12 @@ function coachStartW(oldName,newName,row){
   if(!fo||!fn||!fo.f||!fn.f) return 0;
   var h=lastPerf(oldName); if(!h||h.bw||h.metric) return 0;
   var w=workLoad(h.sets,h.bw); if(!(w>0)) return 0;
-  var step=stepFor(row);
-  var v=Math.floor(w*fn.f/fo.f*COACH_LIGHT/step+1e-9)*step;
+  var step=stepFor(row), x=w*fn.f/fo.f*COACH_LIGHT, p=pinsOf(row);
+  if(p.length){                                  // a stack: the heaviest weight on it that is no more than the guess
+    var under=p.filter(function(q){ return q<=x+1e-9; });
+    return under.length?under[under.length-1]:0;
+  }
+  var v=Math.floor(x/step+1e-9)*step;
   return v>0?round(v,1):0;
 }
 /* A swapped-in row takes the old slot's shape (sets, range, superset, increment,
@@ -387,7 +391,7 @@ function coachNoteOf(x,name){
 function coachRuleStall(){
   var out=[];
   trackedLifts().forEach(function(name){
-    var h=exWorking(name); if(h.length<6) return;
+    var h=exWorkingP(name,planExByName(name)||{}); if(h.length<6) return;   // a top-set lift reads its top set
     var mode=h[0].bw, W=workLoad(h[0].sets,mode); if(!(W>0)) return;
     var run=[];
     for(var i=0;i<h.length&&workLoad(h[i].sets,mode)===W;i++) run.push(h[i]);
@@ -403,7 +407,11 @@ function coachRuleStall(){
     var row=tg[0].e;
     /* A step over 8% of the load (5 lb on a 45 lb dumbbell) is a jump slow
        progress can't make: sitting at that load for months is ordinary there. */
-    if(W>0&&mode===0&&stepFor(row)/W>0.08) return;
+    if(W>0&&mode===0){
+      var pn=pinsOf(row);
+      if(pn.length){ var up=pinUp(W,pn); if(up===null||(up-W)/W>0.08) return; }   // a stack: the next pin up is the step; none above, nothing to judge
+      else if(stepFor(row)/W>0.08) return;
+    }
     /* Slope of the mean reps at the load over the run (the climbing set targets
        count, not only the rep-out) must not be positive. */
     var sc=run.slice(0,12).map(function(x){

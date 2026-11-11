@@ -646,7 +646,7 @@ function commitSession(){
      It is decided by position BEFORE undone sets are dropped: if the last set
      was skipped there was no rep-out, and the set before it was an ordinary
      one stopped at its target. Flagging that would feed a false "as many as
-     you can" into the shadow prescription and its v25 evidence. */
+     you can" into trendScore(). */
   a.exercises.forEach(function(e){
     if(!repOutApplies(e)) return;
     var w=working(e.sets);

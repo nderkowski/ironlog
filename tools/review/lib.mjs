@@ -18,7 +18,7 @@ mkdirSync(OUT, { recursive: true });
    harness can read any internal (workLoad, deloadCheck, makeSessionEx…) and,
    for ablations, rebind one. Strict-mode direct eval can read and assign
    existing outer bindings; it cannot add new ones. */
-const HOOK = 'var S=load(); window.__t={get S(){return S},prescribe:prescribe,shadowPrescribe:shadowPrescribe,coachRun:coachRun,ev:function(__s){return eval(__s);}};';
+const HOOK = 'var S=load(); window.__t={get S(){return S},prescribe:prescribe,coachRun:coachRun,ev:function(__s){return eval(__s);}};';
 
 /* The app is now several files (index.html, css/app.css, js/*.js; the list is
    js/files.js). buildCopy copies all of them and applies each patch to

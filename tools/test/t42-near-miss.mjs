@@ -11,7 +11,7 @@
    is injected at load (as in t35/t41) so the app carries no test code. */
 import { launch, URL, ok, eq, has, report } from './harness.mjs';
 
-const HOOK = 'window.__t={get S(){return S}, prescribe:prescribe, shadowPrescribe:shadowPrescribe};';
+const HOOK = 'window.__t={get S(){return S}, prescribe:prescribe};';
 const { browser, errors } = await launch();
 const page = await (await browser.newContext({ serviceWorkers: 'block' })).newPage();
 page.on('pageerror', e => errors.push(String(e)));

@@ -86,11 +86,10 @@ let st = state('Back Squat', 8, 12, 225, 5, 10);
 st.sessions = declining('Back Squat', 10);
 let v = await verdict(st);
 has(v.meta, 'SLIPPING', 'a real decline is still caught');
-/* The load itself has fallen every session, so prescribe()'s guard correctly
-   says the back-off has already happened and holds instead of cutting again —
-   that guard exists so the app can't chase its own tail down. Either verdict
-   is right; adding weight would not be. */
-ok(/Already backed off|Sliding 3 sessions/.test(v.why), 'and the engine responds to it  [' + v.why + ']');
+/* 2.0: the trend is a badge, not a load cut. The load has fallen every session; the engine
+   neither cuts again nor adds, it holds and asks for one more rep (the old "Already backed
+   off" hold went with the trend cut). */
+ok(/Same weight — go for 9/.test(v.why), 'and the engine just holds and climbs reps  [' + v.why + ']');
 eq(v.w, '180', 'holding at the current load rather than adding to a falling lift');
 
 /* ---- a genuine stall reads flat, not down ---- */
@@ -200,7 +199,7 @@ ok(!/already dropped your next prescription 10%/i.test(banner),
 /* On this seed the engine holds rather than cutting — the banner has to say
    whichever it is, by asking prescribe(). */
 has(banner, 'Next time:', 'it states the next prescription rather than guessing it');
-ok(/already backed off|back off to/i.test(banner),
+ok(/next time: same weight — go for 9/i.test(banner),
   'and the next prescription it names is the one the card gives  [' + banner + ']');
 await page.click('[data-x="close"]').catch(() => page.keyboard.press('Escape'));
 

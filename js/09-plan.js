@@ -611,6 +611,16 @@ function planExMenu(ri,vi,ei){
     loadTypeRow(bwMode(ex),"pbw")+
     metricRow(metricOf(ex),"pmet")+
     barRow(ex,"pbar")+
+    /* Top set + back-offs: one heavy set that decides the next weight, then
+       lighter sets that are never judged. Plain loaded work only. */
+    (bwMode(ex)===0&&metricOf(ex)===0?
+      '<div class="field-row"><div class="fl">Top set + back-offs'+
+        '<div class="fh">One top set, then back-offs about 12% lighter. Only the top set decides the next weight.</div></div>'+
+        '<button class="switch'+(ex.scheme==="topback"?" on":"")+'" role="switch" aria-checked="'+(ex.scheme==="topback")+
+          '" aria-label="Top set and back-offs" data-x="topback"></button></div>':"")+
+    '<div class="field-row"><div class="fl">Stack weights'+
+      '<div class="fh">Only for a machine whose weights aren\'t evenly spaced. The next weight up or down comes from this list.</div></div>'+
+      '<input class="txt" style="max-width:150px" data-x="pins" inputmode="decimal" aria-label="Stack weights" placeholder="20, 27.5, 35" value="'+esc(cleanPins(ex.pins).join(", "))+'"></div>'+
     muscleRow(ex)+
     '<div class="menu" style="margin-top:10px">'+
       (ei>0?'<button data-x="link">'+(ex.link?"Break the superset":"Superset with the one above")+'</button>':"")+
@@ -638,6 +648,15 @@ function planExMenu(ri,vi,ei){
         b.onclick=function(){ ex.bw=num(b.dataset.pbw); save(); closeSheet(); viewPlan(); planExMenu(ri,vi,ei); };
       });
       $('[data-pbar]',el).oninput=function(){ ex.bar=Math.max(0,num(this.value)); save(); };
+      var tbs=$('[data-x="topback"]',el);
+      if(tbs) tbs.onclick=function(){
+        ex.scheme=ex.scheme==="topback"?"double":"topback"; save();
+        closeSheet(); viewPlan(); planExMenu(ri,vi,ei);
+      };
+      /* Typed once per plan row; fewer than two numbers is no stack. The field
+         is left as typed so a half-typed list isn't rewritten under the cursor. */
+      $('[data-x="pins"]',el).oninput=function(){ ex.pins=cleanPins(this.value.split(/[,\s;]+/)); save(); };
+      $('[data-x="pins"]',el).onchange=function(){ this.value=cleanPins(ex.pins).join(", "); };
       $$('[data-pmet]',el).forEach(function(b){
         b.onclick=function(){ ex.metric=num(b.dataset.pmet); save(); closeSheet(); viewPlan(); planExMenu(ri,vi,ei); };
       });

@@ -16,31 +16,23 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = 8140, WORKERS = 4, CHUNK = 10;
 const NL = +(process.argv[2] || 200);
 
-/* Ablations, each a single source edit that must apply exactly once. */
+/* Ablations, each a single source edit that must apply exactly once.
+   (2.0: the trend cut and the rep-out shadow are gone from the engine, so their
+   ablations and the repout configs went with them.) */
 const COPIES = {
   base: [],
-  'abl-trend': [['if(trend(name).state==="down"&&!steppedUpAndMaking(hist,w,mode,low)){',
-                 'if(false&&trend(name).state==="down"&&!steppedUpAndMaking(hist,w,mode,low)){']],
-  'abl-jump': [['if(jf&&repsAt(hist[jf.i],jf.w,mode)<low-1){', 'if(false&&jf&&repsAt(hist[jf.i],jf.w,mode)<low-1){'],
-               ['  if(k>0){\n    for(var i=1;i+1<hist.length;i++){', '  if(false&&k>0){\n    for(var i=1;i+1<hist.length;i++){']],
-  'abl-step': [['if(!noLoad&&hist[1]&&repsAt(last,w,mode,true)<low){', 'if(false&&!noLoad&&hist[1]&&repsAt(last,w,mode,true)<low){'],
-               ['var k=A<low-1?-1:A<top?0:A<top+OUT_JUMP2?1:2;', 'var k=A<low-1?0:A<top?0:A<top+OUT_JUMP2?1:2;']],
-  'abl-echo': [['if(k===0&&held===""&&!bad&&A>=low&&last.tgt&&A===last.tgt&&last.tgt<top&&repsAt(last,W,mode)>=last.tgt)',
-                'if(false&&k===0&&held===""&&!bad&&A>=low&&last.tgt&&A===last.tgt&&last.tgt<top&&repsAt(last,W,mode)>=last.tgt)']],
+  'abl-jump': [['if(jf&&repsAt(hist[jf.i],jf.w,mode)<low-1){', 'if(false&&jf&&repsAt(hist[jf.i],jf.w,mode)<low-1){']],
+  'abl-step': [['if(!noLoad&&hist[1]&&repsAt(last,w,mode,true)<low){', 'if(false&&!noLoad&&hist[1]&&repsAt(last,w,mode,true)<low){']],
 };
 export const CONFIGS = {
   classic:      { copy: 'base', engine: 'classic', coach: true },
-  repout:       { copy: 'base', engine: 'repout', coach: true },
+  /* the engine with the RDL and Leg Press as one top set + back-offs (V2_SPEC §2e gate 4) */
+  topback:      { copy: 'base', engine: 'classic', coach: true, topback: ['rdl', 'leg press'] },
   dp:           { copy: 'base', engine: 'dp' },
   lin:          { copy: 'base', engine: 'lin' },
-  'c-trend':    { copy: 'abl-trend', engine: 'classic' },
   'c-jump':     { copy: 'abl-jump', engine: 'classic' },
-  'r-jump':     { copy: 'abl-jump', engine: 'repout' },
   'c-step':     { copy: 'abl-step', engine: 'classic' },
-  'r-step':     { copy: 'abl-step', engine: 'repout' },
   'c-nodeload': { copy: 'base', engine: 'classic', noDeload: true },
-  'r-nodeload': { copy: 'base', engine: 'repout', noDeload: true },
-  'r-echo':     { copy: 'abl-echo', engine: 'repout' },
 };
 const BASEV = { gMed: 0.10, gSd: 0.6, dayNoise: 0.02, tick: 0.25, Emul: 1 };
 export const VARIANTS = {
