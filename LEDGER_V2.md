@@ -21,9 +21,10 @@ updated only after the owner's phone check at each milestone.
 | 2R | 1 | Adversarial review of the spec | deepseek-v4-pro (cross-family) | done | 15 findings (2 blockers), all accepted as amendments | V2_SPEC.md (end) |
 | 3 | 1R | Review of #1 (no-loss guards, SW, globals collisions) | opus (blind, real v26.13→a1 upgrade walk) + deepseek-v4-pro | done | Both: first upgrade can brick offline on a partial deploy (Opus reproduced: empty Plan, PLANVAR error); HTML/JS version skew; dropped reload; early-listener race; t43 mutants broken | scratch ds-review-a1.md |
 | 3F | 1 | a1 fixes: v26.14 single-file bridge with the new worker, then the split on top; cache-first navigation; updates apply only on open; boot integrity gate; real upgrade tests | sonnet (high) / worktree | out | — | — |
-| 4 | 2 | Schema v6 migration scaffold + v5 snapshot + restore button | sonnet (high) / worktree on the a1 branch | out (started in parallel with #3) | — | — |
-| 5 | 3 | M1 engine: schemes double/topback, no trend cut, stack weights, sim gates | sonnet (high) | queued (after #2, #4) | — | — |
+| 4 | 2 | Schema v6 migration scaffold + v5 snapshot + restore button | sonnet (high) / worktree on the a1 branch | done → in review | t48 103/103; 3 assertions re-pointed (delts→head, v5→v6), accepted | worktree-agent-a39952b1dade06539 @ ed223a0 |
+| 4R | 2 | Review A: code (DeepSeek) + real-export migration check (local, aggregates only) | deepseek-v4-pro + sonnet | out | — | — |
+| 5 | 3 | Package B engine: double/topback, no trend cut, stack weights, presc, sim + replay gates | sonnet (high) / worktree on A | out | — | — |
 | 6 | 3 | M2 friction: set-1 cascade, usual-load chip, off-book day, ease-back | sonnet | queued (after #4) | — | — |
-| 7 | 3 | M3 muscles: delt heads, abs target, excluded calves, balance card, rotation volume | sonnet | queued (after #4) | — | — |
+| 7 | 3 | Package E muscles & plan: balance card, S1 suggestions, rotation volume, pump seed | sonnet (high) / worktree on A | out | — | — |
 | 8 | 4 | M4 blocks + scorecard; S2 pump day; S1 plan additions; S3 warm-ups; S4 polish | sonnet ×2 | queued | — | — |
 | 9 | 5 | Full review pass, sim + replay + journeys, beta merge | opus + external reviewers | queued | — | — |
