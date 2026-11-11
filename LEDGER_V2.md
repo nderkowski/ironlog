@@ -47,3 +47,4 @@ updated only after the owner's phone check at each milestone.
 | 10 | 5 | Docs + gym test plan for the 2.0 beta | sonnet | done | PROJECT_STATE 2.0 architecture + traps 24–29, ROADMAP top section + 15-step gym plan, NEXT_SESSION, HANDOFF; 36 suites / 2,206 checks green. To fix at merge: main=v26.13, v26.14 pending, build label b1 | docs-2.0 @ 44609cc |
 
 | ROLL-1 | — | v26.14 pushed to `main` (owner approved 11 Nov); GitHub Pages serving it | commander | done — waiting for the owner's footer check | `main` @ c5b5a29 |
+| ROLL-2 | — | 2.0 beta (v2.0-b2) pushed to `main`; owner confirms the phone footer reads v2.0-b2 (11 Nov) | commander | done — beta live; next: owner's gym test plan + one 6-rotation block, then replay his export | `main` @ f0fd8a2 |
