@@ -1,8 +1,10 @@
 /* A year of training through the real engine, for t35. Runs in the page:
    window.__t is injected by the test at load (see t35-year.mjs), so the app
    ships without a hook. Written for the v25 review (ROADMAP), which used it
-   to find light lifts parked at unreachable loads, the shadow flip-flopping,
-   and the deload check re-firing the day a deload week ends.
+   to find light lifts parked at unreachable loads, the (since retired) shadow
+   flip-flopping, and the deload check re-firing the day a deload week ends.
+   cfg.pins ({lift: [weights]}) and cfg.topback ([lift names]) are written onto
+   the plan rows before the first session.
 
    The lifter: Epley capacity rising 5–15% over the year and slowing, ±1 rep
    noise, a 1-rep fatigue drop per set, 6% bad days at −3, 10–14 day gaps
@@ -36,6 +38,11 @@ window.runSim = function (cfg) {
     ex.forEach(e => { if (/cable fly/i.test(e.name)) e.inc = 10; });
     T.S.routines.push({ id: 'r' + key, key, name: 'Day ' + key, variants: [{ id: 'v' + key, label: '', exercises: ex }] });
   });
+  /* 2.0: stack weights and top-set lifts are properties of the plan row. */
+  T.S.routines.forEach(r => r.variants.forEach(v => v.exercises.forEach(e => {
+    if (cfg.pins && cfg.pins[e.name]) e.pins = cfg.pins[e.name].slice();
+    if (cfg.topback && cfg.topback.includes(e.name)) e.scheme = 'topback';
+  })));
   const movementClass = ev('movementClass');
   const trendFn = ev('trend'), trendWinFn = ev('trendWin');   // t43 reads the verdict the engine saw
 
@@ -92,12 +99,8 @@ window.runSim = function (cfg) {
       const tr = trendFn(n), tw = trendWinFn(n);   // before the session is made: what prescribe() will read
       const ex = T.makeSessionEx(pe, pe.id);
       const work = ex.sets.filter(s => !s.warm);
-      const presc = { w: work[0].w === '' ? null : Number(work[0].w), r: Number(work[0].r), n: work.length, kind: ex.kind, why: ex.why };
-      const sh = ex.shadow ? Object.assign({}, ex.shadow) : null;
-      if (cfg.useShadow && sh && !inDeload) {
-        work.forEach(s => { s.w = String(sh.w); s.r = String(sh.r); });
-        ex.shadow.used = true;
-      }
+      const presc = { w: work[0].w === '' ? null : Number(work[0].w), r: Number(work[0].r), n: work.length, kind: ex.kind, why: ex.why,
+        back: work.slice(1).map(s => s.w === '' ? null : Number(s.w)), roles: work.map(s => s.role || ''), scheme: ex.scheme || 'double' };
       if (cfg.pinLoad) work.forEach(s => { s.w = String(L.w0); });   // t43 trend measurement: a lifter who never changes the bar
       const W = work[0].w === '' ? L.w0 : Number(work[0].w);
       const tgt = Number(work[0].r);
@@ -105,20 +108,22 @@ window.runSim = function (cfg) {
       const done = [];
       work.forEach((s, i) => {
         const last = i === work.length - 1;
-        const c = capAt(n, W, wk) + sNoise + U(-0.5, 0.5) + rust + bad - i * (cfg.fatigue == null ? 1 : cfg.fatigue);
+        const Ws = s.w === '' ? W : Number(s.w);          // each set at its own weight (back-offs are lighter)
+        const c = capAt(n, Ws, wk) + sNoise + U(-0.5, 0.5) + rust + bad - i * (cfg.fatigue == null ? 1 : cfg.fatigue);
         let reps;
         if (last) reps = Math.floor(c) - (L.cls === 'iso' ? 0 : 1);
         else reps = Math.min(tgt, Math.floor(c));
         reps = Math.max(1, reps);   // an obedient lifter grinds out at least one
-        done.push({ w: String(W), r: String(reps), done: true, load: W });
+        done.push(Object.assign({ w: String(Ws), r: String(reps), done: true, load: Ws }, s.role ? { role: s.role } : {}));
       });
       if (!done.length) continue;
-      if (Number(pe.repTop) > Number(pe.reps)) done[done.length - 1].out = true;   // commitSession()
+      if (ex.scheme !== 'topback' && Number(pe.repTop) > Number(pe.reps)) done[done.length - 1].out = true;   // commitSession(): no rep-out on a top-set lift
       ex.sets = done;
       exs.push(ex);
       const fresh = capAt(n, W, wk);
-      log.push({ n, sess: sessionN, ts: now, wk, M: strength(n, wk), presc, sh, used: !!(cfg.useShadow && sh && !inDeload),
-        W, tgt, reps: done.map(s => Number(s.r)), A: Number(done[done.length - 1].r), low, top, step: Number(pe.inc) || 5,
+      log.push({ n, sess: sessionN, ts: now, wk, M: strength(n, wk), presc,
+        W, tgt, reps: done.map(s => Number(s.r)), ws: done.map(s => Number(s.w)), A: Number(done[done.length - 1].r), low, top, step: Number(pe.inc) || 5,
+        scheme: ex.scheme || 'double', pins: (pe.pins || []).slice(),
         fresh, deload: inDeload, cls: L.cls,
         tr: { state: tr.state, n: tr.n, pct: tr.pct }, tw, nsets: Number(pe.sets) || 3 });   // t43
     }

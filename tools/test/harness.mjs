@@ -28,13 +28,29 @@ export async function launch() {
   const ctx = await browser.newContext({ ...devices['Pixel 5'], viewport: { width: 390, height: 844 } });
   const page = await ctx.newPage();
   const errors = [];
-  page.on('pageerror', e => errors.push(String(e)));
+  page.on('pageerror', e => errors.push(String(e) + (process.env.IRONLOG_DEBUG ? ' @ ' + String(e.stack).split('\n').slice(1, 3).join(' / ') : '')));
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
   return { browser, ctx, page, errors };
 }
 
 /* Seed localStorage then load the app, so the app boots against the state. */
+/* 2.0 S3: compounds start with a generated warm-up ramp, and every suite written before
+   it reads "the first set" as the first working set. A state that says nothing about
+   warm-ups gets them switched off per lift (the same `settings.warmups` the exercise menu
+   writes); a state that sets `settings.warmups` itself (t51) is left exactly as written. */
+export function noWarmups(state) {
+  const s = state && state.settings;
+  if (!s || s.warmups !== undefined) return state;
+  const names = new Set();
+  const add = e => { if (e && e.name) names.add(String(e.name).trim().toLowerCase()); };
+  (Array.isArray(state.routines) ? state.routines : []).forEach(r => (r.variants || [{ exercises:r.exercises }]).forEach(v => (v.exercises || []).forEach(add)));
+  (Array.isArray(state.sessions) ? state.sessions : []).forEach(x => (Array.isArray(x.exercises) ? x.exercises : []).forEach(add));
+  if (state.active) (state.active.exercises || []).forEach(add);
+  s.warmups = Object.fromEntries([...names].map(n => [n, false]));
+  return state;
+}
 export async function boot(page, state) {
+  noWarmups(state);
   await page.goto(URL);
   await page.evaluate(s => localStorage.setItem('ironlog.v1', JSON.stringify(s)), state);
   await page.reload();

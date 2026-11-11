@@ -11,11 +11,11 @@
    t35), so the app carries no test code. */
 import { launch, URL, ok, eq, report } from './harness.mjs';
 
-const HOOK = 'window.__t={get S(){return S}, prescribe:prescribe, shadowPrescribe:shadowPrescribe};';
+const HOOK = 'window.__t={get S(){return S}, prescribe:prescribe};';
 const { browser, errors } = await launch();
 const page = await (await browser.newContext({ serviceWorkers: 'block' })).newPage();
 page.on('pageerror', e => errors.push(String(e)));
-await page.route('**/index.html', async route => {
+await page.route('**/js/12-boot.js', async route => {
   const res = await route.fetch();
   route.fulfill({ response: res, body: (await res.text()).replace('var S=load();', 'var S=load();\n' + HOOK) });
 });
@@ -39,8 +39,8 @@ async function ask(st, rowObj, name) {
   await page.reload();
   await page.waitForFunction(() => !!window.__t);
   return page.evaluate(([r, n]) => {
-    const p = window.__t.prescribe(n, r), sp = window.__t.shadowPrescribe(n, r);
-    return { w: +p.w, r: p.r, kind: p.kind, why: p.why, sw: sp ? +sp.w : null, sr: sp ? sp.r : null };
+    const p = window.__t.prescribe(n, r);
+    return { w: +p.w, r: p.r, kind: p.kind, why: p.why };
   }, [rowObj, name]);
 }
 
@@ -56,7 +56,6 @@ const plan2 = [['A', 'Day A', [A12]], ['B', 'Day B', [B8]]];
   const p = await ask(st, B8, 'Lateral Raise');
   eq(p.w, 15, 'Day B (8–12) stays at 15 after Day A did 15×16 at 12–20');
   eq(p.r, 10, 'Day B climbs from its own last session (15×10,10,9 → 10)');
-  eq(p.sw, 15, 'the rep-out method also reads Day B\'s own rep-out (9 → hold at 15)');
   const q = await ask(st, A12, 'Lateral Raise');
   eq(q.w, 15, 'Day A (12–20) holds 15 after 15×16,16,16,17');
   eq(q.r, 17, 'Day A climbs to 17 from its own session');

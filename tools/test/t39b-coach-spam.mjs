@@ -16,7 +16,7 @@ import { launch, URL, ok, report } from './harness.mjs';
 import fs from 'fs';
 
 const SIM = fs.readFileSync(new globalThis.URL('./yearsim.js', import.meta.url), 'utf8');
-const HOOK = 'window.__t={get S(){return S}, set S(v){S=v}, prescribe:prescribe, shadowPrescribe:shadowPrescribe,' +
+const HOOK = 'window.__t={get S(){return S}, set S(v){S=v}, prescribe:prescribe,' +
   ' deloadCheck:deloadCheck, deloadStatus:deloadStatus, makeSessionEx:makeSessionEx, exWorking:exWorking,' +
   ' ev:function(src){ return eval(src); }};';
 
@@ -40,7 +40,7 @@ const { browser, errors } = await launch();
 const page = await (await browser.newContext({ serviceWorkers: 'block' })).newPage();
 page.on('pageerror', e => errors.push(String(e)));
 page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push('console: ' + m.text()); });
-await page.route('**/index.html', async route => {
+await page.route('**/js/12-boot.js', async route => {
   const res = await route.fetch();
   const body = (await res.text()).replace('var S=load();', 'var S=load();\n' + HOOK);
   route.fulfill({ response: res, body });
@@ -60,6 +60,7 @@ const DRIVER = (policy, skip, pace) => `
         s.exercises=s.exercises.filter(function(e){ return e.name!==${JSON.stringify(skip)}||(++n%10)<3; });   // done ~30% of the time
       }
       s.exercises.forEach(function(e){ e.sets.forEach(function(x){ x.ts=s.ts+Math.round(k*${pace}*60e3); k++; }); });
+      T.ev('blockAfterSession')(s);   // 2.0: the block counts the session (and closes at 18 main sessions) before the coach looks, as commitSession() does
       T.ev('coachMeasure')();
       T.ev('coachRun')(false);
       T.S.coach.proposals.forEach(function(p){

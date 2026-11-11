@@ -136,7 +136,7 @@ eq(range('Leg Press'), '8-12', 'an unclassified compound keeps the global defaul
 eq(range('Plank'), '30-60', 'a timed hold is measured in seconds, not 8-12 of them');
 eq(plan.find(x => x.name === 'Plank').metric, 1, 'and arrives as a timed exercise');
 eq(plan.find(x => x.name === 'Deadlift').bar, 45, 'newPlanEx still guesses the bar');
-eq(plan.find(x => x.name === 'Lateral Raise').mg, 'delts', 'and still tags the muscle');
+eq(plan.find(x => x.name === 'Lateral Raise').mg, 'side_delts', 'and still tags the muscle');
 
 /* --------------------------------------------------------------- item 5 */
 await boot(page, legacyState());

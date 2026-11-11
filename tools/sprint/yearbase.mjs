@@ -1,19 +1,18 @@
 /* Sprint metric runner: 20 seeds x 52 weeks through the real engine (yearsim.js),
    reported per seed so a change can be judged against seed-to-seed spread.
    Usage: node tools/sprint/yearbase.mjs [seeds=20] [--json out.json]
-   Needs the app served at 127.0.0.1:8117. Metrics:
+   Needs the app served at 127.0.0.1:$IRONLOG_PORT (default 8117). Metrics:
      prog      share of non-deload exposures that progress (load up, or same load + higher target)
      stuckMed  median weeks a light/isolation lift sits at one load (run of same-W exposures, non-deload)
      stuckP90  90th percentile of the same
-     flips     weight direction reversals per year (always-Use mode, all lifts)
-     land      rep-out landing: share of Use exposures whose last set >= low (target 85%)
+     flips     weight direction reversals per year (all lifts)
      behind    share of exposures >=1 step lighter than the heaviest load where fresh reps >= mid-range
      over      share >=1 step heavier than that;  offAbs  mean |steps off|
      unmeet    exposures where fresh capacity at the prescribed load < low   */
 import { launch, URL } from '../test/harness.mjs';
 import fs from 'fs';
 const SIM = fs.readFileSync(new globalThis.URL('../test/yearsim.js', import.meta.url), 'utf8');
-const HOOK = 'window.__t={get S(){return S}, set S(v){S=v}, prescribe:prescribe, shadowPrescribe:shadowPrescribe,' +
+const HOOK = 'window.__t={get S(){return S}, set S(v){S=v}, prescribe:prescribe,' +
   ' deloadCheck:deloadCheck, deloadStatus:deloadStatus, makeSessionEx:makeSessionEx, exWorking:exWorking,' +
   ' ev:function(src){ return eval(src); }};';
 const START = {
@@ -35,7 +34,7 @@ const LIGHT = new Set(['Lateral Raise','DB Curl','Tricep Pushdown','Leg Extensio
 const { browser, errors } = await launch();
 const page = await (await browser.newContext({ serviceWorkers: 'block' })).newPage();
 page.on('pageerror', e => errors.push(String(e)));
-await page.route('**/index.html', async route => {
+await page.route('**/js/12-boot.js', async route => {
   const res = await route.fetch();
   const body = (await res.text()).replace('var S=load();', 'var S=load();\n' + HOOK);
   route.fulfill({ response: res, body });
@@ -60,7 +59,6 @@ function measure(res) {
       { const mid = (x.low + x.top) / 2, cap = w => 30 * (x.M / w - 1); let wi = x.W;
         if (cap(wi) >= mid) { while (cap(wi + x.step) >= mid) wi += x.step; } else { while (wi - x.step > 0 && cap(wi) < mid) wi -= x.step; }
         const off = Math.round((wi - x.W) / x.step); acc++; if (off >= 1) behind++; if (off <= -1) over++; offSum += Math.abs(off); }
-      if (x.used) { used++; if (x.A >= x.low) usedOK++; }
       if (!i) return;
       exp++; if (LIGHT.has(n)) expL++;
       const p = L[i - 1];
@@ -73,21 +71,19 @@ function measure(res) {
     });
     if (LIGHT.has(n)) stuck.push((L[L.length - 1].ts - L[runStart].ts) / (7 * 864e5)); // censored final run
   }
-  return { behind: behind / acc, over: over / acc, offAbs: offSum / acc, prog: prog / exp, progL: progL / expL, flips, usedOK: used ? usedOK / used : null, unmeet,
+  return { behind: behind / acc, over: over / acc, offAbs: offSum / acc, prog: prog / exp, progL: progL / expL, flips, unmeet,
     stuckMed: q(stuck, 0.5), stuckP90: q(stuck, 0.9), stuckMax: Math.max(...stuck) };
 }
 const SEEDS = Array.from({ length: NSEED }, (_, i) => i + 1);
-const out = { presc: [], use: [] };
-for (const sd of SEEDS) out.presc.push(measure(await year(sd, { useShadow: false })));
-for (const sd of SEEDS) out.use.push(measure(await year(sd, { useShadow: true })));
+const out = { presc: [] };
+for (const sd of SEEDS) out.presc.push(measure(await year(sd, {})));
 const st = (a, k) => { const v = a.map(x => x[k]).filter(x => x != null); const m = v.reduce((s, x) => s + x, 0) / v.length;
   const sd = Math.sqrt(v.reduce((s, x) => s + (x - m) ** 2, 0) / Math.max(1, v.length - 1)); return { mean: m, sd, se: sd / Math.sqrt(v.length), min: Math.min(...v), max: Math.max(...v) }; };
 const f = (o, pct) => pct ? `${(o.mean * 100).toFixed(1)}% (sd ${(o.sd * 100).toFixed(1)}, se ${(o.se * 100).toFixed(1)})` : `${o.mean.toFixed(2)} (sd ${o.sd.toFixed(2)}, se ${o.se.toFixed(2)})`;
 const summary = {};
-for (const mode of ['presc', 'use']) {
-  console.log(`== ${mode === 'presc' ? 'follow prescribe()' : 'always tap Use (shadow)'}  [${NSEED} seeds]`);
-  for (const [k, pct] of [['behind', 1], ['over', 1], ['offAbs', 0], ['prog', 1], ['progL', 1], ['stuckMed', 0], ['stuckP90', 0], ['stuckMax', 0], ['flips', 0], ['usedOK', 1], ['unmeet', 0]]) {
-    if (k === 'usedOK' && mode === 'presc') continue;
+for (const mode of ['presc']) {
+  console.log(`== follow prescribe()  [${NSEED} seeds]`);
+  for (const [k, pct] of [['behind', 1], ['over', 1], ['offAbs', 0], ['prog', 1], ['progL', 1], ['stuckMed', 0], ['stuckP90', 0], ['stuckMax', 0], ['flips', 0], ['unmeet', 0]]) {
     const s = st(out[mode], k); summary[mode + '.' + k] = s; console.log(`  ${k.padEnd(9)} ${f(s, pct)}`);
   }
 }

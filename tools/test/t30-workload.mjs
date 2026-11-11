@@ -106,9 +106,9 @@ const RAISE = { name:'Lateral Raise', reps:12, repTop:20, sets:4, mg:'delts' };
 const slide = r => [r].concat([r, r, r]).map(x => [15, x]);
 c = await card(state(RAISE, [20, 19, 18, 16, 15, 14].map(slide)));
 eq(c.w, 15, '15 lb raise sliding: keeps the 15s');
-eq(c.sets, 3, '15 lb raise sliding: drops a set instead (4 → 3)');
+eq(c.sets, 4, '15 lb raise sliding: keeps its 4 sets (2.0: no trend cut, so no set is taken)');
 eq(c.r, 15, '15 lb raise sliding: reps stay free to climb (trap 17b)');
-has(c.why, 'drop a set', '15 lb raise sliding: says so');
+has(c.why, 'Same weight — go for 15', '15 lb raise sliding: holds and climbs reps');
 
 c = await card(state(Object.assign({}, RAISE, { name:'Rear Delt Raise' }),
   [20, 19, 18, 16, 15, 14].map(r => [[5, r], [5, r], [5, r], [5, r]])));
@@ -117,8 +117,8 @@ eq(c.w, 5, '5 lb dumbbell sliding: never prescribed 0');
 /* The cap must not swallow an ordinary bar back-off: 185 → 165 is ~11%. */
 c = await card(state({ name:'Bench Press', reps:8, repTop:12 },
   [12, 11, 11, 10, 9, 8].map(r => [[185, r], [185, r], [185, r]])));
-eq(c.w, 165, 'bench sliding: still backs off about 10%');
-has(c.why, 'back off to 165', 'bench sliding: says so');
+eq(c.w, 185, 'bench sliding: 2.0 holds the 185 (the trend no longer cuts the bar)');
+has(c.why, 'Same weight — go for 9', 'bench sliding: holds and climbs reps');
 
 /* ---- 7. closed loop on a light dumbbell (trap 17b) ----
    Feed the prescription back in for 30 sessions with one sick day. The app
@@ -152,7 +152,7 @@ console.log('  light loop: ' + log.map(x => x.w + 'x' + x.r + (x.n < 4 ? '(' + x
 let peak = 0, worst = 1;
 log.forEach(x => { peak = Math.max(peak, x.w); worst = Math.min(worst, x.w / peak); });
 ok(worst >= 0.8, 'light loop: never cut past 20% of the best load  [' + Math.round(worst * 100) + '%]');
-ok(log.some(x => x.n < 4), 'light loop: the sick day did register as a slide (a set came off)');
+ok(log.every(x => x.n === 4), 'light loop: 2.0 never takes a set away on a slide (no trend cut)');
 ok(log[log.length - 1].n === 4, 'light loop: and the set comes back once he recovers');
 ok(log[log.length - 1].w >= 15, 'light loop: ends at or above where he started  [' + log[log.length - 1].w + ']');
 
@@ -167,8 +167,8 @@ const inc = state(INC, [ [[65,9],[65,8],[65,7]], [[65,8],[65,8],[65,6]], [[65,8]
   [[55,10],[55,10],[55,10]], [[55,10],[55,11],[55,9]], [[55,8],[55,8],[55,8]], [[55,9],[55,9],[55,9]] ]);
 inc.sessions.forEach((x, i) => { x.exercises[0].kind = i === 3 ? 'hold' : 'reps'; });   // newest first: index 3 is the 65 → 55 session
 c = await card(inc);
-has(c.why, 'You dropped to 55', 'a hold after his own 65 → 55 drop says so, not "already backed off"');
-eq(c.w, 55, '...and still holds the 55s: no extra cut');
+has(c.why, 'Same weight — go for 10', '2.0: after his own 65 → 55 drop it is ordinary progression (no "already backed off" hold exists)');
+eq(c.w, 55, '...and still at the 55s: no extra cut');
 
 ok(errors.length === 0, 'no page errors  ' + errors.join(' | '));
 report('t30 working load');

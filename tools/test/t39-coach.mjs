@@ -48,7 +48,7 @@ function routines(o = {}) {
 function state(sessions, o = {}) {
   return { version:5, settings:Object.assign({}, SET, o.settings || {}), active:null,
     routines:o.routines || routines(o), sessions:sessions.sort((a, b) => b.ts - a.ts),
-    coach:o.coach || { proposals:[], history:[], lastCheck:0 } };
+    coach:o.coach || { proposals:[], history:[], lastCheck:0 }, ...(o.block ? { block:o.block } : {}) };
 }
 /* Six sessions so the coach will look; Day C's last three skip Face Pull, and it was done long ago. */
 const lifts = (extra) => [['RDL',135,8],['Flat DB Press',45,10],['DB Row',50,10],['Low to high cable fly',20,13]].concat(extra || []);
@@ -174,7 +174,7 @@ ok(weeks.every(w => !w.some(e => e.name === 'Face Pull') && w.some(e => e.name =
 const nw = weeks[0].find(e => e.name === 'Rear Delt Fly'), nw2 = weeks[1].find(e => e.name === 'Rear Delt Fly');
 eq(weeks[0].indexOf(nw), 3, 'accept: same position in the day');
 ok(nw.link === true && nw.inc === 10 && nw.sets === 3 && nw.reps === 12 && nw.repTop === 16, 'accept: carries superset, increment, sets and range (week 1)');
-ok(nw.mg === 'delts' && nw.mg2.join() === 'back,traps' && nw.bar === 0 && nw.bw === 0 && nw.metric === 0, 'accept: carries muscles, bar, load type, metric');
+ok(nw.mg === 'rear_delts' && nw.mg2.join() === 'back,traps' && nw.bar === 0 && nw.bw === 0 && nw.metric === 0, 'accept: carries muscles, bar, load type, metric');
 ok(nw2.sets === 4 && nw2.reps === 10 && nw2.repTop === 15 && nw2.link === false, 'accept: week 2 keeps its own shape');
 ok(nw.id !== 'c4' && nw2.id !== 'd2' && nw.id !== nw2.id && typeof nw.added === 'number', 'accept: new rows with new ids (newPlanEx), dated');
 ok(!('startW' in nw), 'accept: no start weight when the old lift gives nothing to scale from');
@@ -365,15 +365,31 @@ await finishDay('rC', ['RDL']);
 eq((await ofKind('volume')).length, 0, 'volume: one session a week is not "training 2x a week" -> silent');
 
 /* ================= 6. stalled lift: a ladder ================= */
-const stall = (rowsFor, n = 16) => Array.from({ length:n }, (_, i) => sess('r' + i, 'rA', 'A', 'vA', 4 + 7 * i, rowsFor(i)));
-const cRows = [sess('c1','rC','C','vC',9,lifts()), sess('c2','rC','C','vC',16,lifts())];
+/* 2.0: a lift stalls when two blocks in a row ended flat, no longer after six sessions at one load. Two main days (A, C) make a block
+   12 sessions (blockRotations 6 x 2). twoBlocks() lays out 23 saved sessions, A on the even slots and C on the odd ones, 3.5 days apart:
+   slots 0-11 are block 1, slots 12-22 are block 2 less its last slot, which finishDay('rA') saves through the real screen and so closes
+   block 2 (and with it the scorecard that raises the stall card). rowsFor(k) is what Day A logged, k = 0 the newest of the 12 Day A sessions
+   (6 in each block). S.block says block 2 started between the two, and its history holds block 1's scorecard. */
+const twoBlocks = (rowsFor, nA = 12) => {
+  const out = [];
+  for (let g = 0; g < 23; g++) {
+    const days = (23 - g) * 3.5;
+    if (g % 2 === 0) { const k = (22 - g) / 2; if (k < nA) out.push(sess('r' + k, 'rA', 'A', 'vA', days, rowsFor(k))); }
+    else out.push(sess('c' + g, 'rC', 'C', 'vC', days, lifts()));
+  }
+  return out;
+};
+const prevBlock = (o = {}) => ({ num:1, startTs:NOW - 90 * DAY, endTs:NOW - 42 * DAY, slots:12, logged:12,
+  lifts:[{ name:'Cable Row', w0:o.w || 65, r0:8, w1:o.w || 65, r1:8, pct:0, verdict:o.verdict || 'flat', n:6, variantOnly:false }],
+  override:{ changed:0, judged:0 }, balance:{ low:[], high:[] }, flat:o.verdict === 'up' ? [] : ['Cable Row'], stallId:'', choice:'next' });
+const blk = (history, num = 2) => ({ num, startSessId:null, startTs:NOW - 40 * DAY, rotation:0, history });
 const flat = () => [['Cable Row', 65, 8], ['Leg Press', 190, 10]];
 const cableOf = async () => (await ofKind('stall')).filter(p => p.lift === 'Cable Row');
-await boots(state(stall(flat).concat(cRows)));
+await boots(state(twoBlocks(flat), { block:blk([prevBlock()]) }));
 await finishDay('rA', ['Leg Press']);
 let stl = (await cableOf())[0];
-ok(stl && stl.status === 'open' && stl.stage === 1, 'stall: 16 sessions (an 8-12 lift: 3 whole cycles) at 65 x 8 with nothing gained -> raised, as step one');
-has(stl.reason, 'sessions in a row at 65', 'stall: the reason counts sessions at the load');
+ok(stl && stl.status === 'open' && stl.stage === 1, 'stall: flat at 65 x 8 in block 1 and again in block 2 (6 Day A sessions each, nothing gained) -> raised, as step one');
+has(stl.reason, 'Cable Row was flat for two blocks: 65×8 at the start of block 1, 65×8 at the end of block 2.', 'stall: the reason names both blocks and the load');
 ok(/rule of thumb/i.test(stl.evidence) && /validated/i.test(stl.evidence), 'stall: labelled a rule of thumb, no validated test');
 eq(stl.options.map(o => o.act).join(), 'add,shift_range,unpair', 'stall: step one keeps the lift (and its history): a set, a lower range, out of its superset - no swap');
 eq(stl.options[1].label, "Lower Cable Row's range by 2 reps (8–12 → 6–10)", 'stall: ...and says what the range becomes');
@@ -396,7 +412,7 @@ function coachSwaps(p) { return p.options.filter(o => o.act === 'swap').map(o =>
   void planB;
 }
 // undo takes the measurement away with it
-await boots(state(stall(flat).concat(cRows)));
+await boots(state(twoBlocks(flat), { block:blk([prevBlock()]) }));
 await finishDay('rA', ['Leg Press']);
 stl = (await cableOf())[0];
 await toProgress();
@@ -406,7 +422,7 @@ eq(planExercises(await getState(page)).find(e => e.name === 'Cable Row').sets, 4
 await page.click('.toast.act button');
 ok(!(await coachOf()).history.some(x => x.type === 'accepted'), 'measure: an undone change is not counted');
 // rung two: a pain note in a recent session, at once
-await boots(state(stall(i => [['Cable Row', 65, 8, 3, i === 1 ? 'left elbow pinch on the last set' : ''], ['Leg Press', 190, 10]]).concat(cRows)));
+await boots(state(twoBlocks(i => [['Cable Row', 65, 8, 3, i === 1 ? 'left elbow pinch on the last set' : ''], ['Leg Press', 190, 10]]), { block:blk([prevBlock()]) }));
 await finishDay('rA', ['Leg Press']);
 stl = (await cableOf())[0];
 eq(stl.stage, 2, 'stall: a recent note about a pinch skips the ladder');
@@ -415,32 +431,32 @@ has(stl.reason, 'left elbow pinch', 'stall: ...and quotes the note');
 // rung two: it stalled again after a change was accepted
 const prior = (daysAgo) => ({ coach:{ lastCheck:0, history:[], proposals:[ { id:'pr1', ts:NOW - (daysAgo + 1) * DAY, decided:NOW - daysAgo * DAY, source:'rules', kind:'stall', key:'stall|cable row', stage:1,
   lift:'Cable Row', rid:'', title:'x', reason:'x', evidence:'', status:'accepted', chosen:'Add a set to Cable Row', options:[{ act:'add', lift:'Cable Row', n:1, label:'Add a set to Cable Row' }] } ] } });
-await boots(state(stall(flat).concat(cRows), prior(45)));
+await boots(state(twoBlocks(flat), { block:blk([prevBlock()]), ...prior(45) }));
 await finishDay('rA', ['Leg Press']);
 stl = (await cableOf()).find(p => p.status === 'open');
-ok(stl && stl.stage === 2 && coachSwaps(stl).startsWith('Chest-supported Row'), 'stall: stalled again 45 days after step one was accepted (6 exposures since) -> swaps');
+ok(stl && stl.stage === 2 && coachSwaps(stl).startsWith('Chest-supported Row'), 'stall: flat in two more blocks, 45 days after step one was accepted (6 exposures since) -> swaps');
 has(stl.reason, 'stalled again after the change', 'stall: ...and says why');
-await boots(state(stall(flat).concat(cRows), prior(10)));
+await boots(state(twoBlocks(flat), { block:blk([prevBlock()]), ...prior(10) }));
 await finishDay('rA', ['Leg Press']);
 eq((await cableOf()).filter(p => p.status === 'open').length, 0, 'stall: step one accepted only 10 days ago -> no second rung yet');
-await boots(state(stall(i => [['Cable Row', 65, i < 4 ? 10 : 8], ['Leg Press', 190, 10]]).concat(cRows)));
+await boots(state(twoBlocks(i => [['Cable Row', 65, i < 4 ? 10 : 8], ['Leg Press', 190, 10]]), { block:blk([prevBlock()]) }));
 await finishDay('rA', ['Leg Press']);
-eq((await cableOf()).length, 0, 'stall: reps still climbing at the same load -> silent');
-await boots(state(stall(i => [['Cable Row', i < 3 ? 70 : 65, 8], ['Leg Press', 190, 10]])));
+eq((await cableOf()).length, 0, 'stall: reps climbing at the same load in block 2 -> that block is "up", not flat -> silent');
+await boots(state(twoBlocks(i => [['Cable Row', i < 3 ? 70 : 65, 8], ['Leg Press', 190, 10]]), { block:blk([prevBlock()]) }));
 await finishDay('rA', ['Leg Press']);
-eq((await cableOf()).length, 0, 'stall: load went up recently -> not 6 at one load -> silent');
-await boots(state(stall(flat, 11).concat(cRows)));
+eq((await cableOf()).length, 0, 'stall: load went up during block 2 -> up -> silent');
+await boots(state(twoBlocks(flat), { block:blk([prevBlock({ verdict:'up' })]) }));
 await finishDay('rA', ['Leg Press']);
-eq((await cableOf()).length, 0, 'stall: 11 exposures at one load (two cycles) is not yet enough -> silent');
-await boots(state(stall(flat, 16).map(s => s.exercises[0].sets.forEach(x => { x.w = '95'; x.load = 95; }) || s).concat(cRows), { routines:routines({ A:[px('a1','Leg Press',8,12), px('a3','Cable Row',8,12,{ inc:10 }), px('a5','Lateral Raise',12,20,{ link:true })] }) }));
+eq((await cableOf()).length, 0, 'stall: flat in block 2 but block 1 climbed -> one flat block is not enough -> silent');
+await boots(state(twoBlocks(flat).map(s => { s.exercises[0].sets.forEach(x => { x.w = '95'; x.load = 95; }); return s; }), { block:blk([prevBlock({ w:95 })]), routines:routines({ A:[px('a1','Leg Press',8,12), px('a3','Cable Row',8,12,{ inc:10 }), px('a5','Lateral Raise',12,20,{ link:true })] }) }));
 await finishDay('rA', ['Leg Press']);
 eq((await cableOf()).length, 0, 'stall: a step over 8% of the load (10 on 95... 10.5%) -> slow progress could not make it -> silent');
-await boots(state(Array.from({ length:5 }, (_, i) => sess('r' + i, 'rA', 'A', 'vA', 4 + 7 * i, flat()))));
+await boots(state(twoBlocks(i => i < 3 ? flat() : [['Leg Press', 190, 10]]), { block:blk([prevBlock()]) }));
 await finishDay('rA', ['Leg Press']);
-eq((await cableOf()).length, 0, 'stall: only 5 exposures -> silent');
-await boots(state(Array.from({ length:7 }, (_, i) => sess('r' + i, 'rA', 'A', 'vA', 2 + 2 * i, flat()))));
+eq((await cableOf()).length, 0, 'stall: only 3 exposures in block 2 (under the 4 that can call a lift flat) -> silent');
+await boots(state(twoBlocks(flat), { block:blk([prevBlock()], 3) }));
 await finishDay('rA', ['Leg Press']);
-eq((await cableOf()).length, 0, 'stall: six sessions inside two weeks is not a plateau -> silent');
+eq((await cableOf()).length, 0, 'stall: block 1 flat, block 2 missing, block 3 flat -> not two in a row -> silent');
 
 /* ================= 7. never more than two open ================= */
 {
@@ -474,9 +490,9 @@ await page.waitForSelector('[data-act="start"]');
 
 /* ================= 9. a swapped-in lift's first card ================= */
 {
-  const stalled = Array.from({ length:16 }, (_, i) => sess('r' + i, 'rA', 'A', 'vA', 4 + 7 * i, [['Cable Row', 65, 8, 3, i === 0 ? 'elbow pain on rows' : ''], ['Lateral Raise', 15, 14], ['Leg Press', 190, 10]]));
-  await boots(state(stalled.concat(cRows),
-    { routines:routines({ A:[px('a1','Leg Press',8,12), px('a3','Cable Row',8,12,{ inc:5 }), px('a5','Lateral Raise',12,20,{ link:true })] }) }));
+  const stalled = twoBlocks(i => [['Cable Row', 65, 8, 3, i === 0 ? 'elbow pain on rows' : ''], ['Lateral Raise', 15, 14], ['Leg Press', 190, 10]]);
+  await boots(state(stalled,
+    { block:blk([prevBlock()]), routines:routines({ A:[px('a1','Leg Press',8,12), px('a3','Cable Row',8,12,{ inc:5 }), px('a5','Lateral Raise',12,20,{ link:true })] }) }));
   await finishDay('rA', ['Leg Press']);
   stl = (await ofKind('stall')).find(p => p.lift === 'Cable Row');
   await toProgress();

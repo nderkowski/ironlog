@@ -18,23 +18,41 @@ mkdirSync(OUT, { recursive: true });
    harness can read any internal (workLoad, deloadCheck, makeSessionEx…) and,
    for ablations, rebind one. Strict-mode direct eval can read and assign
    existing outer bindings; it cannot add new ones. */
-const HOOK = 'var S=load(); window.__t={get S(){return S},prescribe:prescribe,shadowPrescribe:shadowPrescribe,coachRun:coachRun,ev:function(__s){return eval(__s);}};';
+const HOOK = 'var S=load(); window.__t={get S(){return S},prescribe:prescribe,coachRun:coachRun,ev:function(__s){return eval(__s);}};';
 
-/* Each patch: [find, replace]. find must occur exactly once, or we throw —
-   an ablation that silently fails to apply would report "no effect". */
-export function buildCopy(dir, patches = []) {
-  /* REVIEW_INDEX pins another build (e.g. v26 from git) for before/after runs. */
-  let src = readFileSync(process.env.REVIEW_INDEX || join(ROOT, 'index.html'), 'utf8');
-  const n = src.split('\nvar S=load();\n').length - 1;
-  if (n !== 1) throw new Error('hook line found ' + n + ' times');
-  src = src.replace('\nvar S=load();\n', '\n' + HOOK + '\n');
-  for (const [find, rep] of patches) {
-    const k = src.split(find).length - 1;
-    if (k !== 1) throw new Error('patch target found ' + k + ' times: ' + find.slice(0, 80));
-    src = src.replace(find, rep);
+/* The app is now several files (index.html, css/app.css, js/*.js; the list is
+   js/files.js). buildCopy copies all of them and applies each patch to
+   whichever file contains it. Each patch: [find, replace]. find must occur
+   exactly once across ALL the files, or we throw — an ablation that silently
+   fails to apply would report "no effect". */
+function appFiles() {
+  /* REVIEW_INDEX pins another build (e.g. the single-file v26 from git) for
+     before/after runs: that file is then the whole app. */
+  if (process.env.REVIEW_INDEX) return new Map([['index.html', readFileSync(process.env.REVIEW_INDEX, 'utf8')]]);
+  const sandbox = { self: {} };
+  new Function('self', readFileSync(join(ROOT, 'js', 'files.js'), 'utf8'))(sandbox.self);
+  const m = new Map();
+  for (const f of sandbox.self.IRONLOG_FILES) {
+    if (!existsSync(join(ROOT, f))) continue;
+    m.set(f, /\.(html|css|js|webmanifest)$/.test(f) ? readFileSync(join(ROOT, f), 'utf8') : readFileSync(join(ROOT, f)));
   }
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'index.html'), src);
+  return m;
+}
+function patchOnce(files, find, rep, what) {
+  const hits = [];
+  for (const [f, t] of files) if (typeof t === 'string') { const k = t.split(find).length - 1; if (k) hits.push([f, k]); }
+  const total = hits.reduce((a, h) => a + h[1], 0);
+  if (total !== 1) throw new Error(what + ' found ' + total + ' times' + (what === 'hook line' ? '' : ': ' + find.slice(0, 80)));
+  files.set(hits[0][0], files.get(hits[0][0]).replace(find, rep));
+}
+export function buildCopy(dir, patches = []) {
+  const files = appFiles();
+  patchOnce(files, '\nvar S=load();\n', '\n' + HOOK + '\n', 'hook line');
+  for (const [find, rep] of patches) patchOnce(files, find, rep, 'patch target');
+  for (const [f, t] of files) {
+    mkdirSync(dirname(join(dir, f)), { recursive: true });
+    writeFileSync(join(dir, f), t);
+  }
   return dir;
 }
 

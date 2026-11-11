@@ -6,7 +6,7 @@ non-obvious parts, and what has actually been verified. Pair it with
 for the commercial question. **[Traps](#traps--read-before-changing-anything)
 is the section to read before touching anything.**
 
-*Last updated: 8 Nov 2026 (v26.9, cloud sprint) — earlier: 8 Aug 2026 (v21).*
+*Last updated: 11 Nov 2026 (2.0 beta, build `v2.0-b2`, on branch `cloud/sprint-1108`) — earlier: 8 Nov 2026 (v26.9, cloud sprint), 8 Aug 2026 (v21).*
 
 ---
 
@@ -24,7 +24,7 @@ between-sets moment is wrong unless it removes two decisions elsewhere.
 
 | | |
 |---|---|
-| Canonical source | `index.html` — a complete, self-hostable HTML document |
+| Canonical source | `index.html` (page shell) + `css/app.css` + `js/*.js`, in the order `js/files.js` lists — a self-hostable static site (single-file `index.html` up to v26.14) |
 | PWA support | `manifest.webmanifest`, `sw.js`, `icon-*.png` |
 | Live app | https://nderkowski.github.io/ironlog/ — GitHub Pages, deployed from `main` |
 | Repo | `nderkowski/ironlog` |
@@ -57,6 +57,21 @@ waiting never activates, so its cache can linger until the next activation
 deletes all other `ironlog-*` caches (wasted space only; it is never read). Suites: `t48` (real v26.13
 worker → this one, mid-workout, bad deploys, offline).
 
+**2.0-a1 layout and the one deploy-order rule.** From 2.0-a1 the app is
+`css/app.css` + `js/01..12` + `js/sw-update.js` (the same
+update block, now a file), listed once in `js/files.js`, which `sw.js` reads
+with `importScripts` to know what to cache. `BUILD` lives in `js/01-state.js`
+(and in `sw.js`); bump both. **v26.14 must be live, and have reached the phone,
+before the split deploys.** v26.13's worker is network-first and would cache the
+split `index.html` by itself; v26.14's is self-contained and so harmless there,
+and from v26.14 on the page and every file come from one cache, all or nothing.
+If a js file still fails to load or run, an inline script at the end of `index.html`
+(it cannot depend on a file) puts up "Iron Log didn't finish updating…" with a
+Retry button instead of booting a half-built app (nothing touches localStorage);
+`12-boot.js` itself refuses to start unless files 01-11 all ran. `tools/build-artifact.ps1` does not work after
+the split. Suite: `t47` (join proof against v26.14, the real v26.13 → v26.14 →
+2.0-a1 path, partial deploys, html+js skew, the gate, no reload mid-workout).
+
 > **The Claude artifact is no longer maintained.** It was how the app was
 > delivered before Pages existed. `tools/build-artifact.ps1` and the generated
 > `artifact-body.html` are kept for reference only — don't run the build or
@@ -86,6 +101,205 @@ Vanilla JS, no framework, no build, no dependencies, no network calls. One IIFE.
   input of the same name, and the button does nothing. The in-session reorder
   buttons are `mvtop` / `mvup` / `mvdn` for exactly this reason. Grep the sheet
   before naming a new one.
+
+### 2.0 architecture (build `v2.0-b2`, beta)
+
+Everything in this block is 2.0. Where a number is quoted its source is named;
+the build record is [LEDGER_V2.md](LEDGER_V2.md), the design is
+[V2_PLAN.md](V2_PLAN.md) and [V2_SPEC.md](V2_SPEC.md) (the spec's §9 and its
+last section, the cross-family amendments, override the sections they name).
+2.0 has no feature flag: the `settings.v2` gate in the first spec draft was ruled
+out in review and is not in the code.
+
+**The split.** `index.html` is a shell. The app is `css/app.css` and twelve
+classic scripts, `js/01-state.js` … `js/12-boot.js`, loaded by ordinary
+`<script>` tags in that order. They are not modules: they share **one global
+scope**, so a later file sees every top-level name of the earlier ones, and
+the order is the dependency order (`12-boot.js` runs `var S=load()` and the
+first render, so it is last). `js/files.js` is the single list: `sw.js` reads it
+with `importScripts` to know what to cache, and `t47` checks that `index.html`'s
+tags are that list, in that order, that every file under `css/` and `js/` is
+listed, and that the count in the gate (below) matches. Add a file in
+`js/files.js` and `index.html` and nowhere else. `js/sw-update.js` is the
+page-side update block (the v26.14 code, now a file); `files.js` is read only
+by the worker.
+
+*The integrity gate.* Files 01–11 each end with
+`self.__ilf=(self.__ilf||0)+1;`. `12-boot.js` starts by throwing unless exactly
+eleven counted, then counts itself, so a file that failed to load or run stops
+the boot before `S` exists (a half-built app must never write the log).
+The screen is an inline script at the end of `index.html`, which depends on no
+file: it compares `__ilf` with a literal written next to the script tags (`t47`
+keeps that literal equal to `js/files.js`) and otherwise shows "Iron Log didn't
+finish updating…" with Retry (`update()`, then reload). Classic inline scripts
+run when external ones 404, so it also covers `12-boot.js` or `sw-update.js`
+missing. It never touches localStorage.
+
+*The join proof.* The split was done as a lossless, ordered cut of the v26.14
+IIFE, and `t47` proves it: it reads the split from the **tag `2.0-a1`** (commit
+`424a562`, not the working tree, so later features don't break it) and shows
+that the joined js equals v26.14's script byte for byte, apart from six declared
+deviations: D1 `BUILD`; D2 `var S=load();` moves to the top of `12-boot.js`;
+D3 listeners that read `S` (flush and storage in 01, the 1 s interval and
+visibility in 05) move into `12-boot.js` after `S` exists (registered across
+files they fired before `S` existed: "S is not defined" on a second-tab write or
+a slow load, also the old intermittent page error in t26/t30/t32); D4 the gate;
+D5 the update block is `sw-update.js`; D6 `sw.js` reads its list. The ledger
+records the split at 12 files, 470 top-level names, 0 collisions. `t47` also
+fails the working tree if any top-level name is declared twice or shadows a
+built-in (trap 24).
+
+**The offline-update model (v26.14, the bridge release).** Full design is in
+"Where it lives" above; the rules in one place:
+- One cache per version (`ironlog-<BUILD>`); install = every core file fetched
+  past the HTTP cache or the install fails and deletes its own partial cache.
+  A cache is complete only with its install marker *and* every core entry.
+- Navigations and subresources are answered **from that cache** (network only if
+  it has no shell). Nothing is written after install, so the page and its files
+  can never come from two deploys.
+- No `skipWaiting()` on install. The page tells a waiting worker to take over
+  only **at an open** (page load, return to the foreground, `pageshow` from the
+  back/forward cache) and only when idle: no active workout, nothing open on
+  screen (no `.backdrop`, so no sheet or session editor; no stale-log veil; no
+  focused field), nothing tapped since opening. Then one reload. A switch that
+  can't reload is remembered for the next open. Never at any other time.
+- Consequence: a deploy lands the next time the app is opened after it has
+  downloaded, usually the second open.
+- **Rollout order matters** (trap 25): v26.14 must be live on `main`, and
+  confirmed on the phone (Plan footer reads v26.14), before the split deploys.
+
+**Schema v6** (`S.version` 6; `normalize()` is still the only door in).
+The spec's table, as built (field defaults in `defaultState()` / `normalize()`):
+
+| Where | Field | Meaning |
+|---|---|---|
+| `settings` | `excludedMuscles` | muscle keys left out of balance and volume nagging; `["calves"]` when migrating from <6 (owner's call), `[]` on a fresh state |
+| `settings` | `targetFreq` | `null` = auto (`targetFreqOf()`), else a number 1–7 in steps of 0.5 |
+| `settings` | `blockRotations` | `6` |
+| `settings` | `repOutDefault` | left in stored data, read by nothing |
+| routine | `optional` | `true` only for the pump day |
+| plan row | `scheme`, `backPct`, `pins` | `"double"` or `"topback"` (default `"double"`); back-off fraction in (0, 0.5), default 0.12; ascending stack weights, `[]` = none |
+| session exercise | `scheme`, `backPct`, `pins` | copied from the row at `makeSessionEx()` |
+| session exercise | `presc` | `{w,r}` the engine's own prefill, set after every internal adjustment and before any chip or edit; the override rate compares against it |
+| session exercise | `usual` | the usual-load chip's `{w,r,why,kind}` or `null` |
+| set | `role` | `"top"` / `"back"`, on top-set exercises only |
+| session | `unlogged`, `easeBack` | off-book session; eased-back session |
+| `S.block` | `{num, startSessId, startTs, rotation, history[]}` | `startTs` so the anchor survives deleting the anchor session; `history` capped at 40 |
+
+*Migration.* Every v6 step is idempotent and runs on every `normalize()` call,
+not only when `version<6`: an older tab can write a v5-shaped log back over a
+v6 one (it keeps fields it doesn't know and sets `version:5`) and the next load
+has to converge on the same state. Sets are never touched; history and the
+live session change only in their muscle tags (`retagDelts()`: the old `delts`
+key becomes a head, by exercise name, and a row that held `delts` twice keeps
+its total credit rather than losing it). Plan rows (and the rows inside
+`planBackup`) get `migratePlanRow`; `targetFreq` is clamped to 1–7 and rounded
+to 0.5.
+*The v5 snapshot.* `load()` keeps the raw v5 text once, in
+`ironlog.v1.v5-backup`, before the first v6 load rewrites anything; it is never
+overwritten and an import never writes it. Settings shows **Restore pre-2.0
+data** only while it exists; it confirms with both session counts, keeps a
+`ironlog.v1.before-restore` copy of the current log, replaces the log with the
+snapshot (which `normalize()` re-migrates) and is refused mid-workout. A
+blocked snapshot write is reported with a toast. Suite: `t53`
+(synthetic v5 log through the real UI; the ledger records a real export
+migrating 8/8 checks, 306 sets, 0 changed, credit identical, 0 prescription
+differences — aggregates only, the export stays outside the repo).
+
+**The 2.0 engine.** See "What 2.0 changed in the engine" at the top of
+[The engine](#the-engine).
+
+**Workout screen (package C, suite `t51`).**
+- *Set-1 cascade* (`c2Cascade`): changing the weight of the first working set,
+  by its ± or by typing, carries to every later working set that is not done,
+  not warm-up, not `touched` (edited by hand), and still holds exactly what
+  set 1 held before the change. On a top-set lift the back-offs follow only
+  while they are still the planned back-off, and take the new one. Reps never
+  cascade. **A typed value only cascades if it lands within 0.5–1.5× of what the
+  set held before** (so "1" on the way to "135", or a slip of the thumb, stays
+  in set 1; the Keep chip is the way back); a stepper press always cascades.
+  It writes into the rows on screen: no re-render (trap 1), checked by `t51` as
+  DOM identity on every logging tap.
+- *Chips on the card.* "Usual: 65 × 10" (`usualOf`) appears when the last
+  session was lighter than the one before it, was the lifter's choice (not a
+  deload or a step-back the app asked for) and the engine, skipping that session,
+  would have asked for something different; two light sessions in a row are a
+  new baseline and no chip. It replaces the "Keep" chip, and both now fill and
+  paint in place instead of re-rendering. "Ease back ~10%" shows at the top of an
+  active workout when the newest session of any kind was ≥10 calendar days ago,
+  until a working set is done; it sets `S.active.easeBack`, which `exWorking`
+  skips, so the next prescription reads the session before the gap (an eased day
+  still counts for PRs, volume, frequency and blocks).
+- *Warm-ups* (`c2WarmUps`): generated for heavy compounds from today's working
+  load, snapped to what can be loaded (the bar and plate inventory on a barbell,
+  the pins on a stack, the step otherwise): a two-rung ramp (0.5 × 6, 0.75 × 3)
+  when the load is ≥ 8 steps, three rungs (0.42 × 8, 0.6 × 5, 0.82 × 3) at ≥ 12
+  steps, and a top-set lift always gets at least one. Rows are ordinary
+  `warm:true` sets, one tap each; `gen` marks them as the app's so the next
+  session builds a fresh ramp rather than copying. Off per lift
+  (`settings.warmups[name]`); isolation lifts are off unless switched on.
+  (The spec's fixed two-rung ramp was replaced by this in the build.)
+- *Hit targets:* controls that were under 44 px got 44 px hit areas, keeping
+  the 5 px dead strip on the "×" (trap 23).
+
+**Muscles (package E, suite `t50`).** `MUSCLES` has three delt heads
+(`front_delts`, `side_delts`, `rear_delts`; "delts" is not a key any more) and
+`core` labelled **Abs**. `MG_GUESS` gained front raise, wrist curl and reverse
+fly rows. Bands are per class (`bandOf`): 6–12 sets a week for abs, rear
+delts, forearms and traps, 9–16 for the rest (the spec said 9–16 for all; the
+build split it). **Excluded muscles** (`settings.excludedMuscles`) never appear
+in a "Nothing for …" line, never read "low" (the balance card says "by
+choice") and are skipped by the coach's volume rule; their sets still count in
+history and exports. *Rotation volume* (Progress): "Sets per rotation" over the
+last N main sessions (N = main days), pump and freestyle sets inside the window
+counting, unlogged sessions contributing nothing and not using up one of the N;
+the bar is this rotation, the marker the previous one. *Balance card*
+(Plan tab): sets a week per muscle computed from the plan (helpers ½, pump day
+not counted) at `targetFreqOf()`, with the 9–16 band shaded. The frequency is
+**asked**, not guessed: the card's "at 3.5 a week" opens a picker (2 … 6 or
+Auto from the log), because the first version assumed one session a week and
+mis-read the plan. One-tap *suggestions* under the card (abs on B and C, an
+overhead extension on B, lateral raise to 4 sets on B, leg extension on C,
+RDL as top set + back-offs, the optional pump day) each show only while they
+still apply, find rows **by muscle and role, not by exact name** (trap 27),
+back the plan up once (`planBackup.kind==="v2-additions"`) and undo through the
+coach's undo.
+
+**Blocks (package D, suite `t52`).** `S.block` counts rotations: a rotation is
+N main-day sessions in any order (week variants don't matter; pump day,
+freestyle and deload sessions don't count, unlogged ones do);
+`R = settings.blockRotations = 6`. Today's eyebrow reads "Rotation k of 6".
+After the 6th rotation's last slot, `blockAfterSession()` (called from
+`commitSession()`) closes the block into `S.block.history` and a **scorecard**
+renders on Today: per lift first→last load and reps with a verdict (judged on two or
+more exposures in the block, fewer is "—"; called flat on four or more, two for a
+lift that is in only some of a day's week variants), the override rate ("You changed the
+weight on 4 of 31 lifts", measured against `presc`, eased and unlogged
+sessions excluded), muscle balance (under 9 or over 16 a week, per band), and
+one-tap *Start block N+1* or *Deload rotation*. An untouched card closes itself
+after 10 days. **Stall is now judged on blocks**: `blockStall()` proposes a
+change only for a lift flat in *two consecutive blocks* (each judged flat as above;
+a lift that is in only some week variants needs 6 exposures across both blocks;
+a load step over 8% of the load is not judged), through the existing ladder (`coachStallOpts`: +1 set /
+narrower range / unpair, then swap). At most one stall card per block close.
+`coachRuleStall` (per-session stall) is replaced by this and `coachRuleVolume`
+reads the per-class bands and skips excluded muscles. `t39b` measures 3.0–3.3
+coach cards a year for a healthy simulated lifter (ledger #8F).
+
+**Pump day.** An optional routine (`optional:true`, key `P`, two menus:
+"Arms & delts" and "Chest, back & core", 3 sets of 12–16 or 15–20) created by the suggestion
+on the balance card via `pumpSeed()`. It shows in Today's day picker, never as
+the hero: `nextRoutine()` runs over main days only, so doing a pump day never
+moves the rotation or raises "skipped". It counts for weekly volume and
+frequency but not for blocks.
+
+**Off-book sessions.** "Trained Day B, didn't log it" (Today) writes a session
+with `unlogged:true` and no exercises: it advances the rotation and counts for
+frequency and block slots, with a 10 s undo. Every reader that must not see an
+empty session skips it (coach day sessions, measure, volume rule, summary, the
+"Last" row, History, the session sheet, which hides Edit). Undo moves the
+backup's `pushedSessions` count only if the entry had already been pushed, so
+tap-and-undo can't erode the "fewer sessions than the gist" guard.
 
 ### The data model
 
@@ -598,6 +812,65 @@ given and touches nothing else.
 ---
 
 ## The engine
+
+### What 2.0 changed in the engine
+
+The sections below this one describe the v26 engine; where 2.0 differs, this
+block wins. Sources: [V2_SPEC.md](V2_SPEC.md) §2, commits `7510f9d`, `4696c7a`,
+`abecfe5`, ledger #5 / #5F.
+
+- **Two schemes per plan row** (`schemeOf`): `double` (double progression, the
+  default; a row whose range is a single number is straight sets) and
+  `topback` ("Top set + back-offs", in the plan row's menu, loaded lifts only).
+  On `topback` one top set is prescribed and the rest are back-offs `backPct`
+  (default 12%) lighter, at the same rep target. **Only the top set decides
+  the next weight**: progression runs on a history projected to the top set
+  (`exWorkingP`/`projectTop`), so every existing rule works on one-set
+  exposures unchanged. The top set is the first set tagged `role:"top"`, else
+  (hand-logged or pre-2.0 history) the heaviest set. Back-offs never go
+  under the bar, and on a stack never under the lowest pin; with no lighter legal
+  load they equal the top. A double row ignores back-off sets
+  (`dropBackSets`; an old row switched back to `double` is not misread as
+  "dropped sets"). No rep-out label on a top-set lift.
+- **Scheme-switch rule.** Switching a row from `topback` to `double`: one top set
+  of 8 is not evidence for three sets of 9, so the first prescription is every
+  set at the top load, bottom of the range ("Switched to straight sets"); from
+  the next session it is ordinary double progression. (Found in review of
+  package B: without it the back-offs were read as working sets.)
+- **The trend load cut is gone.** v26 cut 10% off the bar whenever `trend()`
+  read "down". The review simulator (100 simulated lifters, re-run on v26.13 for
+  V2_PLAN) showed the engine trailing plain double progression by −0.06 pp/yr on
+  the logged schedule and −0.14 at 3+ sessions a week; with the cut removed it was
+  +0.06 / +0.09. On the built 2.0 engine, vs double progression: **base +0.057 ±
+  0.018, stated +0.093 ± 0.021** (v26.13: −0.060 / −0.143). The cost, accepted:
+  the sim's `hold8` reads 112 and `spiral` 98 against limits of 109 and 97, which
+  the ledger attributes to removing the cut (0.2% of lift-years). The verdict
+  stays as a badge: `trend()` still feeds the card chip, Progress, the deload
+  check and the coach. One light day no longer restarts the trend either:
+  `sinceChosenDrop` treats a drop as a reset only if the lifter stayed there.
+  Precedence is now: deload week → RPE hold → dropped sets → switch rule →
+  near-miss / double / straight, with the step-back and the failed-jump memory.
+- **Step-back is the only way a load that can't be met comes down**, and it now
+  applies to **straight-set rows too** (they had none: a straight-set row stuck
+  under its target held forever). Judged on the best set at the load (trap
+  17d); right after a jump, back to the load it came from; at an established
+  load only after two sessions in a row and never by more than `MAX_CUT` (20%).
+- **Stack weights** (`pins`, typed in the row's menu, "20, 27.5, 35"): every
+  place a weight moves by a notch snaps to the list: prescriptions, step-back,
+  deload, back-offs (`backOffW`), the card's ± steppers, coach start loads, warm-ups
+  (largest pin ≤ x). On assisted work "harder" is the next pin down. At the
+  end of the stack the lift goes for reps ("Top of the stack — go for N").
+  Nothing is learned; blank means the fixed step as before.
+- **`presc`** on every session exercise records what the engine prefilled, so the
+  block scorecard's override rate has something to compare with (an untouched
+  step-back session counts as not overridden).
+- **Retired:** the rep-out "shadow" prescriber, its "Use" strip, `repOutDefault`
+  and the Progress rep-out card (it never beat double progression on the
+  simulator or the real log). `shadow` on an old logged exercise is inert data.
+  `t43` checks the grid invariants over simulated exposures with pins as well.
+- **Gates it passed** (ledger): yearbase "behind" 31.3% (v26.1: 37.3%), flips a
+  year 14.75 → 11.45, and a replay on the real log of 102 calls changing 3, all
+  hold → reps (two of them RDL on top-set), versus 1 of 102 on v26.11.
 
 ### `prescribe(name, ex)` — what to do today
 
@@ -1322,6 +1595,47 @@ bite.
     met in the middle, so a tap on the "×" added weight or took a rep away.
     Keep ~5 px that belongs to nothing, and probe it with `elementFromPoint`
     (`tools/sprint/journeys.mjs` does).
+
+24. **A duplicate top-level name silently overrides in the shared global scope.**
+    The twelve js files are classic scripts in one scope; a second `function foo`
+    or `var foo` in a later file replaces the first with no error, and a name
+    that shadows a built-in breaks it. The split was cut at 470 names with 0
+    collisions, and new packages each added helpers (hence the distinctive
+    `c2…`, `blk…` prefixes). `t47` fails the tree if any top-level name is
+    declared twice or shadows a built-in. Run it after every package.
+25. **An old service worker can cache a new page.** v26.13's worker was
+    network-first and would have cached the split `index.html` by itself while
+    the js files failed over; a blind reviewer reproduced it (an empty Plan and a
+    `PLANVAR` error on a partial deploy). Hence the v26.14 bridge, which is still
+    one file with a self-contained worker, and the rule that **v26.14 reaches the
+    phone before the split deploys**; and hence the inline integrity gate, which
+    depends on no file. Test updates with the real previous worker
+    (`t48`, `deploy-lib.mjs`), not a mock.
+26. **Never apply an update while a sheet, draft or workout is open.** A reload
+    under an open session editor or a half-typed field loses it. Updates apply
+    only at an open, when idle (no active workout, no `.backdrop`, no focused
+    field, nothing tapped), and a `pageshow` restore counts as an open. The
+    check is made on the page every time, not inferred from `touched`, which a
+    return to the foreground resets.
+27. **A plan row found by its exact name misses typos; find rows by muscle and
+    role.** The balance card's lateral-raise suggestion hid behind a real row named
+    "Lateral Riase" until it matched on the muscle tag. Same for the
+    "frequency: ask, don't guess" fix: a log with five empty weeks in sixteen reads
+    1.4 sessions a week and makes every muscle look under-trained.
+28. **Reviewer claims are claims.** Cross-family review (DeepSeek V4 Pro) found real
+    blockers in this build (a coach rule owned by the wrong package; off-book undo
+    eroding the backup's fewer-sessions guard; straight-set rows never stepping
+    back; a top-set → double switch reading back-offs as working sets) and also
+    made claims that were wrong: a "kg" unit mix-up that was a misread of
+    `metricOf`, a claim that `weekStarts` was ordered wrongly (verified
+    oldest-first), a claim that a single-range change filters history. Each was
+    checked in the code or with a test before anything changed, and LEDGER_V2.md
+    records the rejections.
+29. **A test that encodes the old rule fails for the right reason.** `t39` §6 asserted
+    the per-session stall ladder, which 2.0 replaced with two-block stalls. It was
+    re-seeded to reach the same state through two blocks (the ledger's ruling).
+    When a spec change makes an old suite fail, change what it drives, not what
+    it asserts.
 
 ## Settled decisions
 

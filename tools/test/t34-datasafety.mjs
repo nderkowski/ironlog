@@ -12,7 +12,7 @@
    3. Restore from GitHub and file Import refuse while a workout is active.
       "Put back the log from before the restore" brings the kept log back.
    4. Rename and lb→kg reach the plan kept by Settings → Workout plan.
-   5. lb→kg mid-workout converts the shadow prescription and last time's weight.
+   5. lb→kg mid-workout converts last time's weight, the prescription snapshot and the usual load.
    6. A change made during an upload is not marked backed up.
    7. A 404 navigation does not replace the cached app shell (sw.js).
    8. Skipping the planned last set does not make an ordinary set the rep-out. */
@@ -362,31 +362,50 @@ await section('4 kg', async () => {
   eq(liveEx(st).find(e => e.name === 'RDL').bar, 20, '4 kg: after Switch back, RDL has a 20 kg bar, not "45 kg"');
 });
 
-/* ============== 5. lb→kg mid-workout: shadow.w and lastW ============== */
+/* ============== 5. lb→kg mid-workout: lastW, presc.w and usual.w ============== */
 await section('5 kg mid-workout', async () => {
   const { page } = await fresh(false);
   await boot(page, { version:5, settings:Object.assign({}, SET), active:null,
     routines:dayA([ px('a1', 'Incline DB Press', 8, 12) ]),
     sessions:[ session('s1', 2, 'rA', 'A', 'vA', [['Incline DB Press', 60, 10, { outR:13 }]]) ] });
   await page.click('[data-act="start"]');
-  await page.waitForSelector('[data-act="use-shadow"]');
+  await page.waitForSelector('[data-act="revert"]');
   await sleep(300);
+  /* Seed the "usual load" the session screen will offer (the chip itself lands with the session-screen
+     package; its stored weight has to convert already). */
+  await page.evaluate(() => {
+    const k = 'ironlog.v1', s = JSON.parse(localStorage.getItem(k));
+    s.active.exercises[0].usual = { w:65, r:10, why:'Same weight — go for 10', kind:'reps' };
+    localStorage.setItem(k, JSON.stringify(s));
+  });
+  await page.reload(); await page.waitForSelector('.callout .revert');
   let st = await getState(page);
-  eq(st.active.exercises[0].shadow.w, 65, '5 setup: the shadow says 65 lb');
+  eq(st.active.exercises[0].lastW, 60, '5 setup: last time was 60 lb');
+  eq(st.active.exercises[0].presc.w, 60, '5 setup: the prescription snapshot says 60 lb');
+  has(await text(page, '.callout'), 'Usual: 65 × 10', '5 setup: the Usual chip (it replaces Keep) reads 65 lb');
   await openSettings(page);
   await page.selectOption('[data-set="unit"]', 'kg');
   await page.waitForSelector('.sheet [data-x="conv"]');
   await page.click('.sheet [data-x="conv"]');
   await sleep(300);
   st = await getState(page);
-  eq(st.active.exercises[0].shadow.w, 29.5, '5 kg: the shadow weight is converted (65 lb → 29.5 kg)');
   eq(st.active.exercises[0].lastW, 27.2, '5 kg: last time\'s weight is converted (60 lb → 27.2 kg)');
+  eq(st.active.exercises[0].presc.w, 27.2, '5 kg: the prescription snapshot is converted too (60 lb → 27.2 kg)');
+  eq(st.active.exercises[0].usual.w, 29.5, '5 kg: the usual load is converted (65 lb → 29.5 kg)');
   await page.click('[data-tab="today"]');
-  await page.waitForSelector('[data-act="use-shadow"]');
-  has(await text(page, '.callout'), 'Rep-out method: 29.5 × 8', '5 kg: the card shows the shadow in kg');
-  await page.click('[data-act="use-shadow"]');
+  await page.waitForSelector('.callout .revert');
+  has(await text(page, '.callout'), 'Usual: 29.5 × 10', '5 kg: the Usual chip reads kg');
+  /* with no usual load on offer the Keep chip is back, and it reads kg too */
+  await page.evaluate(() => {
+    const k = 'ironlog.v1', s = JSON.parse(localStorage.getItem(k));
+    s.active.exercises[0].usual = null;
+    localStorage.setItem(k, JSON.stringify(s));
+  });
+  await page.reload(); await page.waitForSelector('[data-act="revert"]');
+  has(await text(page, '.callout'), 'Keep 27.2×10', '5 kg: the Keep chip reads kg');
+  await page.click('[data-act="revert"]');
   await sleep(200);
-  eq((await getState(page)).active.exercises[0].sets.map(s => s.w).join(), '29.5,29.5,29.5', '5 kg: Use fills 29.5 kg, not 65');
+  eq((await getState(page)).active.exercises[0].sets.map(s => s.w).join(), '27.2,27.2,27.2', '5 kg: Keep fills 27.2 kg, not 60');
 });
 
 /* =============== 8. the rep-out is the last set, or nothing =============== */

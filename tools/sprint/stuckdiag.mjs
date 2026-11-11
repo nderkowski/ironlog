@@ -2,7 +2,7 @@
 import { launch, URL } from '../test/harness.mjs';
 import fs from 'fs';
 const SIM = fs.readFileSync(new globalThis.URL('../test/yearsim.js', import.meta.url), 'utf8');
-const HOOK = 'window.__t={get S(){return S}, set S(v){S=v}, prescribe:prescribe, shadowPrescribe:shadowPrescribe,' +
+const HOOK = 'window.__t={get S(){return S}, set S(v){S=v}, prescribe:prescribe,' +
   ' deloadCheck:deloadCheck, deloadStatus:deloadStatus, makeSessionEx:makeSessionEx, exWorking:exWorking,' +
   ' ev:function(src){ return eval(src); }};';
 const START = {
@@ -18,16 +18,15 @@ function liftsFor(seed) {
   return out;
 }
 function missedFor(seed) { const r = mulberry(seed * 31 + 7); return [11, 27, 41].map(w => w + Math.round(r() * 4 - 2)); }
-const mode = process.argv[2] === 'use';
 const { browser } = await launch();
 const page = await (await browser.newContext({ serviceWorkers: 'block' })).newPage();
-await page.route('**/index.html', async route => { const res = await route.fetch();
+await page.route('**/js/12-boot.js', async route => { const res = await route.fetch();
   route.fulfill({ response: res, body: (await res.text()).replace('var S=load();', 'var S=load();\n' + HOOK) }); });
 const why = {}, lifts = {};
 for (let seed = 1; seed <= 8; seed++) {
   await page.goto(URL); await page.evaluate(() => localStorage.clear()); await page.reload();
   await page.waitForFunction(() => !!window.__t); await page.addScriptTag({ content: SIM });
-  const res = await page.evaluate(c => window.runSim(c), { seed, lifts: liftsFor(seed), missed: missedFor(seed), useShadow: mode });
+  const res = await page.evaluate(c => window.runSim(c), { seed, lifts: liftsFor(seed), missed: missedFor(seed) });
   const by = {}; res.log.filter(x => !x.deload).forEach(x => (by[x.n] = by[x.n] || []).push(x));
   for (const [n, L] of Object.entries(by)) {
     let s = 0;
