@@ -111,8 +111,8 @@ function normalize(s){
   } else {
     s.block.num=Math.max(1,Math.round(num(s.block.num))||1);
     if(typeof s.block.startSessId!=="string") s.block.startSessId=null;
-    s.block.startTs=num(s.block.startTs);
-    s.block.rotation=num(s.block.rotation);
+    s.block.startTs=num(s.block.startTs)||0;
+    s.block.rotation=num(s.block.rotation)||0;
     if(!Array.isArray(s.block.history)) s.block.history=[];
   }
   if(s.block.history.length>40) s.block.history=s.block.history.slice(-40);   // newest last
@@ -138,9 +138,12 @@ function cleanPins(p){
    head the exercise already credits, and is never dropped. Idempotent: once no
    "delts" remains it returns at once. */
 var DELT_HEADS=["front_delts","side_delts","rear_delts"];
+/* Rear-delt tokens only. A bare /reverse/ or /face/ would also catch "Reverse
+   Curl" and "Face-down ..." rows, which are not rear delts. */
+var REAR_TOKEN=/rear\s*delt|face\s*pull|facepull|reverse\s*(fly|flye|pec)|rear\s*fly/i;
 function deltFallback(name,role){
   var n=String(name||"");
-  if(/rear|reverse|face/i.test(n)) return "rear_delts";
+  if(REAR_TOKEN.test(n)) return "rear_delts";
   if(/front/i.test(n)) return "front_delts";
   if(/press|arnold|ohp|military|push|dip|fly|pec/i.test(n)) return "front_delts";
   return role==="main"?"side_delts":"front_delts";
@@ -150,15 +153,24 @@ function retagDelts(ex){
   var i2=Array.isArray(ex.mg2)?ex.mg2.indexOf("delts"):-1;
   if(!hasMg&&i2<0) return;
   var g=guessMuscles(ex.name);
-  if(hasMg) ex.mg=DELT_HEADS.indexOf(g.mg)>=0?g.mg:deltFallback(ex.name,"main");
+  var name=String(ex.name||"");
+  if(hasMg){
+    if(DELT_HEADS.indexOf(g.mg)>=0) ex.mg=g.mg;
+    /* Guessed as a known non-delt muscle ("Reverse Curl" -> biceps): the row was
+       explicitly tagged delts, so it keeps a delt head, and front is the neutral one. */
+    else if(g.mg&&!REAR_TOKEN.test(name)) ex.mg="front_delts";
+    else ex.mg=deltFallback(name,"main");
+  }
   while(i2>=0){
-    var want=g.mg2.filter(function(k){ return DELT_HEADS.indexOf(k)>=0; })[0]||deltFallback(ex.name,"helper");
+    var want=g.mg2.filter(function(k){ return DELT_HEADS.indexOf(k)>=0; })[0]||deltFallback(name,"helper");
     var order=[want].concat(DELT_HEADS.filter(function(h){ return h!==want; })), pick=null;
     for(var j=0;j<order.length&&!pick;j++)
       if(order[j]!==ex.mg&&ex.mg2.indexOf(order[j])<0) pick=order[j];
     ex.mg2[i2]=pick||want;                    // all three heads taken: double up rather than lose the credit
     i2=ex.mg2.indexOf("delts");
   }
+  /* Last, on every delt row: no duplicates, and nothing that repeats the main head. */
+  if(Array.isArray(ex.mg2)) ex.mg2=uniqList(ex.mg2).filter(function(k){ return k!==ex.mg; });
 }
 function load(){
   if(!storageOK) return mem||(mem=defaultState());

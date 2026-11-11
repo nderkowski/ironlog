@@ -368,6 +368,21 @@ eq(tbl.keys, 'chest,back,traps,front_delts,side_delts,rear_delts,biceps,triceps,
 eq(tbl.core + '|' + tbl.fd + '|' + tbl.has, 'Abs|Front delts|false', '7 labels: core reads Abs; delts is no longer a muscle');
 eq(tbl.g.join(' ; '), 'Lateral Raise=side_delts+ ; Front Raise=front_delts+ ; Upright Row=side_delts+ ; Face Pull=rear_delts+back/traps ; Reverse Fly=rear_delts+back/traps ; Rear Delt Fly=rear_delts+back/traps ; Overhead Press=front_delts+triceps ; Arnold Press=front_delts+triceps ; Cable Fly=chest+front_delts ; Bench Press=chest+triceps/front_delts ; Incline DB Press=chest+triceps/front_delts ; Cable Wrist Curl=forearms+ ; Barbell Curl=biceps+forearms ; Cable Y-Raise=+', '7 MG_GUESS: precedence (face pull / reverse fly / lateral raise before press / fly; wrist curl before curl)');
 
+/* ================================================== review fixes (package A) */
+console.log('\n7b. review fixes: delt retag cleanup, reverse-curl fallback, block numbers');
+const fixes = await page.evaluate(() => {
+  const rt = o => { const e = Object.assign({ name:'', mg:'', mg2:[] }, o); retagDelts(e); return e; };
+  return {
+    lat: rt({ name:'Lateral Raise', mg:'delts', mg2:['side_delts'] }),
+    rc: rt({ name:'Reverse Curl', mg:'delts', mg2:[] }),
+    blk: normalize({ version:6, settings:{}, routines:[], sessions:[], block:{ num:1, startSessId:null } }).block
+  };
+});
+eq(JSON.stringify([fixes.lat.mg, fixes.lat.mg2]), '["side_delts",[]]', '7b Lateral Raise {mg:delts, mg2:[side_delts]} -> mg side_delts, mg2 [] (no repeat of the main head)');
+eq(fixes.rc.mg, 'front_delts', '7b Reverse Curl tagged delts -> front_delts, never rear_delts');
+ok(!JSON.stringify(fixes.blk).includes('NaN') && Object.values(fixes.blk).every(v => !(typeof v === 'number' && Number.isNaN(v))), '7b block {num:1, startSessId:null} normalizes with no NaN anywhere');
+eq(JSON.stringify(fixes.blk), '{"num":1,"startSessId":null,"startTs":0,"rotation":0,"history":[]}', '7b block: startTs and rotation default to 0, startSessId stays null (not a number)');
+
 /* ================================================== fresh install and a blocked write */
 console.log('\n8. fresh install, blocked write');
 await page.evaluate(() => localStorage.clear());
