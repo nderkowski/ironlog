@@ -698,13 +698,15 @@ function tagLabel(t){
   return s;
 }
 
-/* Weekly sets per muscle, the headline hypertrophy number. Deload sessions
-   count: you still did the sets. */
-function setsByMuscle(a,b){
+/* Sets per muscle over any list of sessions, the headline hypertrophy number.
+   A set counts 1 for the main muscle and ½ for a helper. Deload sessions
+   count here (you still did the sets); a caller that wants them out filters
+   first. Contract for the coach and the block scorecard:
+   setsByMuscleIn(sessions) returns {by, untagged}. */
+function setsByMuscleIn(sessions){
   var idx=mgIndex(), out={}, untagged=0;
   MUSCLES.forEach(function(m){ out[m.k]=0; });
-  S.sessions.forEach(function(s){
-    if(s.ts<a||s.ts>=b) return;
+  (sessions||[]).forEach(function(s){
     s.exercises.forEach(function(e){
       var n=working(e.sets).filter(function(x){ return x.done!==false; }).length;
       if(!n) return;
@@ -718,6 +720,51 @@ function setsByMuscle(a,b){
   });
   return {by:out, untagged:untagged};
 }
+function setsByMuscle(a,b){
+  return setsByMuscleIn(S.sessions.filter(function(s){ return s.ts>=a&&s.ts<b; }));
+}
+
+/* ---- targets and bands (2.0) ----
+   `isMainRoutine` is local on purpose: the day-rotation helpers belong to
+   another package. An optional day (the pump day) is extra, never a slot in
+   the rotation, the frequency or the balance card. A session of a routine that
+   no longer exists counts as a main one, as nextRoutine() does. */
+function isMainRoutine(r){ return !r.optional; }
+function mainSessionFn(){
+  var opt={};
+  S.routines.forEach(function(r){ if(r.optional) opt[r.id]=1; });
+  return function(s){ return !!s.routineId&&!opt[s.routineId]; };
+}
+/* Sessions a week the plan is built for: the setting if set; else the mean
+   count of main-routine sessions (unlogged and deload included) per full Monday
+   week over the last 8 full weeks that start on or after the first session's
+   week, to the nearest half, 1 to 7; three with no full week to read. */
+function targetFreqOf(){
+  var tf=S.settings.targetFreq;
+  if(typeof tf==="number"&&tf>=1&&tf<=7) return tf;
+  return autoFreqOf();
+}
+/* What the log says, whatever the setting is (the "Auto" row of the picker). */
+function autoFreqOf(){
+  if(!S.sessions.length) return 3;
+  var isMain=mainSessionFn();
+  var first=S.sessions.reduce(function(m,s){ return Math.min(m,s.ts); },Infinity);
+  var d0=new Date(first); d0.setHours(0,0,0,0);
+  var firstWk=new Date(d0.getFullYear(),d0.getMonth(),d0.getDate()-((d0.getDay()+6)%7)).getTime();
+  var starts=weekStarts(9).slice(0,8);              // the 8 full weeks before this one, oldest first
+  var counts=[];
+  starts.forEach(function(a){
+    if(a<firstWk) return;
+    var d=new Date(a), b=new Date(d.getFullYear(),d.getMonth(),d.getDate()+7).getTime();
+    counts.push(S.sessions.filter(function(s){ return s.ts>=a&&s.ts<b&&isMain(s); }).length);
+  });
+  if(!counts.length) return 3;
+  var mean=counts.reduce(function(a,b){ return a+b; },0)/counts.length;
+  return Math.max(1,Math.min(7,Math.round(mean*2)/2));
+}
+/* Small muscles are judged against a lower band: 6–12 sets a week, the rest 9–16. */
+var BAND_SMALL=["core","rear_delts","forearms","traps"];
+function bandOf(k){ return BAND_SMALL.indexOf(k)>=0?[6,12]:[9,16]; }
 
 /* Only guessed for brand-new exercises, and always editable afterwards. */
 var BAR_YES=/barbell|squat|bench|deadlift|dead lift|romanian|rdl|overhead press|ohp|military|hip thrust|clean|snatch|good ?morning|pendlay|jm press|floor press/i;

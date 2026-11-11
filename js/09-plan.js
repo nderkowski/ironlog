@@ -260,6 +260,8 @@ function viewPlan(){
     '<button class="btn ghost" style="flex:1" data-act="tpl">Start from a template</button>'+
   '</div>';
 
+  html+=planBalanceCard();
+
   html+='<hr class="sep"><div class="eyebrow" style="margin-bottom:8px">Progression</div><div class="card">';
 
   /* The switch below has only ever applied to exercises made *after* it was
@@ -314,6 +316,254 @@ function viewPlan(){
 
   v.innerHTML=html+'</div>';
 }
+
+/* ============================ balance card (2.0) ============================
+   What the plan itself adds up to, by muscle, projected to a week: the sets of
+   every main day, averaged over its week variants, times the sessions a week
+   the plan is built for, over the length of one rotation. The pump day is
+   extra and not counted. Excluded muscles are never "low"; they say "by choice". */
+function planBalance(){
+  var f=targetFreqOf(), ex=S.settings.excludedMuscles||[];
+  var mains=S.routines.filter(isMainRoutine);
+  var N=mains.filter(function(r){ return variantsOf(r).some(function(v){ return v.exercises.length>0; }); }).length;
+  var per={}; MUSCLES.forEach(function(m){ per[m.k]=0; });
+  mains.forEach(function(r){
+    var vs=variantsOf(r); if(!vs.length) return;
+    vs.forEach(function(v){
+      v.exercises.forEach(function(e){
+        var t=tagsOf(e), n=num(e.sets)/vs.length;
+        MUSCLES.forEach(function(m){
+          per[m.k]+=n*(t.mg===m.k?1:(t.mg2||[]).indexOf(m.k)>=0?0.5:0);
+        });
+      });
+    });
+  });
+  var rows=MUSCLES.map(function(m){
+    var weekly=N?per[m.k]*f/N:0, b=bandOf(m.k), skip=ex.indexOf(m.k)>=0;
+    return {k:m.k, n:m.n, weekly:weekly, band:b, excluded:skip,
+            status:skip?"by choice":weekly<b[0]?"low":weekly>b[1]?"high":"ok"};
+  });
+  return {f:f, N:N, rows:rows};
+}
+
+/* ---- S1: one-tap additions ----
+   Each suggestion is detected by name in the day's variants and goes away once
+   it no longer applies. `run(v)` changes one week variant; the apply loop
+   walks every variant of every day it names. */
+var S1_NAMES={abs:"Cable Crunch", tri:"Overhead Cable Tricep Extension", quad:"Leg Extension"};
+var S1_ADDED={};                       // ids of rows this session's applies created
+function sDays(key){ return S.routines.filter(function(r){ return r.key===key&&isMainRoutine(r); }); }
+function sHas(v,name){ return v.exercises.some(function(e){ return normName(e.name)===normName(name); }); }
+function sKeysJoin(ks){ return ks.length>1?ks.slice(0,-1).join(", ")+" and "+ks[ks.length-1]:ks[0]; }
+function sMissing(keys,name){
+  return keys.filter(function(k){
+    return sDays(k).some(function(r){ return variantsOf(r).some(function(v){ return !sHas(v,name); }); });
+  });
+}
+function sRows(keys,re){            // rows named like `re` below 4 sets, over the given days
+  var out=[];
+  keys.forEach(function(k){ sDays(k).forEach(function(r){ variantsOf(r).forEach(function(v){
+    v.exercises.forEach(function(e){ if(re.test(normName(e.name))&&num(e.sets)<4) out.push(e); });
+  }); }); });
+  return out;
+}
+function sAddRun(name){
+  return function(v){
+    if(sHas(v,name)) return;
+    var e=newPlanEx(name);
+    e.sets=3; e.reps=10; e.repTop=15; e.link=false;
+    v.exercises.push(e); S1_ADDED[e.id]=1;
+    pairNew(v);
+  };
+}
+function planSuggestions(){
+  var out=[], ks, rows;
+  ks=sMissing(["B","C"],S1_NAMES.abs);
+  if(ks.length) out.push({id:"abs", label:"+ Cable Crunch on "+sKeysJoin(ks)+" (abs)", keys:ks,
+    msg:"Added Cable Crunch to "+sKeysJoin(ks), run:sAddRun(S1_NAMES.abs)});
+  ks=sMissing(["B"],S1_NAMES.tri);
+  if(ks.length) out.push({id:"tri", label:"+ Overhead Cable Tricep Extension on B", keys:ks,
+    msg:"Added Overhead Cable Tricep Extension to B", run:sAddRun(S1_NAMES.tri)});
+  rows=sRows(["B"],/^lateral raise$/);
+  if(rows.length) out.push({id:"side", keys:["B"], msg:"Lateral Raise is 4 sets on B",
+    label:"Lateral Raise "+Math.min.apply(null,rows.map(function(e){ return num(e.sets); }))+" → 4 sets on B",
+    run:function(v){ v.exercises.forEach(function(e){ if(normName(e.name)==="lateral raise"&&num(e.sets)<4) e.sets=4; }); }});
+  ks=sMissing(["C"],S1_NAMES.quad);
+  if(ks.length) out.push({id:"quad", label:"+ Leg Extension on C", keys:ks,
+    msg:"Added Leg Extension to C", run:sAddRun(S1_NAMES.quad)});
+  /* The two rows below need another package's engine / runtime (topback loading,
+     the optional-day rotation), so they stay out of sight until those exist. */
+  if(typeof schemeOf==="function"){
+    var rd=[];
+    S.routines.forEach(function(r){ variantsOf(r).forEach(function(v){ v.exercises.forEach(function(e){
+      if(/\brdl\b|romanian/i.test(e.name)&&e.scheme!=="topback") rd.push(e);
+    }); }); });
+    if(rd.length) out.push({id:"rdl", label:"Run RDL as top set + back-offs", all:true, msg:"RDL runs as a top set + back-offs",
+      run:function(v){ v.exercises.forEach(function(e){ if(/\brdl\b|romanian/i.test(e.name)&&e.scheme!=="topback") e.scheme="topback"; }); }});
+  }
+  if(typeof isOptional==="function"&&!S.routines.some(function(r){ return r.key==="P"; }))
+    out.push({id:"pump", label:"Add the optional Pump day", pump:true, msg:"Added the Pump day"});
+  rows=sRows(["A","C"],/^face\s?pull$/);
+  if(rows.length){
+    var fk=["A","C"].filter(function(k){ return sRows([k],/^face\s?pull$/).length; });
+    out.push({id:"face", optional:true, keys:fk, msg:"Face Pull is 4 sets on "+sKeysJoin(fk),
+      label:"Face Pull "+Math.min.apply(null,rows.map(function(e){ return num(e.sets); }))+" → 4 sets on "+sKeysJoin(fk)+" (optional)",
+      run:function(v){ v.exercises.forEach(function(e){ if(/^face\s?pull$/.test(normName(e.name))&&num(e.sets)<4) e.sets=4; }); }});
+  }
+  return out;
+}
+/* Rows S1 created, now or in an earlier apply, so the pair can be found again. */
+function s1Added(e){
+  if(S1_ADDED[e.id]) return true;
+  var b=S.planBackup;
+  return !!(b&&b.kind==="v2-additions"&&num(e.added)>=num(b.ts)&&
+    [S1_NAMES.abs,S1_NAMES.tri,S1_NAMES.quad].some(function(n){ return normName(n)===normName(e.name); }));
+}
+/* The two rows S1 appended to a day read as one superset: the later one is
+   linked to the earlier. B ends "… Overhead Cable Tricep Extension + Cable
+   Crunch", C "… Leg Extension + Cable Crunch", whichever was tapped first. */
+function pairNew(v){
+  var ex=v.exercises, n=ex.length;
+  if(n<2) return;
+  if(!ex[n-1].link&&s1Added(ex[n-2])&&s1Added(ex[n-1])) ex[n-1].link=true;
+}
+function planSuggestApply(id){
+  if(S.active){ toast("Finish or discard the workout first"); return false; }
+  var sg=planSuggestions().filter(function(x){ return x.id===id; })[0];
+  if(!sg) return false;
+  /* The way back. Never replace a backup that already exists: it is a plan
+     the owner may still want (the recommended-plan switch keeps one too). */
+  var created=null;
+  if(!S.planBackup)
+    created=S.planBackup={ts:Date.now(), rest:S.settings.rest, routines:coachCopy(S.routines), kind:"v2-additions"};
+  var ops=[], addedRoutine=null;
+  if(sg.pump){
+    var pr=pumpSeed(); S.routines.push(pr); addedRoutine=pr.id;
+  } else {
+    var days=sg.all?S.routines.slice():[].concat.apply([],sg.keys.map(sDays));
+    days.forEach(function(r){
+      variantsOf(r).forEach(function(v){
+        var before=coachCopy(v.exercises);
+        sg.run(v);
+        /* One diff per variant covers rows added, rows changed and the link
+           pairNew() set on the row above (amendment 15), so Undo restores all. */
+        var d=coachDiff(before,v.exercises);
+        if(d.added.length||d.changed.length||d.removed.length) ops.push({rid:r.id,vid:v.id,d:d});
+      });
+    });
+  }
+  writeNow();
+  viewPlan();
+  toastUndo(sg.msg,function(){
+    coachUndoOps(ops);
+    if(addedRoutine) S.routines=S.routines.filter(function(r){ return r.id!==addedRoutine; });
+    if(created&&S.planBackup===created) delete S.planBackup;
+    writeNow();
+    if(TAB==="plan") viewPlan();
+    toast("Put the plan back");
+  });
+  return true;
+}
+/* The optional Pump day (S2 seed). Two menus that alternate by themselves;
+   rows go through newPlanEx() and then take the day's sets, range and link. */
+var PUMP_DAY=[
+  ["Arms & delts",[
+    ["Overhead Cable Tricep Extension",15,20,0],["Bayesian Cable Curl",15,20,1],
+    ["Cable Lateral Raise",15,20,0],["Reverse Pec Deck",15,20,1],
+    ["Rope Hammer Curl",15,20,0],["Cross-Body Tricep Pushdown",15,20,1],
+    ["Cable Wrist Curl",15,20,0],["Cable Shrug",15,20,1]]],
+  ["Chest, back & core",[
+    ["Incline Machine Press",12,16,0],["Neutral-Grip Lat Pulldown",12,16,1],
+    ["Pec Deck",15,20,0],["Chest-Supported Row",12,16,1],
+    ["Cable Crunch",15,20,0],["Pallof Press",15,20,1]]]
+];
+function pumpSeed(){
+  var vs=PUMP_DAY.map(function(d){
+    return newVariant(d[0],d[1].map(function(sp){
+      var e=newPlanEx(sp[0]);
+      e.sets=3; e.reps=sp[1]; e.repTop=sp[2]; e.link=!!sp[3];
+      return e;
+    }));
+  });
+  return {id:uid(), key:"P", name:"Pump day", optional:true, variants:vs};
+}
+
+function planBalanceCard(){
+  var b=planBalance();
+  if(!b.N) return "";
+  var ex=b.rows.filter(function(r){ return r.excluded; });
+  var shown=b.rows.filter(function(r){ return !r.excluded; });
+  var max=18; shown.forEach(function(r){ max=Math.max(max,Math.ceil(r.weekly)); });
+  var html='<div class="bal-head" style="margin-top:14px"><div class="eyebrow">Plan balance</div>'+
+    '<button class="btn sm ghost" data-act="freq" aria-label="Sessions a week: '+esc(fmt(b.f))+'. Change">at '+esc(fmt(b.f))+' a week</button></div>'+
+    '<section class="card bal" style="padding:9px 0">';
+  shown.forEach(function(r){
+    html+=bandRow(r.n,round(r.weekly,1),r.band[0],r.band[1],max,{state:r.status});
+  });
+  if(ex.length) html+='<div class="bal-note">'+esc(ex.map(function(r){ return r.n; }).join(", "))+' — by choice</div>';
+  html+='<div class="bal-note">Sets a week from the plan, helpers ½. The pump day isn\'t counted — it\'s extra.</div>'+
+    '<div class="bal-note">Shaded: 9–16 a week; 6–12 for abs, rear delts, forearms and traps.</div>';
+  var sg=planSuggestions();
+  if(sg.length){
+    html+='<div class="sug"><div class="sug-t">Suggested additions</div>';
+    sg.forEach(function(s){
+      html+='<button class="btn sm" data-act="plan-suggest" data-id="'+s.id+'">'+esc(s.label)+'</button>';
+    });
+    html+='</div>';
+  }
+  html+='<div class="bal-foot"><button class="btn sm ghost" data-act="excl">Muscles I skip</button></div>';
+  return html+'</section>';
+}
+
+function freqSheet(){
+  var cur=S.settings.targetFreq, auto=autoFreqOf(), opts=[];
+  for(var q=2;q<=6;q+=0.5) opts.push(q);
+  sheet('<h3>Sessions a week</h3><div class="sub">The balance card projects your plan to this many sessions a week.</div>'+
+    '<div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">'+
+      opts.map(function(q){
+        return '<button class="btn'+(cur===q?" primary":"")+'" style="flex:0 0 calc(33.3% - 6px);min-height:44px" data-fq="'+q+'">'+fmt(q)+'</button>';
+      }).join("")+'</div>'+
+    '<button class="btn block'+(cur===null||cur===undefined?" primary":"")+'" data-fq="auto">Auto (from your log: '+fmt(auto)+')</button>',
+    function(el){
+      el.addEventListener("click",function(ev){
+        var b=ev.target.closest("[data-fq]"); if(!b) return;
+        S.settings.targetFreq=b.dataset.fq==="auto"?null:+b.dataset.fq;
+        writeNow(); closeSheet(); if(TAB==="plan") viewPlan();
+      });
+    });
+}
+function exclSheet(){
+  var ex=S.settings.excludedMuscles||[];
+  sheet('<h3>Muscles I skip</h3><div class="sub">A skipped muscle is never marked low on the balance card, never nagged about in Progress and never suggested. Its sets still count in your history.</div>'+
+    MUSCLES.map(function(m){
+      var on=ex.indexOf(m.k)>=0;
+      return '<div class="field-row"><div class="fl">'+esc(m.n)+'</div>'+
+        '<button class="switch'+(on?" on":"")+'" role="switch" aria-checked="'+on+'" aria-label="Skip '+esc(m.n.toLowerCase())+'" data-mx="'+m.k+'"></button></div>';
+    }).join("")+
+    '<button class="btn block" style="margin-top:10px" data-mx="done">Done</button>',
+    function(el){
+      el.addEventListener("click",function(ev){
+        var b=ev.target.closest("[data-mx]"); if(!b) return;
+        if(b.dataset.mx==="done"){ closeSheet(); return; }
+        var cur=S.settings.excludedMuscles||[], k=b.dataset.mx, on=cur.indexOf(k)<0;
+        S.settings.excludedMuscles=MUSCLES.map(function(m){ return m.k; }).filter(function(x){
+          return x===k?on:cur.indexOf(x)>=0;
+        });
+        b.classList.toggle("on",on); b.setAttribute("aria-checked",String(on));
+        writeNow(); if(TAB==="plan") viewPlan();
+      });
+    });
+}
+/* Its own listener, guarded on the Plan tab (trap 18): the Plan listener below
+   belongs to the day cards and is not edited for this. */
+$("#view").addEventListener("click",function(e){
+  if(TAB!=="plan") return;
+  var t=e.target;
+  if(t.closest('[data-act="freq"]')){ freqSheet(); return; }
+  if(t.closest('[data-act="excl"]')){ exclSheet(); return; }
+  var ps=t.closest('[data-act="plan-suggest"]');
+  if(ps){ planSuggestApply(ps.dataset.id); return; }
+});
 
 $("#view").addEventListener("click",function(e){
   if(TAB==="progress"){

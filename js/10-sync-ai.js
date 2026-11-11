@@ -648,9 +648,12 @@ function switchBackPlan(){
 function planSettingsHtml(){
   var b=S.planBackup, h='<div class="field-row" style="display:block">';
   if(b){
-    h+='<div class="fl">On the recommended plan<div class="fh">Switched '+esc(shortDate(b.ts))+
-      '. Your previous plan is kept: switching back restores it and its '+esc(String(b.rest))+
-      ' s rest. Logged sessions are never touched either way.</div></div></div>'+
+    h+=(b.kind==="v2-additions"
+      ? '<div class="fl">Before the 2.0 additions ('+esc(shortDate(b.ts))+')<div class="fh">'+
+        'Switching back restores that plan; logged sessions are never touched.</div></div></div>'
+      : '<div class="fl">On the recommended plan<div class="fh">Switched '+esc(shortDate(b.ts))+
+        '. Your previous plan is kept: switching back restores it and its '+esc(String(b.rest))+
+        ' s rest. Logged sessions are never touched either way.</div></div></div>')+
       (recDayCNeedsFix()?'<div class="tiny" style="margin:8px 0">Day C supersets Lateral Raise straight into Rear Delt Fly — two shoulder lifts back to back. '+
         'The fix pairs Hamstring Curls with Lateral Raise, and the cable fly with Rear Delt Fly.</div>'+
         '<button class="btn primary block" data-act="plan-fixc" style="margin-bottom:8px">Re-pair Day C</button>':"")+

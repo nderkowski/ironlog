@@ -8,7 +8,7 @@ if(!document.querySelector('meta[name="viewport"]')){
 }
 
 /* ============================ storage ============================ */
-var BUILD="v2.0-a3";                      // bump with CACHE in sw.js; shown in Plan
+var BUILD="v2.0-a4i";                      // bump with CACHE in sw.js; shown in Plan
 var KEY="ironlog.v1", V5_KEY="ironlog.v1.v5-backup", storageOK=true;
 try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ storageOK=false; }
 var mem=null;

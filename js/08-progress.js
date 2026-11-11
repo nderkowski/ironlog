@@ -51,7 +51,7 @@ function viewProgress(){
   '</div>';
 
   html+=coachSection();
-  html+=weeklySetsCard(tw,lw);
+  html+=weeklySetsCard();
   html+=sinceStartCard();
 
   var names=trackedLifts();
@@ -95,52 +95,99 @@ function viewProgress(){
     if(c) spark(c,exSessions(n).map(sessionTopScore).reverse().slice(-12));
   });
 }
-/* The hypertrophy number. Solid bar is this week, ghost bar behind it is last
-   week, so direction reads at a glance without a second chart. */
-function weeklySetsCard(tw,lw){
-  var now=setsByMuscle(tw.start,tw.end), prev=setsByMuscle(lw.start,lw.end);
-  var shown=MUSCLES.filter(function(m){ return now.by[m.k]>0||prev.by[m.k]>0; });
-  var zero=MUSCLES.filter(function(m){ return !(now.by[m.k]>0||prev.by[m.k]>0); });
+/* ---- sets per rotation (2.0) ----
+   The log is rotation-native: Iron Log trains a day at a time (A, B, C), not
+   by the calendar, so "this week" split one rotation in two whenever it
+   straddled a Monday. One rotation is the last N main days you actually logged
+   (N = main days with at least one lift). Pump and freestyle sets inside that
+   window count; deload and unlogged sessions don't, and an unlogged day does
+   not use up one of the N. */
+function rotationWindows(){
+  var mains=S.routines.filter(isMainRoutine).filter(function(r){
+    return variantsOf(r).some(function(v){ return v.exercises.length>0; });
+  });
+  var N=mains.length, isMain=mainSessionFn();
+  var sorted=S.sessions.slice().sort(function(a,b){ return b.ts-a.ts; });
+  var M=sorted.filter(function(s){ return isMain(s)&&!s.unlogged&&!s.deload&&s.exercises.length>0; });
+  var live=sorted.filter(function(s){ return !s.unlogged&&!s.deload; });
+  var n=Math.max(1,N), full=M.length>=n;
+  var lo=M.length?M[Math.min(n,M.length)-1].ts:0;
+  var cur=live.filter(function(s){ return s.ts>=lo; });
+  var prev=[];
+  if(M.length>=2*n){
+    var plo=M[2*n-1].ts;
+    prev=live.filter(function(s){ return s.ts>=plo&&s.ts<lo; });
+  }
+  return {N:N, n:n, full:full, cur:cur, prev:prev, havePrev:M.length>=2*n,
+          keys:mains.map(function(r){ return r.key; })};
+}
+/* One muscle row: name, a bar on a track with the band shaded and ticked, the
+   value. `state` is low/high/ok; a low or high value says so in words for
+   screen readers and in an arrow for everyone else, not by colour alone. */
+function bandRow(name,val,lo,hi,scale,o){
+  o=o||{};
+  var pct=function(x){ return (Math.max(0,Math.min(x,scale))/scale*100).toFixed(1); };
+  var mark=o.state==="low"?'<span aria-hidden="true">↓</span><span class="vh"> low</span>'
+          :o.state==="high"?'<span aria-hidden="true">↑</span><span class="vh"> high</span>':"";
+  return '<div class="mrow'+(val?"":" zero")+(o.state==="low"||o.state==="high"?" off":"")+'">'+
+    '<div class="mn">'+esc(name)+'</div>'+
+    '<div class="track">'+
+      (hi>lo?'<div class="band" style="left:'+pct(lo)+'%;width:'+(pct(hi)-pct(lo)).toFixed(1)+'%"></div>':"")+
+      '<div class="now" style="width:'+pct(val)+'%"></div>'+
+      (hi>lo?'<div class="tick" style="left:'+pct(lo)+'%"></div><div class="tick" style="left:'+pct(hi)+'%"></div>':"")+
+      (o.prev>0?'<div class="prev" style="left:'+pct(o.prev)+'%" title="previous rotation"></div>':"")+
+    '</div>'+
+    '<div class="mv">'+fmt(val)+mark+'</div>'+
+  '</div>';
+}
+/* The hypertrophy number. The solid bar is this rotation, the dark line is the
+   one before it, and the shaded stripe is the band for that muscle at the
+   sessions a week the plan is built for. */
+function weeklySetsCard(){
+  var w=rotationWindows(), f=targetFreqOf(), ex=S.settings.excludedMuscles||[];
+  var now=setsByMuscleIn(w.cur), prev=setsByMuscleIn(w.prev);
+  var tracked=MUSCLES.filter(function(m){ return ex.indexOf(m.k)<0; });
+  var shown=tracked.filter(function(m){ return now.by[m.k]>0||prev.by[m.k]>0; });
+  var zero=tracked.filter(function(m){ return !(now.by[m.k]>0||prev.by[m.k]>0); });
+  var skipped=MUSCLES.filter(function(m){ return ex.indexOf(m.k)>=0; });
 
-  var html='<div class="row" style="margin-bottom:7px"><div class="eyebrow">Weekly sets</div>'+
-    '<span class="tiny muted" style="margin-left:auto">this week vs last</span></div>';
+  var html='<div class="row" style="margin-bottom:7px"><div class="eyebrow">Sets per rotation</div>'+
+    '<span class="tiny muted" style="margin-left:auto">'+(w.havePrev?"this one vs the last":"this one")+'</span></div>';
 
   if(!shown.length){
     return html+'<div class="card" style="margin-bottom:12px"><div class="empty">'+
       (now.untagged||prev.untagged
         ? 'Nothing is tagged yet.<br>Open an exercise in Plan and set its muscles.'
-        : 'No sets logged in the last two weeks.')+'</div></div>';
+        : 'No sets logged in your last rotation.')+'</div></div>';
   }
 
+  var unitsOf=function(x){ return x*w.n/f; };               // a weekly figure in rotation units
   var max=0;
-  shown.forEach(function(m){ max=Math.max(max,now.by[m.k],prev.by[m.k]); });
-  var scale=Math.max(max,12);
+  shown.forEach(function(m){ max=Math.max(max,now.by[m.k],prev.by[m.k],unitsOf(bandOf(m.k)[1])); });
+  var scale=Math.max(max,1);
   shown.sort(function(a,b){ return now.by[b.k]-now.by[a.k]; });
 
   html+='<div class="card" style="padding:9px 0;margin-bottom:12px">';
+  if(!w.full) html+='<div class="tiny" style="padding:0 var(--pad) 6px;color:var(--ink-2)"><b>Not a full rotation yet.</b> '+
+    'Showing the sets you have so far.</div>';
   shown.forEach(function(m){
-    var a=now.by[m.k], b=prev.by[m.k];
-    html+='<div class="mrow'+(a?"":" zero")+'">'+
-      '<div class="mn">'+esc(m.n)+'</div>'+
-      '<div class="track">'+
-        '<div class="now" style="width:'+(a/scale*100).toFixed(1)+'%"></div>'+
-        (scale>10?'<div class="tick" style="left:'+(10/scale*100).toFixed(1)+'%"></div>':"")+
-        (scale>20?'<div class="tick" style="left:'+(20/scale*100).toFixed(1)+'%"></div>':"")+
-        (b>0?'<div class="prev" style="left:'+(b/scale*100).toFixed(1)+'%" title="last week"></div>':"")+
-      '</div>'+
-      '<div class="mv">'+fmt(a)+'</div>'+
-    '</div>';
+    var b=bandOf(m.k);
+    html+=bandRow(m.n,now.by[m.k],unitsOf(b[0]),unitsOf(b[1]),scale,{prev:prev.by[m.k]});
   });
   html+='<div class="tiny muted" style="padding:6px var(--pad) 2px">'+
-    'The dark line is last week. '+
-    (scale>10?'Faint marks are 10 and 20 sets — the usual weekly range for growth. ':"")+
+    'One rotation = your last '+plural(w.n,"day")+(w.keys.length?' ('+esc(w.keys.join(", "))+')':"")+'. '+
+    'The shaded stripe is the band: 9–16 sets a week, or 6–12 for abs, rear delts, forearms and traps, '+
+    'at '+fmt(f)+' sessions a week. '+(w.havePrev?'The dark line is the rotation before. ':"")+
     'A set counts 1 for the main muscle, ½ for a helper.</div>';
   if(zero.length)
     html+='<div class="tiny muted" style="padding:0 var(--pad) 4px">Nothing for '+
       esc(zero.map(function(m){ return m.n.toLowerCase(); }).join(", "))+'.</div>';
+  if(skipped.length)
+    html+='<div class="tiny muted" style="padding:0 var(--pad) 4px">'+
+      esc(skipped.map(function(m){ return m.n; }).join(", "))+': not tracked, by choice.</div>';
   if(now.untagged)
     html+='<div class="tiny" style="padding:2px var(--pad) 4px;color:var(--bad-ink)">'+
-      plural(now.untagged,"set")+' this week aren\'t counted — those exercises have no muscles set.</div>';
+      plural(now.untagged,"set")+' in this rotation aren\'t counted — those exercises have no muscles set.</div>';
   html+='</div>';
   return html;
 }

@@ -470,6 +470,22 @@ h1,h2,h3{margin:0;text-wrap:balance}
   background:var(--ink-2);border-radius:2px;
 }
 .mrow.zero .mn,.mrow.zero .mv{color:var(--ink-3)}
+.mrow .mv{white-space:nowrap}
+.mrow.off .mv{color:var(--bad-ink)}
+/* the band for this muscle: shaded stripe behind the bar, edged by two ticks */
+.track .band{position:absolute;top:0;bottom:0;background:var(--good-soft)}
+.track .now{opacity:.92}
+.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+/* ---- plan balance card and its suggestions ---- */
+.bal .mrow{grid-template-columns:96px 1fr 44px}
+.bal-head{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.bal-head .btn{margin-left:auto;flex:0 0 auto}
+.bal-note{padding:6px var(--pad) 2px;color:var(--ink-2);font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+.sug{border-top:1px solid var(--line);margin-top:8px;padding:10px var(--pad) 2px}
+.sug-t{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2);margin-bottom:6px}
+.sug .btn{width:100%;justify-content:flex-start;text-align:left;white-space:normal;overflow-wrap:anywhere;height:auto;min-height:44px;margin-bottom:6px}
+.sug .opt{font-size:12px;color:var(--ink-2);margin:2px 0 4px}
+.bal-foot{display:flex;gap:8px;padding:6px var(--pad) 4px}
 
 /* ---- PR board ---- */
 .prrow{
