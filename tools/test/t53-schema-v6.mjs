@@ -407,4 +407,4 @@ await blocked.close();
 
 ok(errors.length === 0, 'no page errors  ' + JSON.stringify(errors.slice(0, 3)));
 await browser.close();
-report('t48 schema v6');
+report('t53 schema v6');
