@@ -24,7 +24,7 @@ not a toy.
   network calls. `index.html` is the whole app.
 - GitHub Pages serves `main`. Work on a branch is invisible to my phone until
   it's merged — a whole test round was lost to that once. `BUILD` prints at the
-  foot of the Plan tab; bump it and `CACHE` in `sw.js` in the same commit as any
+  foot of the Plan tab; bump it and `BUILD` in `sw.js` in the same commit as any
   change, or my installed phone serves a cached old version.
 - **Test by driving the real UI with Playwright, not by calling functions.**
   Chromium is at `/opt/pw-browsers`, Playwright at

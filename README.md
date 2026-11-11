@@ -23,8 +23,9 @@ NEXT_SESSION.md            paste-in prompt to pick this up in a new chat
 > **Status: live at https://nderkowski.github.io/ironlog/** — the steps below are
 > kept as the record of how it was set up, and for anyone forking this.
 >
-> To update a deployed copy, push the changed files and **bump `CACHE` in `sw.js`**
+> To update a deployed copy, push the changed files and **bump `BUILD` in `sw.js`**
 > in the same commit, or installed phones keep serving the cached old version.
+> The update applies the next time the app is opened after it has downloaded.
 
 Ten minutes, once.
 
@@ -50,7 +51,7 @@ fine — there's nothing personal in it. Your training log never leaves your pho
 and is never part of the repo.
 
 **Updating later:** push the change, then bump **both** `BUILD` in `index.html`
-and `CACHE` in `sw.js` in the same commit, so installed phones fetch the new copy
+and `BUILD` in `sw.js` in the same commit, so installed phones fetch the new copy
 instead of serving the cached old one. The build number prints at the foot of the
 Plan tab — check it on the phone before reporting a bug, because debugging a
 version that isn't running is a very easy afternoon to lose.

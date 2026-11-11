@@ -59,7 +59,7 @@ measurement: [CLOUD_SPRINT.md](CLOUD_SPRINT.md).
 5. Unit conversion snapping 5 lb ↔ 2.5 kg (review #9).
 
 ### Gym test plan (v26.9, after merging)
-1. Plan tab foot shows **v26.13**. If not, reload twice (service worker).
+1. Plan tab foot shows **v26.14**. If not, close and open the app twice (the new version downloads on the first open and applies on the next).
 2. A lift where you did e.g. 12, 12, 11 last time at 8–12: card says "Hit 12, rep-out 11 — add 5 lb". Do it; if the heavier load lands under the bottom of the range, note the lift — that is the case to replay.
 3. Log a full session with sweaty hands: count mis-taps on − / + / the set number (warm-up toggle). A tap on the "×" should do nothing.
 4. Finish, then on Today tap **Last … Edit**, change one rep, Save — no scrolling needed.
