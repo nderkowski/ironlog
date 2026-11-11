@@ -116,9 +116,10 @@ await page.click('[data-act="add-set"]');
   await start(state(DBL, [ TB(225, 8, 200, 8) ]));
   ok(!/Only \d+ of/.test(await why()), '2 a row switched back to double: role-tagged history never says "Only N of M"  [' + await why() + ']');
   await discard();
-  await start(state(DBL, [ { sets:[[225, 8], [200, 8, 'back'], [185, 8]] } ]));
-  has(await why(), 'Only 1 of 2 sets at 225', '2 a legacy dropped set after a role:"back" set is still counted  [' + await why() + ']');
-  await discard();
+  eq(await fn('droppedSets', [{ w:'225', r:'8' }, { w:'200', r:'8', role:'back' }, { w:'185', r:'8' }], 225, 0), 1,
+    '2 droppedSets: a legacy dropped set after a role:"back" set is still counted (and the back-off is not)');
+  eq(await fn('droppedSets', [{ w:'225', r:'8', role:'top' }, { w:'200', r:'8', role:'back' }, { w:'200', r:'8', role:'back' }], 225, 0), 0,
+    '2 droppedSets: planned back-offs are not dropped sets');
 }
 
 /* ======================= 3. the back-off floor (amendment 10) ======================= */
@@ -374,10 +375,21 @@ await discard();
   /* 10.2 a row switched to double reads only the top of top + back-off sessions */
   const DBL = Object.assign({}, RDL, { scheme:'double' });
   await start(state(DBL, [ TB(225, 8, 200, 10) ]));
-  eq((await setVals()).join(), '225x9,225x9,225x9', '10.2 topback → double: 225×8 top + 200×10,10 back-offs prefills a 225 prescription (not 205×6)');
+  eq((await setVals()).join(), '225x6,225x6,225x6', '10.2 topback → double: 225×8 top + 200×10,10 back-offs → every set at the top load, bottom of the range (not 205×6)');
+  eq(await why(), '+1Switched to straight sets — all sets at 225, aim for 6s', '10.2 ...with the switch words  [' + await why() + ']');
   await discard();
   await start(state(DBL, [ TB(225, 10, 200, 6) ]));
-  eq((await setVals())[0], '230x6', '10.2 ...the back-offs never hold or cut the top');
+  eq((await setVals()).join(), '225x6,225x6,225x6', '10.2 ...however the top set went, the first double prescription is 225 ×6 (the back-offs never hold or cut it)');
+  await discard();
+  await start(state(DBL, [ TB(225, 8, 200, 10), { sets:[[225, 6], [225, 6], [225, 6]] } ]));
+  eq((await setVals()).join(), '225x7,225x7,225x7', '10.2 the next session is ordinary double progression (225×6 → ×7)');
+  await discard();
+  /* the reverse: double → topback starts from the top set, one rep more capped at the top of the range */
+  await start(state(RDL, [ { sets:[[225, 8], [225, 8], [225, 8]] } ]));
+  eq((await setVals()).join(), '225x9,200x9,200x9', '10.2 double → topback: from the top set (225×8) one more rep (9), back-offs 200');
+  await discard();
+  await start(state(RDL, [ { sets:[[225, 10], [225, 10], [225, 10]] } ]));
+  eq((await setVals())[0], '230x6', '10.2 ...and a top set at the top of the range steps up');
   await discard();
   /* 10.3 back-offs on a stack never go below the bar */
   eq(await fn('backOffW', 50, { bar:45, pins:[42.5, 47.5, 50], inc:5, backPct:0.12 }), 47.5, '10.3 top 50, bar 45, pins [42.5,47.5,50]: 47.5, not 42.5');

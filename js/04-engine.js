@@ -160,11 +160,12 @@ function exWorkingP(name,ex,withEased){
   return schemeOf(ex)==="topback"?h.map(projectTop):h.map(dropBackSets);
 }
 /* A row switched back to "double" still reads sessions logged as top + back-offs:
-   the planned back-offs (role "back") are not working sets of that lift. */
+   the planned back-offs (role "back") are not working sets of that lift. The
+   entry is marked roleTagged so prescribe() can start the switch gently. */
 function dropBackSets(h){
-  if(!h.sets.some(function(s){ return s.role==="back"; })) return h;
+  if(!h.sets.some(function(s){ return s.role; })) return h;
   var k=h.sets.filter(function(s){ return s.role!=="back"; });
-  return k.length?Object.assign({},h,{sets:k}):h;
+  return Object.assign({},h,{sets:k.length?k:h.sets,roleTagged:true});
 }
 
 /* A 10% cut on the step grid is fine on a 185 lb bar and brutal on a 15 lb
@@ -255,6 +256,16 @@ function prescribeRow(name,ex,opts){
   if(inDeloadWeek()){
     return {w:easierEx(w,ex),r:low,sets:Math.max(1,Math.round(nsets*0.6)),
             why:"Deload week — light and short on purpose",kind:"deload"};
+  }
+
+  /* A row just switched from top set + back-offs to straight sets: the newest
+     session carries role tags. One top set of 8 is not evidence for three sets of
+     9, so the first prescription is every set at the top load, bottom of the
+     range; from the next session (no tags) it is ordinary double progression. */
+  if(last.roleTagged&&schemeOf(ex)!=="topback"&&met===0&&mode===0){
+    var ts=topSetOf(last.sets,mode), tw=ts?num(ts.w):0;
+    if(tw>0)
+      return {w:tw,r:low,sets:nsets,why:"Switched to straight sets — all sets at "+fmt(tw)+", aim for "+low+"s",kind:"reps"};
   }
 
   /* No trend back-off here any more (2.0). The slope of the last few sessions
