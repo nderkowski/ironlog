@@ -45,3 +45,5 @@ updated only after the owner's phone check at each milestone.
 | 9G | 5 | b2: drop the face-pull suggestion (owner dropped face pulls in Aug; COACH_NEVER) | sonnet | done | 36 suite files, 2,248 checks, 0 failed (commander's own run) | 9348ff3 |
 | REL | 5 | 2.0 beta (b2) + docs merged into cloud/sprint-1108 | commander | done — awaiting owner: v26.14 → main, then 2.0 | code identical to the tested tree | 3d5fef1 |
 | 10 | 5 | Docs + gym test plan for the 2.0 beta | sonnet | done | PROJECT_STATE 2.0 architecture + traps 24–29, ROADMAP top section + 15-step gym plan, NEXT_SESSION, HANDOFF; 36 suites / 2,206 checks green. To fix at merge: main=v26.13, v26.14 pending, build label b1 | docs-2.0 @ 44609cc |
+
+| ROLL-1 | — | v26.14 pushed to `main` (owner approved 11 Nov); GitHub Pages serving it | commander | done — waiting for the owner's footer check | `main` @ c5b5a29 |
