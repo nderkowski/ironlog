@@ -34,9 +34,28 @@ branch is not testable on a phone until it is merged. A whole test round was
 lost to this. `BUILD` in `index.html` is printed at the bottom of the Plan tab
 for exactly that reason: check it on the device before believing any bug report.
 
-After editing `index.html`, **bump `BUILD` and `CACHE` in `sw.js` in the same
-commit** — otherwise installed phones keep serving the old
-copy from cache, and you'll debug a version that isn't running.
+After editing `index.html`, **bump `BUILD` in `index.html` and `BUILD` in
+`sw.js` (it names the cache) in the same commit** — otherwise installed phones
+keep serving the old copy from cache, and you'll debug a version that isn't
+running.
+
+**How an update reaches the phone (v26.14).** Each version of the worker owns
+one cache and answers *everything*, navigations included, from it; the network
+is never consulted for the app once installed, so the page and its files can
+never come from two deploys. A new worker downloads its whole cache past the
+HTTP cache (`cache:'reload'`) or fails and deletes what it built; it does not
+`skipWaiting()` on install. The page (the "updates" block at the end of
+`index.html`) calls `registration.update()` when the app is opened (page load, return to the
+foreground, restore from the back/forward cache), and takes over a *waiting*
+worker only at that moment, only if no workout is active, no sheet or session
+editor is open, no field is focused and nothing has been tapped yet; it then
+reloads once. Never at any other time. So a deploy lands the next time you open
+the app after it has downloaded — usually the second open. A cache counts as
+complete only with its install marker *and* every core entry; otherwise the
+next install of that version rebuilds it. A version superseded while still
+waiting never activates, so its cache can linger until the next activation
+deletes all other `ironlog-*` caches (wasted space only; it is never read). Suites: `t48` (real v26.13
+worker → this one, mid-workout, bad deploys, offline).
 
 > **The Claude artifact is no longer maintained.** It was how the app was
 > delivered before Pages existed. `tools/build-artifact.ps1` and the generated
