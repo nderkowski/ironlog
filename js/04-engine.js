@@ -411,6 +411,85 @@ function prescribeRow(name,ex,opts){
   return {w:w,r:low,sets:nsets,why:"Missed "+amtText(low,met)+" last time — run it back",kind:"hold"};
 }
 
+/* ---- the usual load (2.0 §3b) ----
+   Last time was a lighter load than the one before it, chosen by the lifter
+   (not a deload the app prescribed, not a step-back it asked for): "Usual:
+   65 × 10" puts today's sets back at what the engine would say had that one
+   light day not happened. One light day on its own is a bad day, two in a row
+   is the new baseline and no chip. A session eased on purpose (easeBack) is
+   outside exWorkingP, so an eased day never triggers it either. Computed at
+   prefill (makeSessionEx), so a chip tap is a fill, never a calculation. */
+function usualOf(name,ex){
+  if(inDeloadWeek()||bwMode(ex)!==0) return null;          // bodyweight and assisted work has no "usual load"
+  var h=rangeHist(exWorkingP(name,ex),name,ex), m=bwMode(ex);
+  if(h.length<2) return null;
+  var a=workLoad(h[0].sets,m), b=workLoad(h[1].sets,m);
+  if(!heavierLoad(b,a,m)) return null;                   // last exposure not lighter than the one before
+  if(!h[0].kind||h[0].kind==="deload"||h[0].easeBack) return null;   // the app chose it (deload, an eased day), or can't tell
+  if(h[0].presc&&(String(h[0].presc.w)!==""&&num(h[0].presc.w)>0&&num(h[0].presc.w)===workLoad(h[0].sets,m))) return null;   // it is what the app prescribed that day, not a choice
+  var u=prescribe(name,ex,{skip:h[0].sessionId}), p=prescribe(name,ex);
+  if(u.w===""||(String(u.w)===String(p.w)&&String(u.r)===String(p.r))) return null;
+  return {w:u.w,r:u.r,why:u.why,kind:u.kind};
+}
+
+/* ---- warm-up ramps (2.0 S3) ----
+   A heavy compound gets a short ramp generated from today's working load,
+   shaped by what can actually be loaded: the empty bar and the plate inventory
+   on a barbell, the stack's pins on a machine, the weight step on anything
+   else. 225 on a 45 bar with the usual plates: 95 × 8, 135 × 5, 185 × 3.
+   Rows are ordinary warm-ups (warm:true), one tap each; `gen` marks them as
+   the app's own, so the next session builds a fresh ramp from its own load
+   instead of copying this one's. Off per lift (settings.warmups[name]=false);
+   iso lifts are off unless switched on; a top-set lift always gets at least one. */
+function c2WarmPref(name){
+  var m=S.settings.warmups, v=m&&typeof m==="object"?m[normName(name)]:undefined;
+  return v===true||v===false?v:null;
+}
+function c2WarmOn(name,ex){
+  var v=c2WarmPref(name);
+  if(v!==null) return v;
+  return schemeOf(ex)==="topback"||movementClass(name)!=="iso";
+}
+/* The load nearest x that the lift can really be set to: a pin (the heaviest
+   one not over x), or the step grid, never under the bar, and on a bar a load
+   the plate inventory can make. */
+function c2Loadable(x,ex){
+  var p=pinsOf(ex), bar=barOf(ex), s=stepFor(ex), v;
+  if(p.length){
+    v=null; p.forEach(function(q){ if(q<=x+1e-9) v=q; });
+    return v;
+  }
+  v=Math.floor(x/s+1e-9)*s;                           // down to the grid, never above the fraction
+  if(bar>0){
+    if(v<bar) v=bar;
+    if(plateInv().length){
+      for(var g=0;g<40&&v>bar&&!platesFor(v,bar).exact;g++) v-=s;
+    }
+  }
+  return round(v,2);
+}
+function c2WarmUps(name,ex,W){
+  var out=[];
+  if(!(W>0)||bwMode(ex)!==0||metricOf(ex)!==0||!c2WarmOn(name,ex)) return out;
+  var s=stepFor(ex), p=pinsOf(ex), tb=schemeOf(ex)==="topback";
+  var big=p.length?(p.length>=3&&W>=p[2]):W>=8*s;
+  var three=p.length?(p.length>=5&&W>=p[4]):W>=12*s;
+  var ramp=[];
+  if(big) ramp=three?[{f:0.42,r:8},{f:0.6,r:5},{f:0.82,r:3}]:[{f:0.5,r:6},{f:0.75,r:3}];
+  else if(tb) ramp=[{f:0.6,r:5}];                      // a top-set lift always gets one
+  ramp.forEach(function(st){
+    var x=c2Loadable(W*st.f,ex);
+    if(x===null||!(x>0)||x>=W-1e-9) return;
+    if(out.some(function(o){ return num(o.w)===x; })) return;
+    out.push({w:String(x),r:String(st.r),warm:true,done:false,gen:true});
+  });
+  if(!out.length&&tb){                                 // every rung fell away: one at the nearest lighter load
+    var y=c2Loadable(W*0.6,ex);
+    if(y!==null&&y>0&&y<W-1e-9) out.push({w:String(y),r:"5",warm:true,done:false,gen:true});
+  }
+  return out;
+}
+
 /* ============================ the rep-out label ============================
    The last working set of a ranged rep exercise is a rep-out: as many as you
    can (compounds stop one short of form breaking, isolation goes to failure).

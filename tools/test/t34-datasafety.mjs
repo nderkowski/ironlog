@@ -378,11 +378,11 @@ await section('5 kg mid-workout', async () => {
     s.active.exercises[0].usual = { w:65, r:10, why:'Same weight — go for 10', kind:'reps' };
     localStorage.setItem(k, JSON.stringify(s));
   });
-  await page.reload(); await page.waitForSelector('[data-act="revert"]');
+  await page.reload(); await page.waitForSelector('.callout .revert');
   let st = await getState(page);
   eq(st.active.exercises[0].lastW, 60, '5 setup: last time was 60 lb');
   eq(st.active.exercises[0].presc.w, 60, '5 setup: the prescription snapshot says 60 lb');
-  has(await text(page, '.callout'), 'Keep 60×10', '5 setup: the Keep chip reads 60 lb');
+  has(await text(page, '.callout'), 'Usual: 65 × 10', '5 setup: the Usual chip (it replaces Keep) reads 65 lb');
   await openSettings(page);
   await page.selectOption('[data-set="unit"]', 'kg');
   await page.waitForSelector('.sheet [data-x="conv"]');
@@ -393,7 +393,15 @@ await section('5 kg mid-workout', async () => {
   eq(st.active.exercises[0].presc.w, 27.2, '5 kg: the prescription snapshot is converted too (60 lb → 27.2 kg)');
   eq(st.active.exercises[0].usual.w, 29.5, '5 kg: the usual load is converted (65 lb → 29.5 kg)');
   await page.click('[data-tab="today"]');
-  await page.waitForSelector('[data-act="revert"]');
+  await page.waitForSelector('.callout .revert');
+  has(await text(page, '.callout'), 'Usual: 29.5 × 10', '5 kg: the Usual chip reads kg');
+  /* with no usual load on offer the Keep chip is back, and it reads kg too */
+  await page.evaluate(() => {
+    const k = 'ironlog.v1', s = JSON.parse(localStorage.getItem(k));
+    s.active.exercises[0].usual = null;
+    localStorage.setItem(k, JSON.stringify(s));
+  });
+  await page.reload(); await page.waitForSelector('[data-act="revert"]');
   has(await text(page, '.callout'), 'Keep 27.2×10', '5 kg: the Keep chip reads kg');
   await page.click('[data-act="revert"]');
   await sleep(200);

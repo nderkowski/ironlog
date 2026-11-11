@@ -36,6 +36,10 @@ const DAYS = [
   ['B', 'Day B', [['Barbell Row', 115], ['Lat Pulldown', 100], ['Face Pull', 30], ['Barbell Curl', 60]]],
   ['C', 'Day C', [['Back Squat', 185], ['Romanian Deadlift', 155], ['Leg Press', 270], ['Calf Raise', 120]]],
 ];
+/* 2.0 S3: compounds start with a generated warm-up ramp. The journeys below measure the plain
+   path (prefilled working sets), so they run with the ramp switched off per lift, which is
+   what the exercise menu's switch stores; journey 2d runs with the defaults. */
+const NOWARM = Object.fromEntries(DAYS.flatMap(d => d[2]).map(([n]) => [n.toLowerCase(), false]));
 const routines = () => DAYS.map(([key, name, exs], i) => ({ id: 'r' + i, key, name, variants: [{ id: 'v' + i, label: '',
   exercises: exs.map(([n, w], j) => ({ id: `p${i}${j}`, name: n, sets: 3, reps: 8, repTop: 12 })) }] }));
 /* flat=true: identical weight x reps every time, so the long trend reads "stalled" (coach card). */
@@ -45,7 +49,7 @@ function session(ri, daysAgo, flat, bump = 0) {
     exercises: exs.map(([n, w], j) => ({ id: `e${ri}${j}${daysAgo}`, planId: `p${ri}${j}`, name: n, reps: 8, repTop: 12,
       sets: [0, 1, 2].map(() => { const wt = w + (flat ? 0 : bump * 5); return { w: String(wt), r: '10', done: true, load: wt }; }) })) };
 }
-const mainState = () => ({ version: 5, settings: { ...SET }, routines: routines(), active: null,
+const mainState = (warm = false) => ({ version: 5, settings: { ...SET, warmups: warm ? {} : { ...NOWARM } }, routines: routines(), active: null,
   sessions: [0, 1, 2, 0, 1, 2].map((ri, i) => session(ri, 2 + i * 3, false, 5 - i)) }); // newest first, mild progression
 /* Coach seed: 4 lifts, 8 identical sessions of Day A (deloadCheck needs >=3 lifts with >=6 sessions, >=60% not climbing). */
 const coachState = () => ({ version: 5, settings: { ...SET }, routines: routines().slice(0, 1), active: null,
@@ -132,6 +136,33 @@ await settle(page); s = await st(page);
 end(`sessions ${before}->${s.sessions.length}, active=${s.active}; lands on Progress tab; header Finish in first viewport: ${fb.inView}; Save in first viewport: ${saveVis.inView}`);
 await ctx.close();
 
+/* ============ 2c. Override the load on all three sets (2.0 set-1 cascade) ============
+   Was: a stepper tap on each of the three sets, then the three ticks (6 taps). Now the
+   first set's stepper carries the other two, so overriding the load and logging the first
+   set is 2 taps; ticking sets 2 and 3 is the same single tap each as ever (journey 3b). */
+({ ctx, page } = await open(mainState())); await page.reload(); await page.waitForSelector('[data-act="start"].primary');
+await page.locator('[data-act="start"].primary').tap(); await page.waitForSelector('.card.ex');
+const c0 = [0, 1, 2].map(i => page.inputValue(`.set[data-ei="0"][data-si="${i}"] input[data-f="w"]`));
+const cw = await Promise.all(c0);
+begin('2c override load on 3 sets');
+await tap(page, '.set[data-ei="0"][data-si="0"] [data-act="step"][data-f="w"][data-d="1"]', 'weight +');
+await tap(page, '.set[data-ei="0"][data-si="0"] .tick', 'tick');
+await settle(page); s = await st(page);
+end(`set 1 +5 then tick it; ${cw.join('/')} -> ${s.active.exercises[0].sets.map(x => x.w).join('/')}: all three overridden by one stepper tap (was a stepper per set: 3 steppers + 3 ticks = 6 taps; sets 2-3 still tick in 1 tap each)`);
+await ctx.close();
+
+/* ============ 2d. The generated warm-up ramp (defaults: on for compounds) ============ */
+({ ctx, page } = await open(mainState(true))); await page.reload(); await page.waitForSelector('[data-act="start"].primary');
+await page.locator('[data-act="start"].primary').tap(); await page.waitForSelector('.card.ex');
+const wuN = await page.locator('.card.ex[data-ei="0"] .set.warm').count();
+const wuRamp = await page.locator('.card.ex[data-ei="0"] .set.warm').evaluateAll(rs => rs.map(r => r.querySelector('input[data-f="w"]').value + 'x' + r.querySelector('input[data-f="r"]').value).join(' '));
+begin('2d warm-up ramp (tick each)');
+for (let i = 0; i < wuN; i++) await tap(page, `.card.ex[data-ei="0"] .set.warm >> nth=${i} >> .tick`, 'warm-up tick');
+await settle(page); s = await st(page);
+end(`${wuN} generated warm-ups (${wuRamp}), one tap each; working sets untouched (${s.active.exercises[0].sets.filter(x => !x.warm).map(x => x.w + 'x' + x.r).join(' ')})`);
+R.touch.activeWarm = await audit(page, 'body');
+await ctx.close();
+
 /* ============ 3a. Active workout must not overflow sideways (traps 12/16), and the
    set-row inputs must still fit a 5-char weight ("137.5") at each width ============ */
 R.overflow = {};
@@ -153,11 +184,11 @@ for (const w of [320, 360, 390]) {
 ({ ctx, page } = await open(mainState())); await page.reload(); await page.waitForSelector('[data-act="start"].primary');
 begin('3b full workout (tick all sets + finish)');
 await tap(page, '[data-act="start"].primary', 'Start'); await page.waitForSelector('.card.ex');
-const nSets = await page.locator('.set .tick').count();
+const nSets = await page.locator('.set:not(.warm) .tick').count();
 for (let i = 0; i < nSets; i++) {
-  const ok = await page.locator('.set .tick').nth(i).evaluate(el => el.closest('.set').classList.contains('done'));
+  const ok = await page.locator('.set:not(.warm) .tick').nth(i).evaluate(el => el.closest('.set').classList.contains('done'));
   if (ok) continue;
-  const loc = page.locator('.set .tick').nth(i);
+  const loc = page.locator('.set:not(.warm) .tick').nth(i);
   const vis = await loc.evaluate(el => { const r = el.getBoundingClientRect(), t = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return r.top >= 0 && r.bottom <= innerHeight && (el === t || el.contains(t)); });
   if (!vis) J.scrolls++;
   await loc.tap(); J.taps++;
@@ -215,6 +246,20 @@ if (!(await page.locator('[data-act="edit-last"]').count())) {
   await page.waitForFunction(() => !document.querySelector('.backdrop')); await settle(page);
   s = await st(page);
   end(`reps ${q0} -> ${s.sessions[0].exercises[0].sets[0].r}; Last row bottom at y=${lastY}px; stays on Today (${await page.locator('[data-act="start"].primary').count() > 0}); keyboard entry not counted`);
+}
+await ctx.close();
+
+/* ============ 6. Trained today's day, didn't log it (package D's Today button) ============
+   Added by package C, measured only once D has merged: until then there is no button. */
+({ ctx, page } = await open(mainState())); await page.reload(); await page.waitForSelector('[data-act="start"].primary');
+if (!(await page.locator('[data-act="offbook"]').count())) {
+  R.journeys.push({ journey: '6 trained, not logged', taps: 0, scrolls: 0, ms: 0, notes: 'NOT MEASURED: no [data-act="offbook"] on Today yet (package D)' });
+} else {
+  begin('6 trained, not logged');
+  const n6 = (await st(page)).sessions.length;
+  await tap(page, '[data-act="offbook"]', 'Trained, didn\'t log it'); await settle(page);
+  s = await st(page);
+  end(`sessions ${n6}->${s.sessions.length}; unlogged=${!!(s.sessions[0] && s.sessions[0].unlogged)}`);
 }
 await ctx.close();
 

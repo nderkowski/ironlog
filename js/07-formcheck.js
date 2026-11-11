@@ -653,7 +653,7 @@ function commitSession(){
     w.forEach(function(s){ delete s.out; });
     if(w.length&&w[w.length-1].done) w[w.length-1].out=true;
   });
-  a.exercises.forEach(function(e){ e.sets=e.sets.filter(function(s){ return s.done; }); });
+  a.exercises.forEach(function(e){ e.sets=e.sets.filter(function(s){ return s.done; }); e.sets.forEach(function(s){ delete s.touched; }); });   // touched is for the live screen only
   a.exercises=a.exercises.filter(function(e){ return e.sets.length; });
   S.sessions.unshift(a);
   S.active=null; stopRest();

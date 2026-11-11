@@ -46,7 +46,11 @@ function makeSessionEx(planEx,planId){
   }
   var raw=lastRawSets(planEx.name);
   var sets=[];
-  if(raw) raw.forEach(function(s){ if(s.warm) sets.push({w:String(s.w),r:String(s.r),warm:true,done:false}); });
+  /* Warm-ups the lifter built by hand carry over so they aren't retyped. The
+     app's own (gen) ramp is not copied — it was shaped by last time's load —
+     it is generated again from today's (2.0 S3). */
+  if(raw) raw.forEach(function(s){ if(s.warm&&!s.gen) sets.push({w:String(s.w),r:String(s.r),warm:true,done:false}); });
+  if(!sets.length&&p.w!==""&&p.kind!=="new") sets=c2WarmUps(planEx.name,planEx,num(p.w));   // not off a guessed first weight
   var n=Math.max(1,num(p.sets)||3);
   for(var i=0;i<n;i++){
     /* A top-set lift: the first working set is the top set, the rest are the
@@ -70,6 +74,9 @@ function makeSessionEx(planEx,planId){
        included) and before any chip or edit: the override rate compares what
        was logged against this. */
     presc:{w:p.w,r:p.r},
+    /* 2.0 §3b: "Usual: 65 × 10" — null unless the last session was a single
+       self-chosen drop. Computed here so tapping the chip is only a fill. */
+    usual:usualOf(planEx.name,planEx),
     lastW:last?num(last.sets[0].w):null, lastR:last?num(last.sets[0].r):null,
     sets:sets
   };
@@ -196,6 +203,7 @@ function todayActive(){
     '<button class="btn sm ghost" data-act="finish">Finish</button></div>'+
     '<div class="row tiny muted" id="sess-summary" style="margin:6px 0 12px;gap:10px"></div>'+
     '<div class="stack">';
+  html+=c2EaseBanner();
   a.exercises.forEach(function(ex,ei){ html+=exerciseCard(ex,ei); });
   html+='<button class="btn block ghost" data-act="add-ex">+ Add exercise</button>'+
     '<div class="card"><div class="eyebrow" style="margin-bottom:7px">Session note</div>'+
@@ -227,7 +235,6 @@ function exerciseCard(ex,ei){
   var t=trend(ex.name);
   var mode=bwMode(ex);
   var met=metricOf(ex);
-  var range=(ex.repTop>ex.reps?(ex.reps+"–"+ex.repTop):String(ex.targetReps))+metricSuffix(met);
   var nWork=working(ex.sets).length;
   var gtag=groupTag(S.active.exercises,ei);
 
@@ -238,8 +245,7 @@ function exerciseCard(ex,ei){
         /* "target" and "range" were too alike to read as different modes of
            progression, which is exactly how an exercise stuck on straight sets
            went unnoticed for weeks. "straight" names what it does. */
-        '<span>'+(schemeOf(ex)==="topback"?"top + "+Math.max(0,nWork-1)+" back-off"+(nWork===2?"":"s")+" · "+esc(range):
-                  nWork+' × '+esc(range)+(ex.repTop>ex.reps?" range":" straight"))+'</span>'+
+        '<span>'+c2MetaText(ex)+'</span>'+
         (met?'<span class="chip tag">'+(met===1?"TIME":"DISTANCE")+'</span>':"")+
         (mode===1?'<span class="chip tag">BODYWEIGHT</span>':mode===2?'<span class="chip tag">ASSISTED</span>':"")+
         (ex.supplemental?'<span class="chip tag">EXTRA</span>':"")+
@@ -256,7 +262,9 @@ function exerciseCard(ex,ei){
     var differs=ex.lastW!==null&&first&&(num(first.w)!==ex.lastW||num(first.r)!==ex.lastR);
     html+='<div class="lastrow"><span>'+esc(relDate(last.ts))+'</span>'+
       '<span class="num">'+esc(summary)+'</span>'+
-      (differs?'<button class="revert" data-act="revert" data-ei="'+ei+'">Keep '+esc(entryText({w:ex.lastW},mode))+metricJoin(met)+ex.lastR+metricSuffix(met)+'</button>':"")+
+      (c2UsualShown(ex)
+        ? '<button class="revert usual" data-act="usual" data-ei="'+ei+'">Usual: '+esc(entryText({w:ex.usual.w},mode))+' '+metricJoin(met)+' '+esc(ex.usual.r)+metricSuffix(met)+'</button>'
+        : differs?'<button class="revert" data-act="revert" data-ei="'+ei+'">Keep '+esc(entryText({w:ex.lastW},mode))+metricJoin(met)+ex.lastR+metricSuffix(met)+'</button>':"")+
     '</div>';
   } else {
     html+='<div class="lastrow"><span>First time logging this one.</span></div>';
@@ -264,26 +272,16 @@ function exerciseCard(ex,ei){
   var ln=lastNote(ex.name);
   if(ln) html+='<div class="outhint">Note from '+esc(relDate(ln.ts))+': '+esc(ln.note)+'</div>';
   if(ex.why){
-    var glyph=ex.kind==="up"?"↑":ex.kind==="reps"?"+1":ex.kind==="deload"?"↓":"=";
-    html+='<div class="why '+esc(ex.kind)+'"><span class="mark">'+glyph+'</span><span>'+esc(ex.why)+'</span></div>';
+    html+='<div class="why '+esc(ex.kind)+'"><span class="mark">'+c2WhyGlyph(ex.kind)+'</span><span>'+esc(ex.why)+'</span></div>';
   }
-  var outSi=-1, outNo=0;
-  if(repOutApplies(ex)) ex.sets.forEach(function(s,si){ if(!s.warm){ outSi=si; outNo++; } });
-  if(outSi>=0)
-    html+='<div class="outhint">Set '+outNo+' is a rep-out: as many as you can — '+esc(repOutHint(ex.name))+'.</div>';
-  if(schemeOf(ex)==="topback"){
-    var tw=working(ex.sets)[0];
-    if(tw&&num(tw.w)>0&&backOffW(num(tw.w),ex)>=num(tw.w)&&working(ex.sets).length>1)
-      html+='<div class="outhint">No lighter back-off here — the back-offs stay at the top weight.</div>';
-  }
+  var outSi=c2OutSet(ex).si;
+  html+=c2HintsHtml(ex);
   html+='</div>';
 
   html+='<div class="sets">';
-  var wi=0;
   ex.sets.forEach(function(s,si){
-    if(!s.warm) wi++;
     html+='<div class="set'+(s.warm?" warm":"")+(s.done?" done":"")+(s.done&&s.pr?" pr":"")+(si===outSi?" out":"")+'" data-ei="'+ei+'" data-si="'+si+'">'+
-      '<button class="idx" data-act="warm" aria-label="'+(s.warm?"Warm-up: make it a working set":(s.role==="top"?"Top set":"Set "+wi)+": make it a warm-up")+'">'+(s.warm?"W":s.role==="top"?"T":wi)+'</button>'+
+      '<button class="idx" data-act="warm" aria-label="'+c2IdxAria(ex,si)+'">'+c2IdxText(ex,si)+'</button>'+
       '<div class="grp">'+
         '<button data-act="step" data-f="w" data-d="-1" aria-label="Less weight">−</button>'+
         '<input inputmode="decimal" enterkeyhint="done" type="number" step="any" data-f="w" value="'+esc(s.w)+'" placeholder="'+esc(mode===1?"+":mode===2?"−":unit())+'" aria-label="Weight">'+
@@ -353,6 +351,210 @@ function refreshSummary(){
                '<span class="num">'+commas(vol)+' '+unit()+' volume</span>';
 }
 
+/* ---- the pieces of a card that depend on which rows are warm-ups, built in one
+   place so a warm-up flip can rewrite them in place (trap 1) ---- */
+function c2MetaText(ex){
+  var range=(ex.repTop>ex.reps?(ex.reps+"–"+ex.repTop):String(ex.targetReps))+metricSuffix(metricOf(ex));
+  var nWork=working(ex.sets).length;
+  return schemeOf(ex)==="topback"?"top + "+Math.max(0,nWork-1)+" back-off"+(nWork===2?"":"s")+" · "+esc(range):
+         nWork+' × '+esc(range)+(ex.repTop>ex.reps?" range":" straight");
+}
+function c2OutSet(ex){
+  var si=-1, no=0;
+  if(repOutApplies(ex)) ex.sets.forEach(function(s,i){ if(!s.warm){ si=i; no++; } });
+  return {si:si,no:no};
+}
+function c2WorkNo(ex,si){ var n=0; for(var k=0;k<=si;k++) if(!ex.sets[k].warm) n++; return n; }
+function c2IdxText(ex,si){ var s=ex.sets[si]; return s.warm?"W":s.role==="top"?"T":c2WorkNo(ex,si); }
+function c2IdxAria(ex,si){
+  var s=ex.sets[si];
+  return s.warm?"Warm-up: make it a working set":(s.role==="top"?"Top set":"Set "+c2WorkNo(ex,si))+": make it a warm-up";
+}
+function c2HintsHtml(ex){
+  var html="", o=c2OutSet(ex);
+  if(o.si>=0)
+    html+='<div class="outhint" data-c2="hint">Set '+o.no+' is a rep-out: as many as you can — '+esc(repOutHint(ex.name))+'.</div>';
+  if(schemeOf(ex)==="topback"){
+    var tw=working(ex.sets)[0];
+    if(tw&&num(tw.w)>0&&backOffW(num(tw.w),ex)>=num(tw.w)&&working(ex.sets).length>1)
+      html+='<div class="outhint" data-c2="hint">No lighter back-off here — the back-offs stay at the top weight.</div>';
+  }
+  return html;
+}
+/* A set flipped to or from a warm-up: the row's class, the numbers on every row
+   of the card, the rep-out marker and hints, the meta line and the "− Set"
+   button, all written into the nodes already there. No row is replaced. */
+function c2RefreshCard(ei){
+  var ex=S.active.exercises[ei], card=$('.card.ex[data-ei="'+ei+'"]');
+  if(!card) return;
+  var out=c2OutSet(ex).si;
+  ex.sets.forEach(function(s,si){
+    var row=$('.set[data-ei="'+ei+'"][data-si="'+si+'"]',card);
+    if(!row) return;
+    row.classList.toggle("warm",!!s.warm);
+    row.classList.toggle("out",si===out);
+    var ix=$(".idx",row);
+    ix.textContent=c2IdxText(ex,si);
+    ix.setAttribute("aria-label",c2IdxAria(ex,si));
+    refreshPlates(ei,si,row);
+  });
+  var meta=$(".ex-meta span",card); if(meta) meta.innerHTML=c2MetaText(ex);
+  var co=$(".callout",card);
+  if(co){
+    $$('[data-c2="hint"]',co).forEach(function(n){ n.remove(); });
+    co.insertAdjacentHTML("beforeend",c2HintsHtml(ex));
+  }
+  var del=$('[data-act="del-set"]',card), add=$('[data-act="add-set"]',card);
+  if(working(ex.sets).length>1){
+    if(!del&&add) add.insertAdjacentHTML("afterend",'<button class="btn sm ghost" data-act="del-set" data-ei="'+ei+'">− Set</button>');
+  } else if(del) del.remove();
+}
+
+/* ============ 2.0: fewer taps when you deviate (cascade, usual load, ease back) ============
+   All of it writes into the rows already on screen: no render on the logging
+   path (trap 1), so the keyboard, the scroll and every element a tap is about
+   to land on stay where they are. */
+function c2AnyDone(ex){ return ex.sets.some(function(s){ return !s.warm&&s.done; }); }
+function c2WhyGlyph(kind){ return kind==="up"?"↑":kind==="reps"?"+1":kind==="deload"?"↓":"="; }
+function c2Paint(ei,j){
+  var row=$('.set[data-ei="'+ei+'"][data-si="'+j+'"]');
+  if(!row) return;
+  var inp=$('input[data-f="w"]',row);
+  if(inp) inp.value=S.active.exercises[ei].sets[j].w;
+  refreshPlates(ei,j,row);
+}
+/* Set 1's weight changed (typed or stepped): every later undone working set
+   still at what set 1 was just before follows it. A top-set lift's back-offs
+   follow only while they are still the planned back-off, and take the new one.
+   Reps never cascade; done sets and warm-ups never change. */
+function c2Cascade(ei,si,old){
+  var ex=S.active.exercises[ei], sets=ex.sets, first=-1;
+  for(var k=0;k<sets.length;k++) if(!sets[k].warm){ first=k; break; }
+  if(si!==first) return;
+  var nw=sets[si].w, tb=schemeOf(ex)==="topback";
+  var okN=String(nw).trim()!==""&&isFinite(num(nw));
+  var ob=tb?String(backOffW(num(old),ex)):null, nb=tb&&okN?String(backOffW(num(nw),ex)):null;
+  for(var j=si+1;j<sets.length;j++){
+    var s=sets[j];
+    if(s.warm||s.done||s.touched) continue;                      // a set you edited yourself is yours
+    if(tb&&s.role==="back"){
+      if(nb!==null&&String(s.w)===ob){ s.w=nb; c2Paint(ei,j); }
+      continue;
+    }
+    if(String(s.w)===String(old)){ s.w=nw; c2Paint(ei,j); }
+  }
+}
+/* Every undone working set takes w × r. Top-set lifts: the top gets w, the
+   back-offs the planned back-off from it. */
+function c2FillUndone(ei,w,r){
+  var ex=S.active.exercises[ei], tb=schemeOf(ex)==="topback";
+  ex.sets.forEach(function(s,j){
+    if(s.done||s.warm) return;
+    s.w=String(tb&&s.role==="back"?backOffW(num(w),ex):w);
+    s.r=String(r);
+    delete s.touched;
+    var row=$('.set[data-ei="'+ei+'"][data-si="'+j+'"]');
+    if(row){ var ri=$('input[data-f="r"]',row); if(ri) ri.value=s.r; }
+    c2Paint(ei,j);
+  });
+}
+/* The "why" strip under the last-time row: text, glyph and tone, in place. */
+function c2PaintWhy(ei){
+  var ex=S.active.exercises[ei], card=$('.card.ex[data-ei="'+ei+'"]'), co=card&&$(".callout",card);
+  if(!co) return;
+  var node=$(".why",co);
+  if(!ex.why){ if(node) node.remove(); return; }
+  if(!node){
+    node=document.createElement("div");
+    node.innerHTML='<span class="mark"></span><span></span>';
+    co.appendChild(node);
+  }
+  node.className="why "+ex.kind;
+  node.children[0].textContent=c2WhyGlyph(ex.kind);
+  node.children[1].textContent=ex.why;
+}
+function c2UsualShown(ex){ return !!(ex.usual&&ex.usual.w!==""&&!c2AnyDone(ex)); }
+function c2OnUsual(ei,chip){
+  var ex=S.active.exercises[ei], u=ex.usual;
+  if(!u) return;
+  c2FillUndone(ei,u.w,u.r);
+  ex.kind=u.kind; ex.why=u.why;
+  c2PaintWhy(ei);
+  ex.usual=null;                                  // applied: a re-render must not offer it again
+  if(chip) chip.remove();
+  save();
+  toast("Back to "+entryText({w:u.w},bwMode(ex))+" × "+u.r);
+}
+/* Once a working set is done the chips have had their moment (amendment 9):
+   they leave the page in place, from the tick, the steppers and the inputs. */
+function c2SyncChips(){
+  if(!S.active) return;
+  var any=false;
+  S.active.exercises.forEach(function(ex,ei){
+    if(!c2AnyDone(ex)) return;
+    any=true;
+    var ch=$('.card.ex[data-ei="'+ei+'"] .usual'); if(ch) ch.remove();
+  });
+  if(any){
+    var b=$('[data-act="easeback"]');
+    if(b) (b.closest(".banner")||b).remove();
+  }
+}
+/* "12 days since you last trained": the gap since the newest session of any
+   kind, only at the start of a session and only until something is done. */
+function c2EaseGap(){
+  var a=S.active;
+  if(!a||a.easeBack||!S.sessions.length||!a.exercises.length) return 0;
+  if(a.exercises.some(c2AnyDone)) return 0;
+  var newest=0;
+  S.sessions.forEach(function(x){ if(x.ts>newest) newest=x.ts; });
+  var d=calDaysAgo(newest);
+  return d>=10?d:0;
+}
+function c2EaseBanner(){
+  var d=c2EaseGap();
+  if(!d) return "";
+  return '<div class="banner calm easeback"><div class="bt">'+d+' days since you last trained</div>'+
+    '<div class="acts"><button class="btn sm" data-act="easeback">Ease back ~10%</button></div></div>';
+}
+function c2OnEaseBack(){
+  var d=c2EaseGap();
+  if(!d) return;
+  var undo=[], whys=[];
+  S.active.exercises.forEach(function(ex,ei){
+    var tb=schemeOf(ex)==="topback", topNew=null, changed=false;
+    whys[ei]={why:ex.why,kind:ex.kind};
+    ex.sets.forEach(function(s,j){
+      if(s.done||s.warm||!(num(s.w)>0)) return;
+      var nw;
+      if(tb&&s.role==="back"&&topNew!==null) nw=backOffW(topNew,ex);
+      else { nw=easierEx(num(s.w),ex); if(tb&&topNew===null) topNew=nw; }
+      if(String(nw)===String(s.w)) return;
+      undo.push([ei,j,s.w,String(nw)]);
+      s.w=String(nw); changed=true; delete s.touched; c2Paint(ei,j);
+    });
+    if(changed){
+      ex.why="Easing back after "+d+" days"+(ex.why?" — "+ex.why:"");
+      c2PaintWhy(ei);
+    }
+  });
+  S.active.easeBack=true;
+  var b=$('[data-act="easeback"]'); if(b) (b.closest(".banner")||b).remove();
+  save();
+  toastUndo("Eased back for today",function(){
+    if(!S.active||!S.active.easeBack) return;
+    if(S.active.exercises.some(c2AnyDone)){ toast("Already started — change the loads by hand"); return; }
+    undo.forEach(function(u){
+      var s=S.active.exercises[u[0]]&&S.active.exercises[u[0]].sets[u[1]];
+      if(s&&String(s.w)===u[3]) s.w=u[2];
+    });
+    S.active.exercises.forEach(function(ex,ei){ if(whys[ei]){ ex.why=whys[ei].why; ex.kind=whys[ei].kind; } });
+    delete S.active.easeBack;
+    save();
+    if(TAB==="today"){ viewToday(); refreshSummary(); }       // the banner comes back
+  });
+}
+
 /* ---- interactions ---- */
 $("#view").addEventListener("click",function(e){
   var t=e.target;
@@ -389,11 +591,14 @@ $("#view").addEventListener("click",function(e){
     var row=step.closest(".set");
     var f=step.dataset.f, d=num(step.dataset.d);
     var ex=S.active.exercises[+row.dataset.ei], st=ex.sets[+row.dataset.si];
+    var oldW=st.w;
+    if(f==="w"){ delete $('input[data-f="w"]',row).dataset.c2old; st.touched=true; }
     if(f==="w") st[f]=String(stepWeight(st[f],d,ex));     // the next stack weight when the row has pins
     else st[f]=String(Math.max(0,round(num(st[f])+d*metricStep(metricOf(ex)),2)));
     $('input[data-f="'+f+'"]',row).value=st[f];
     if(st.done){ st.load=effLoad(st.w,bwMode(ex)); refreshSummary(); }
-    if(f==="w") refreshPlates(+row.dataset.ei,+row.dataset.si,row);
+    if(f==="w"){ refreshPlates(+row.dataset.ei,+row.dataset.si,row); c2Cascade(+row.dataset.ei,+row.dataset.si,oldW); }
+    c2SyncChips();
     buzz(8); save(); return;
   }
 
@@ -414,9 +619,13 @@ $("#view").addEventListener("click",function(e){
   if(wm){
     var r3=wm.closest(".set");
     var ex5=S.active.exercises[+r3.dataset.ei], st5=ex5.sets[+r3.dataset.si];
+    /* A ticked set is logged as what it is; flipping it would silently move it
+       in or out of every count (S4). */
+    if(st5.done){ toast("Untick the set first"); return; }
     st5.warm=!st5.warm;
     if(st5.warm) st5.pr=false;
-    save(); viewToday(); refreshSummary();
+    c2RefreshCard(+r3.dataset.ei);                                // in place: no re-render (trap 1)
+    save(); refreshSummary();
     toast(st5.warm?"Marked as a warm-up":"Back to a working set");
     return;
   }
@@ -432,11 +641,15 @@ $("#view").addEventListener("click",function(e){
   var rev=t.closest('[data-act="revert"]');
   if(rev){
     var ex2=S.active.exercises[+rev.dataset.ei];
-    ex2.sets.forEach(function(s){ if(!s.done&&!s.warm){ s.w=String(ex2.lastW); s.r=String(ex2.lastR); } });
-    save(); viewToday(); refreshSummary();
+    c2FillUndone(+rev.dataset.ei,ex2.lastW,ex2.lastR);          // in place: no re-render (trap 1)
+    rev.remove();
+    save();
     toast("Back to "+entryText({w:ex2.lastW},bwMode(ex2))+" × "+ex2.lastR);
     return;
   }
+  var usl=t.closest('[data-act="usual"]');
+  if(usl){ c2OnUsual(+usl.dataset.ei,usl); return; }
+  if(t.closest('[data-act="easeback"]')){ c2OnEaseBack(); return; }
 
   var addSet=t.closest('[data-act="add-set"]');
   if(addSet){
@@ -473,15 +686,40 @@ $("#view").addEventListener("input",function(e){
   if(inp.matches('.set input[data-f]')){
     var row=inp.closest(".set");
     var ex=S.active.exercises[+row.dataset.ei], st=ex.sets[+row.dataset.si];
+    var oldV=st[inp.dataset.f];
     st[inp.dataset.f]=inp.value;
     if(st.done){ st.load=effLoad(st.w,bwMode(ex)); refreshSummary(); }
-    if(inp.dataset.f==="w") refreshPlates(+row.dataset.ei,+row.dataset.si,row);
+    if(inp.dataset.f==="w"){
+      /* The value before this edit began, kept until the field is committed (blur
+         or Enter): the followers move once, to a finished number, never to "1"
+         on the way to "135". */
+      if(inp.dataset.c2old===undefined) inp.dataset.c2old=oldV;
+      st.touched=true;
+      refreshPlates(+row.dataset.ei,+row.dataset.si,row);
+    }
+    c2SyncChips();
     save();
   } else if(inp.matches('[data-act="snote"]')){
     S.active.note=inp.value; save();
   } else if(inp.matches('[data-act="exnote"]')){
     S.active.exercises[+inp.dataset.ei].note=inp.value; save();
   }
+});
+$("#view").addEventListener("change",function(e){
+  var inp=e.target;
+  if(!S.active||!inp.matches||!inp.matches('.set input[data-f="w"]')) return;
+  var old=inp.dataset.c2old;
+  delete inp.dataset.c2old;
+  if(old===undefined) return;
+  var row=inp.closest(".set");
+  /* A typed value reaches the other sets only if it could be a working load:
+     "1" typed on the way to "135", or a slip of the thumb, stays in set 1 (the
+     Keep chip is the way back). Judged against what the set held before the
+     edit; with nothing before it there is nothing to compare, so it follows. */
+  var nv=num(inp.value), ov=num(old);
+  if(ov>0&&!(nv>0&&nv>=0.5*ov&&nv<=1.5*ov)){ save(); return; }
+  c2Cascade(+row.dataset.ei,+row.dataset.si,old);
+  save();
 });
 $("#view").addEventListener("keydown",function(e){
   if(e.key==="Enter"&&e.target.matches(".set input")){ e.preventDefault(); e.target.blur(); }
@@ -507,7 +745,7 @@ function toggleSet(ei,si){
   buzz(14);
   if(S.settings.autoRest&&lastInGroup(S.active.exercises,ei)) startRest(S.settings.rest);
   save();
-  refreshSetRow(ei,si); refreshSummary();
+  refreshSetRow(ei,si); refreshSummary(); c2SyncChips();
   if(st.pr) toast("New PR on "+ex.name);
 }
 
@@ -821,6 +1059,17 @@ function barRow(ex,attr){
     '<input class="txt small" inputmode="decimal" type="number" step="any" placeholder="—" data-'+attr+'="1" value="'+(bar||"")+'"></div>';
 }
 
+/* Generated warm-up ramp for this lift: on by default for compounds, off for
+   isolation work, and a choice that sticks per lift. */
+function warmRow(ex){
+  if(bwMode(ex)!==0||metricOf(ex)!==0) return "";
+  var on=c2WarmOn(ex.name,ex);
+  return '<div class="field-row"><div class="fl">Warm-up sets<div class="fh">'+
+      (on?"A short ramp before the work sets, built from today's load":"None for this lift")+
+    '</div></div><button class="switch'+(on?" on":"")+'" role="switch" aria-checked="'+on+
+    '" aria-label="Generated warm-up sets" data-x="warmgen"></button></div>';
+}
+
 function exerciseMenu(ei){
   var ex=S.active.exercises[ei];
   sheet('<h3>'+esc(ex.name)+'</h3><div class="sub">'+plural(working(ex.sets).length,"working set")+
@@ -839,6 +1088,7 @@ function exerciseMenu(ei){
     loadTypeRow(bwMode(ex),"bw")+
     metricRow(metricOf(ex),"met")+
     barRow(ex,"bar")+
+    warmRow(ex)+
     muscleRow(ex)+
     '<div class="menu" style="margin-top:10px">'+
       '<button data-x="warmup">+ Add a warm-up set</button>'+
@@ -870,6 +1120,18 @@ function exerciseMenu(ei){
       $('[data-bar]',el).oninput=function(){
         ex.bar=Math.max(0,num(this.value));
         save(); viewToday(); refreshSummary();
+      };
+      var wg=$('[data-x="warmgen"]',el);
+      if(wg) wg.onclick=function(){
+        var on=!c2WarmOn(ex.name,ex);
+        if(!S.settings.warmups||typeof S.settings.warmups!=="object") S.settings.warmups={};
+        S.settings.warmups[normName(ex.name)]=on;
+        if(!on) ex.sets=ex.sets.filter(function(s){ return !(s.warm&&s.gen&&!s.done); });
+        else if(!ex.sets.some(function(s){ return s.warm; })){
+          var fw=working(ex.sets)[0];
+          ex.sets=(fw?c2WarmUps(ex.name,ex,num(fw.w)):[]).concat(ex.sets);
+        }
+        save(); closeSheet(); viewToday(); refreshSummary(); exerciseMenu(ei);
       };
       $('[data-x="mg"]',el).onclick=function(){
         musclesSheet(ex,function(){ exerciseMenu(ei); });

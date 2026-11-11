@@ -487,7 +487,7 @@ function drawEditor(){
     e.sets.forEach(function(s,si){
       if(!s.warm) wi++;
       html+='<div class="erow'+(s.warm?" warm":"")+'">'+
-        '<button class="ei" data-warm="'+ei+'.'+si+'" title="Toggle warm-up">'+(s.warm?"W":wi)+'</button>'+
+        '<button class="ei" data-warm="'+ei+'.'+si+'" title="Toggle warm-up">'+(s.warm?"W":s.role==="top"?"T":wi)+'</button>'+
         '<input inputmode="decimal" type="number" step="any" data-f="w" aria-label="Weight, set '+(si+1)+'" data-k="'+ei+'.'+si+'" value="'+esc(s.w)+'">'+
         '<span class="times">'+metricJoin(emet)+'</span>'+
         '<input inputmode="numeric" type="number" data-f="r" aria-label="Reps, set '+(si+1)+'" data-k="'+ei+'.'+si+'" value="'+esc(s.r)+'">'+
@@ -552,7 +552,9 @@ function drawEditor(){
       if(b.dataset.addset!==undefined){
         var e1=d.exercises[+b.dataset.addset];
         var w1=working(e1.sets), t1=w1[w1.length-1]||e1.sets[e1.sets.length-1]||{w:"",r:"8"};
-        e1.sets.push({w:t1.w,r:t1.r,done:true});
+        var ns1={w:t1.w,r:t1.r,done:true};
+        if(e1.scheme==="topback") ns1.role="back";               // + Set on a top-set lift is another back-off
+        e1.sets.push(ns1);
         drawEditor(); return;
       }
       if(b.dataset.addwarm!==undefined){
@@ -572,6 +574,7 @@ function drawEditor(){
                               targetReps:pe.reps,reps:pe.reps,repTop:pe.repTop,
                               inc:pe.inc,bw:pe.bw,bar:pe.bar,metric:pe.metric,
                               mg:pe.mg,mg2:pe.mg2.slice(),
+                              scheme:pe.scheme,backPct:pe.backPct,pins:cleanPins(pe.pins),
                               supplemental:true,note:"",
                               sets:[{w:"",r:String(pe.reps),done:true}]});
         editorToEnd=true; drawEditor();

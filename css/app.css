@@ -226,12 +226,21 @@ h1,h2,h3{margin:0;text-wrap:balance}
   padding:10px 10px;font-size:12px;color:var(--ink-2);
 }
 .callout .lastrow .num{color:var(--ink)}
+/* S4: the chip is a real 44 px tall control and paints as a 26 px pill (the
+   ::before): the rest is transparent hit area inside the callout's own 10 px
+   gutter, so the row keeps the height it had (margin -9px 0). */
 .callout .revert{
-  margin-left:auto;font-size:12px;font-weight:700;
-  padding:3px 8px;border-radius:7px;background:var(--panel);color:var(--ink-2);
-  border:1px solid var(--line);white-space:nowrap;position:relative;
+  margin:-9px 0 -9px auto;padding:0 10px;font-size:12px;font-weight:700;color:var(--ink-2);
+  background:none;border:0;white-space:nowrap;position:relative;isolation:isolate;
+  min-height:44px;display:inline-flex;align-items:center;
 }
-.callout .revert::before{content:"";position:absolute;left:0;right:0;top:-10px;bottom:-10px}
+.callout .revert::before{
+  content:"";position:absolute;z-index:-1;left:0;right:0;top:9px;bottom:9px;border-radius:7px;
+  background:var(--panel);border:1px solid var(--line);
+}
+.callout .revert.usual{color:var(--accent-ink)}
+.callout .revert.usual::before{background:var(--accent-soft);border-color:var(--accent-soft)}
+.offbook{min-height:44px;display:inline-flex;align-items:center}
 .callout .why{
   display:flex;align-items:center;gap:7px;
   padding:7px 10px;font-size:12.5px;font-weight:600;
@@ -251,7 +260,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .set.out .idx{color:var(--accent-ink);font-weight:800}
 /* Per-lift notes: a quiet tap line until there is something to say. */
 .exnote{padding:2px var(--pad) 0}
-.exnote-add{font-size:12.5px;color:var(--ink-2);padding:6px 0;background:none;border:0}
+.exnote-add{font-size:12.5px;color:var(--ink-2);padding:0;background:none;border:0;min-height:44px;display:inline-flex;align-items:center}
 .exnote-txt{width:100%;min-height:44px;font-size:14px;margin:4px 0 2px;resize:vertical}
 
 /* ---------- form check (v28) ---------- */
@@ -384,7 +393,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
   color:var(--accent-ink);background:var(--accent-soft);
   padding:1px 6px;border-radius:6px;margin-right:7px;vertical-align:2px;
 }
-.plates .lb{letter-spacing:.06em;margin-right:5px;opacity:.7}
+.plates .lb{letter-spacing:.06em;margin-right:5px}
 .plates i{font-style:normal;opacity:.65}
 .plates .off{color:var(--bad-ink)}
 .set.done .plates{opacity:.55}
@@ -399,6 +408,15 @@ h1,h2,h3{margin:0;text-wrap:balance}
 /* wide phones have the room to make the steppers properly thumb-wide (inner 49, outer 43) */
 @media (min-width:400px){
   .set{--stp:40px}
+}
+/* S4: the outer steppers (weight "−", reps "+") grow to 44 where the width is
+   there to pay for it. Measured: the weight box is 54 px at 390, 49 at 412 and
+   58 at 430 once they do, and 52 is the least that holds "137.5", so this
+   starts at 420 and never touches the inner pair or the 5 px dead strip on the
+   "×" (trap 23). Below it nothing changes. */
+@media (min-width:420px){
+  .set .grp:nth-of-type(1) button:first-child,
+  .set .grp:nth-of-type(2) button:last-child{width:44px}
 }
 /* 320px class: the width budget is spent, so the steppers go back to 24px wide.
    Heights stay at 44. */
@@ -429,6 +447,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .banner .bd{font-size:13px;color:var(--ink-2)}
 .banner.warn .bd{color:var(--bad-ink)}
 .banner .acts{display:flex;gap:8px;margin-top:10px}
+.banner.easeback .btn.sm{min-height:44px}
 /* the coach's cards: a reason, then one button per choice */
 .co-p{padding:11px 0;border-top:1px solid var(--line)}
 .co-p:first-child{padding-top:0;border-top:0}
