@@ -39,4 +39,6 @@ updated only after the owner's phone check at each milestone.
 | 7R | 3 | Review E code | deepseek-v4-pro | done | 0 blockers; 4 accepted (untagged count, phantom rotation, empty-state line, S1 pairing after reload), 1 rejected (weekStarts order — verified oldest-first) | scratch ds-review-pkgE.md |
 | 8 | 4 | Package D: off-book, pump day, rotation blocks + scorecard, stall on blocks, coachRuleVolume | sonnet (high) / worktree on 70dfad2 | built; t39 re-seed + rebase onto 4ec1000 out | t52 183 (16 mutants caught); t39b 3.0–3.3 cards/yr healthy; t39 §6/§9 assumed old stall rule → ruled: re-seed via two blocks | worktree-agent-aed8b61287f25ed20 @ 9a121f3 |
 | 8R | 4 | Review D code | deepseek-v4-pro | done | 0 blockers; accepted: immutable block anchor, off-book undo no wholesale snapshot restore, empty-balance text, caption; #1 (rangeHist) rejected — single-range change doesn't filter; worker must prove with a test | scratch ds-review-pkgD.md |
-| 9 | 5 | Full review pass, sim + replay + journeys, beta merge | opus + external reviewers | queued | — | — |
+| 8F | 4 | D rework: t39 re-seeded via blocks, review fixes, rebased onto A+B+E+C | sonnet | done | ALL 2.0 packages in one build; every suite rc=0 (t52 210, t39 176, t51 165, t47 251); yearbase 31.3/5.7; t39b 3.0–3.3 cards/yr | worktree-agent-aed8b61287f25ed20 @ 03324e5 |
+| 9 | 5 | End-to-end acceptance on real data (upgrade from v26.14, a gym week by taps, screens, sim, replay) | opus (blind) | out | — | — |
+| 10 | 5 | Docs + gym test plan for the 2.0 beta | sonnet | out | — | — |
