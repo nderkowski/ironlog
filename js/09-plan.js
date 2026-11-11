@@ -360,12 +360,38 @@ function sMissing(keys,name){
     return sDays(k).some(function(r){ return variantsOf(r).some(function(v){ return !sHas(v,name); }); });
   });
 }
-function sRows(keys,re){            // rows named like `re` below 4 sets, over the given days
+/* An existing row is found by what it trains and how, never by spelling: the
+   owner's plan has "Lateral Riase" and "Facepull". On one week variant it is
+   the isolation row whose main muscle (tagsOf) is `mg`; several → the one with
+   the most sets (a face-pull-like name wins a tie). Isolation = the movement
+   class says so, or it is a single-muscle row that is not a heavy lift, which
+   is what a misspelt raise looks like to the name patterns. */
+function sIsIso(e,t){
+  return movementClass(e.name)==="iso"||(!(t.mg2||[]).length&&movementClass(e.name)!=="heavy");
+}
+function sTarget(v,mg,pref){
+  var best=null, bs=-1;
+  v.exercises.forEach(function(e){
+    var t=tagsOf(e);
+    if(t.mg!==mg||!sIsIso(e,t)) return;
+    var sc=num(e.sets)+(pref&&pref.test(e.name)?0.5:0);
+    if(sc>bs){ best=e; bs=sc; }
+  });
+  return best;
+}
+/* The rows below 4 sets that a bump would change, over the given days. */
+function sRows(keys,mg,pref){
   var out=[];
   keys.forEach(function(k){ sDays(k).forEach(function(r){ variantsOf(r).forEach(function(v){
-    v.exercises.forEach(function(e){ if(re.test(normName(e.name))&&num(e.sets)<4) out.push(e); });
+    var e=sTarget(v,mg,pref); if(e&&num(e.sets)<4) out.push(e);
   }); }); });
   return out;
+}
+function sNames(rows){          // the rows' own spellings, once each
+  return rows.map(function(e){ return e.name; }).filter(function(n,i,a){ return a.indexOf(n)===i; }).join(" / ");
+}
+function sBumpRun(mg,pref){
+  return function(v){ var e=sTarget(v,mg,pref); if(e&&num(e.sets)<4) e.sets=4; };
 }
 function sAddRun(name){
   return function(v){
@@ -384,10 +410,10 @@ function planSuggestions(){
   ks=sMissing(["B"],S1_NAMES.tri);
   if(ks.length) out.push({id:"tri", label:"+ Overhead Cable Tricep Extension on B", keys:ks,
     msg:"Added Overhead Cable Tricep Extension to B", run:sAddRun(S1_NAMES.tri)});
-  rows=sRows(["B"],/^lateral raise$/);
-  if(rows.length) out.push({id:"side", keys:["B"], msg:"Lateral Raise is 4 sets on B",
-    label:"Lateral Raise "+Math.min.apply(null,rows.map(function(e){ return num(e.sets); }))+" → 4 sets on B",
-    run:function(v){ v.exercises.forEach(function(e){ if(normName(e.name)==="lateral raise"&&num(e.sets)<4) e.sets=4; }); }});
+  rows=sRows(["B"],"side_delts");
+  if(rows.length) out.push({id:"side", keys:["B"], msg:sNames(rows)+" is 4 sets on B",
+    label:sNames(rows)+" "+Math.min.apply(null,rows.map(function(e){ return num(e.sets); }))+" → 4 sets on B",
+    run:sBumpRun("side_delts")});
   ks=sMissing(["C"],S1_NAMES.quad);
   if(ks.length) out.push({id:"quad", label:"+ Leg Extension on C", keys:ks,
     msg:"Added Leg Extension to C", run:sAddRun(S1_NAMES.quad)});
@@ -403,12 +429,13 @@ function planSuggestions(){
   }
   if(typeof isOptional==="function"&&!S.routines.some(function(r){ return r.key==="P"; }))
     out.push({id:"pump", label:"Add the optional Pump day", pump:true, msg:"Added the Pump day"});
-  rows=sRows(["A","C"],/^face\s?pull$/);
+  var FP=/face\s?pull/i;
+  rows=sRows(["A","C"],"rear_delts",FP);
   if(rows.length){
-    var fk=["A","C"].filter(function(k){ return sRows([k],/^face\s?pull$/).length; });
-    out.push({id:"face", optional:true, keys:fk, msg:"Face Pull is 4 sets on "+sKeysJoin(fk),
-      label:"Face Pull "+Math.min.apply(null,rows.map(function(e){ return num(e.sets); }))+" → 4 sets on "+sKeysJoin(fk)+" (optional)",
-      run:function(v){ v.exercises.forEach(function(e){ if(/^face\s?pull$/.test(normName(e.name))&&num(e.sets)<4) e.sets=4; }); }});
+    var fk=["A","C"].filter(function(k){ return sRows([k],"rear_delts",FP).length; });
+    out.push({id:"face", optional:true, keys:fk, msg:sNames(rows)+" is 4 sets on "+sKeysJoin(fk),
+      label:sNames(rows)+" "+Math.min.apply(null,rows.map(function(e){ return num(e.sets); }))+" → 4 sets on "+sKeysJoin(fk)+" (optional)",
+      run:sBumpRun("rear_delts",FP)});
   }
   return out;
 }
@@ -494,15 +521,27 @@ function planBalanceCard(){
   var ex=b.rows.filter(function(r){ return r.excluded; });
   var shown=b.rows.filter(function(r){ return !r.excluded; });
   var max=18; shown.forEach(function(r){ max=Math.max(max,Math.ceil(r.weekly)); });
+  /* Unset means unset: a log with gaps would guess "1 a week" and make every
+     muscle look under-trained, so ask once instead (the numbers wait for it). */
+  var unset=S.settings.targetFreq===null||S.settings.targetFreq===undefined;
   var html='<div class="bal-head" style="margin-top:14px"><div class="eyebrow">Plan balance</div>'+
-    '<button class="btn sm ghost" data-act="freq" aria-label="Sessions a week: '+esc(fmt(b.f))+'. Change">at '+esc(fmt(b.f))+' a week</button></div>'+
+    (unset?"":'<button class="btn sm ghost" data-act="freq" aria-label="Sessions a week: '+esc(fmt(b.f))+'. Change">at '+esc(fmt(b.f))+' a week</button>')+'</div>'+
     '<section class="card bal" style="padding:9px 0">';
-  shown.forEach(function(r){
-    html+=bandRow(r.n,round(r.weekly,1),r.band[0],r.band[1],max,{state:r.status});
-  });
-  if(ex.length) html+='<div class="bal-note">'+esc(ex.map(function(r){ return r.n; }).join(", "))+' — by choice</div>';
-  html+='<div class="bal-note">Sets a week from the plan, helpers ½. The pump day isn\'t counted — it\'s extra.</div>'+
-    '<div class="bal-note">Shaded: 9–16 a week; 6–12 for abs, rear delts, forearms and traps.</div>';
+  if(unset){
+    html+='<div class="fq-ask"><div class="fq-q" id="fq-q">How often do you train?</div>'+
+      '<div class="fq-chips" role="group" aria-labelledby="fq-q">'+
+      [2,3,3.5,4,5].map(function(q){
+        return '<button class="btn" data-act="freq-set" data-f="'+q+'" aria-label="'+fmt(q)+' sessions a week">'+fmt(q)+'</button>';
+      }).join("")+'</div>'+
+      '<div class="tiny muted" style="margin-top:6px">Sessions a week. The balance numbers show once you pick.</div></div>';
+  } else {
+    shown.forEach(function(r){
+      html+=bandRow(r.n,round(r.weekly,1),r.band[0],r.band[1],max,{state:r.status});
+    });
+    if(ex.length) html+='<div class="bal-note">'+esc(ex.map(function(r){ return r.n; }).join(", "))+' — by choice</div>';
+    html+='<div class="bal-note">Sets a week from the plan, helpers ½. The pump day isn\'t counted — it\'s extra.</div>'+
+      '<div class="bal-note">Shaded: 9–16 a week; 6–12 for abs, rear delts, forearms and traps.</div>';
+  }
   var sg=planSuggestions();
   if(sg.length){
     html+='<div class="sug"><div class="sug-t">Suggested additions</div>';
@@ -560,6 +599,12 @@ $("#view").addEventListener("click",function(e){
   if(TAB!=="plan") return;
   var t=e.target;
   if(t.closest('[data-act="freq"]')){ freqSheet(); return; }
+  var fs=t.closest('[data-act="freq-set"]');
+  if(fs){
+    var q=Math.round(num(fs.dataset.f)*2)/2;            // steps of 0.5, 1 to 7 (amendment 8)
+    S.settings.targetFreq=Math.max(1,Math.min(7,q));
+    writeNow(); viewPlan(); return;
+  }
   if(t.closest('[data-act="excl"]')){ exclSheet(); return; }
   var ps=t.closest('[data-act="plan-suggest"]');
   if(ps){ planSuggestApply(ps.dataset.id); return; }

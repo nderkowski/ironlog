@@ -287,12 +287,66 @@ const log = fs2([4, 3, 4, 3, 4, 3, 4, 3], [ses('pp', 0, 'rP', 'P', [ex('Cable Cu
 await boot(page, state({ settings: settings({ targetFreq: null }), sessions: log.sort((a, b) => b.ts - a.ts), routines: routines().concat([pump]) }));
 eq(await page.evaluate(() => targetFreqOf()), 3.5, '5b mean of the last 8 full weeks (3.5), main days only');
 await go('plan');
-eq((await page.locator('[data-act="freq"]').innerText()).trim(), 'at 3.5 a week', '5b the Plan header reads it');
+ok(await page.locator('[data-act="freq"]').count() === 0 && await page.locator('.fq-ask').count() === 1, '5b targetFreq unset: the Plan asks instead of using the log guess (see 7)');
 await page.evaluate(() => { S.sessions = S.sessions.filter(s => s.ts >= mon7()); function mon7() { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - 7 * 3); return d.getTime(); } });
 const fewer = await page.evaluate(() => targetFreqOf());
 ok(fewer >= 1 && fewer <= 7 && fewer * 2 === Math.round(fewer * 2), '5b a shorter log still gives a half-step in 1..7  [' + fewer + ']');
 await boot(page, state({ settings: settings({ targetFreq: null }), sessions: [ses('one', 0, 'rA', 'A', [ex('Bench Press', 3, 'chest')])] }));
 eq(await page.evaluate(() => targetFreqOf()), 3, '5b no full week in the log: 3');
+
+/* ============ 7. No guessing the frequency ============ */
+console.log('7 frequency prompt');
+/* A real-shaped log: v5, gappy (a few sessions, long breaks), no targetFreq in the settings. The log would
+   average to about one a week, which made every muscle look under-trained. */
+const gappy = [ses('g1', 3, 'rA', 'A', [ex('Bench Press', 4, 'chest')]), ses('g2', 31, 'rB', 'B', [ex('Lateral Raise', 3, 'side_delts')]),
+  ses('g3', 60, 'rC', 'C', [ex('Leg Press', 4, 'quads')]), ses('g4', 95, 'rA', 'A', [ex('Bench Press', 4, 'chest')])];
+const v5 = state({ version: 5, sessions: gappy, settings: { unit: 'lb', inc: 5, rest: 120, bar: 45, doubleDefault: true, repLow: 8, repHigh: 12, rangeFixHidden: true } });
+delete v5.block; delete v5.coach;
+for (const w of [390, 320]) {
+  await page.setViewportSize({ width: w, height: w === 320 ? 640 : 844 });
+  await boot(page, v5); await go('plan');
+  eq((await getState(page)).settings.targetFreq, null, '7 ' + w + ': the migrated log has no targetFreq');
+  has(await page.locator('.bal').innerText(), 'How often do you train?', '7 ' + w + ': the card asks how often');
+  eq(await page.locator('.bal .mrow').count(), 0, '7 ' + w + ': no bars or numbers until it is set');
+  eq(await page.locator('[data-act="freq"]').count(), 0, '7 ' + w + ': no "at 1 a week" header');
+  const chips = await page.locator('.bal [data-act="freq-set"]').allInnerTexts();
+  eq(chips.map(s => s.trim()).join(' '), '2 3 3.5 4 5', '7 ' + w + ': one-tap chips 2 3 3.5 4 5');
+  ok((await page.locator('.bal [data-act="freq-set"]').evaluateAll(es => es.map(e => e.getBoundingClientRect().height))).every(h => h >= 44), '7 ' + w + ': the chips are at least 44 px tall');
+  eq((await sugLabels()).length >= 4, true, '7 ' + w + ': the suggestions stay visible');
+  ok(await noOverflow() && await cardFits('.bal'), '7 ' + w + ': no overflow');
+}
+await page.setViewportSize({ width: 390, height: 844 });
+await page.locator('.bal [data-act="freq-set"]', { hasText: /^3\.5$/ }).tap(); await page.waitForTimeout(200);
+eq((await getState(page)).settings.targetFreq, 3.5, '7 tapping 3.5 sets targetFreq 3.5');
+ok(await page.locator('.bal .mrow').count() > 0 && await page.locator('.fq-ask').count() === 0, '7 the numbers appear and the prompt goes');
+eq((await page.locator('[data-act="freq"]').innerText()).trim(), 'at 3.5 a week', '7 the header now offers the sheet for changing it');
+/* chest 4 a rotation x 3.5/3 days (N = 3) */
+eq((await rowsText('.bal'))['Chest'], '4.7', '7 numbers use 3.5 a week (chest 4 x 3.5/3)');
+
+/* ============ 8. Suggestions find rows by muscle and role, not by spelling ============ */
+console.log('8 typo names');
+n = 0; rn = 0;
+const typo = () => (rn = 0, [
+  { id: 'rA', key: 'A', name: 'Day A', optional: false, variants: [{ id: 'vA', label: '', exercises: [
+    row('Bench Press', 4, 6, 10, 'chest', ['triceps', 'front_delts']), row('Facepull', 3, 12, 15, 'rear_delts', ['back', 'traps']) ] }] },
+  { id: 'rB', key: 'B', name: 'Day B', optional: false, variants: [
+    { id: 'vB1', label: 'Week 1', exercises: [row('Arnold Press', 5, 8, 12, 'side_delts', ['triceps']), row('Lateral Riase', 3, 12, 20, 'side_delts', []), row('Cable Row', 4, 8, 12, 'back', ['biceps'])] },
+    { id: 'vB2', label: 'Week 2', exercises: [row('Lateral Riase', 3, 12, 20, 'side_delts', []), row('Pull-up', 3, 6, 10, 'back', ['biceps'])] }] },
+  { id: 'rC', key: 'C', name: 'Day C', optional: false, variants: [{ id: 'vC', label: '', exercises: [
+    row('Leg Press', 4, 8, 12, 'quads', ['glutes', 'hams']), row('Face pull', 3, 12, 15, 'rear_delts', ['back', 'traps']) ] }] }
+]);
+await boot(page, state({ routines: typo() })); await go('plan');
+labels = (await sugLabels()).map(s => s.trim());
+eq(labels.join(' | '), '+ Cable Crunch on B and C (abs) | + Overhead Cable Tricep Extension on B | Lateral Riase 3 → 4 sets on B | + Leg Extension on C | Facepull / Face pull 3 → 4 sets on A and C (optional)',
+  '8 all five suggestions appear, titled with the rows\' own spellings');
+for (const id of ['side', 'face', 'tri', 'abs', 'quad']) { await page.locator('.sug [data-id="' + id + '"]').tap(); await page.waitForTimeout(150); }
+st = await getState(page);
+const setsOf = (r, vi, name) => byKey(st, r).variants[vi].exercises.find(e => e.name === name).sets;
+eq(setsOf('B', 0, 'Lateral Riase') + ' ' + setsOf('B', 1, 'Lateral Riase'), '4 4', '8 the misspelt raise goes 3 -> 4 in both week variants');
+eq(setsOf('B', 0, 'Arnold Press'), 5, '8 a compound side-delt row with more sets is not mistaken for it');
+eq(setsOf('A', 0, 'Facepull') + ' ' + setsOf('C', 0, 'Face pull'), '4 4', '8 "Facepull" on A and "Face pull" on C both go to 4');
+eq(byKey(st, 'B').variants[1].exercises.slice(-2).map(fmtRow).join(' / '), 'Overhead Cable Tricep Extension 3x10-15 / Cable Crunch 3x10-15 +', '8 the added rows are in B week 2 too');
+eq((await sugLabels()).length, 0, '8 nothing is left to suggest');
 
 /* ============ 6. Layout: 320 px, screenshot, axe ============ */
 console.log('6 layout');

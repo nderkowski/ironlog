@@ -485,6 +485,10 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .sug-t{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2);margin-bottom:6px}
 .sug .btn{width:100%;justify-content:flex-start;text-align:left;white-space:normal;overflow-wrap:anywhere;height:auto;min-height:44px;margin-bottom:6px}
 .sug .opt{font-size:12px;color:var(--ink-2);margin:2px 0 4px}
+.fq-ask{padding:4px var(--pad) 8px}
+.fq-q{font-size:15px;font-weight:700;margin-bottom:8px}
+.fq-chips{display:flex;gap:8px}
+.fq-chips .btn{flex:1 1 0;min-width:0;min-height:44px;padding:6px 0;justify-content:center}
 .bal-foot{display:flex;gap:8px;padding:6px var(--pad) 4px}
 
 /* ---- PR board ---- */
