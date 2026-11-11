@@ -52,7 +52,7 @@ not a toy.
   them before you change anything and after; add to them for whatever you touch.
 - Ask before merging to `main`.
 
-**State on 11 Nov 2026:** the **2.0 beta** is built: build `v2.0-a6` on branch
+**State on 11 Nov 2026:** the **2.0 beta** is built: build `v2.0-b2` on branch
 `cloud/sprint-1108` (all work packages integrated; full suite run green, see
 the top of `ROADMAP.md`). It is **not on `main`**. Rollout is ordered: v26.14
 (the offline-update bridge) goes to `main` first, I confirm the Plan footer

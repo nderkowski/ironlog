@@ -10,7 +10,7 @@ Ship in slices; each slice should leave the app fully usable.
 
 ---
 
-## Next session starts here — 2.0 beta (build `v2.0-a6`, 11 Nov 2026)
+## Next session starts here — 2.0 beta (build `v2.0-b2`, 11 Nov 2026)
 
 Branch `cloud/sprint-1108`, **not on `main`**. All 2.0 work packages are in one
 build (commit `03324e5`); the independent end-to-end acceptance review on real
@@ -42,7 +42,7 @@ reviewed what: [LEDGER_V2.md](LEDGER_V2.md).
 
 ### Before / after (measured)
 
-| | before | 2.0 (`v2.0-a6`) | source |
+| | before | 2.0 (`v2.0-b2`) | source |
 |---|---|---|---|
 | engine vs plain double progression, simulated lifters, logged schedule / 3+ a week (pp a year) | −0.06 / −0.14 (v26.13) | **+0.057 ± 0.018 / +0.093 ± 0.021** | review simulator; V2_PLAN commit `9e5dbe6`, ledger #5 |
 | prescriptions ≥1 step lighter than the lifter could do mid-range | 37.3% (v26.1) | **31.3%** | `node tools/sprint/yearbase.mjs 20`; ledger I1 |
@@ -66,7 +66,7 @@ Not a 2.0 gain, and recorded as a cost: the simulator's `hold8` reads 112 and
 2. Open the app twice (the new version downloads on the first open, applies on
    the second). **Owner confirms the Plan footer reads `v26.14`.**
 3. Only then merge 2.0 (this branch) to `main`. Open twice again; the footer
-   shows the 2.0 build (`v2.0-a6` at the time of writing). Settings should now
+   shows the 2.0 build (`v2.0-b2` at the time of writing). Settings should now
    offer **Restore pre-2.0 data**. That copy is the way back; don't export over it.
 4. Run the gym test plan below, then export a backup.
 

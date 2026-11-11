@@ -429,14 +429,6 @@ function planSuggestions(){
   }
   if(typeof isOptional==="function"&&!S.routines.some(function(r){ return r.key==="P"; }))
     out.push({id:"pump", label:"Add the optional Pump day", pump:true, msg:"Added the Pump day"});
-  var FP=/face\s?pull/i;
-  rows=s1Rows(["A","C"],"rear_delts",FP);
-  if(rows.length){
-    var fk=["A","C"].filter(function(k){ return s1Rows([k],"rear_delts",FP).length; });
-    out.push({id:"face", optional:true, keys:fk, msg:s1Names(rows)+" is 4 sets on "+s1KeysJoin(fk),
-      label:s1Names(rows)+" "+Math.min.apply(null,rows.map(function(e){ return num(e.sets); }))+" → 4 sets on "+s1KeysJoin(fk)+" (optional)",
-      run:s1BumpRun("rear_delts",FP)});
-  }
   return out;
 }
 /* Rows S1 created carry `s1:true` on the row itself, so the pair is found again

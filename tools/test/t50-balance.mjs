@@ -113,8 +113,9 @@ await page.evaluate(() => { S.settings.targetFreq = 3; writeNow(); viewPlan(); }
 console.log('2 suggestions');
 const sugLabels = async () => page.locator('.sug [data-act="plan-suggest"]').allInnerTexts();
 let labels = (await sugLabels()).map(s => s.trim());
-eq(labels.join(' | '), '+ Cable Crunch on B and C (abs) | + Overhead Cable Tricep Extension on B | Lateral Raise 3 → 4 sets on B | + Leg Extension on C | Run RDL as top set + back-offs | Add the optional Pump day | Face Pull 3 → 4 sets on A and C (optional)',
-  '2 the suggested rows, in the spec order (RDL row live since package B, the pump row since package D), face pull last and optional');
+eq(labels.join(' | '), '+ Cable Crunch on B and C (abs) | + Overhead Cable Tricep Extension on B | Lateral Raise 3 → 4 sets on B | + Leg Extension on C | Run RDL as top set + back-offs | Add the optional Pump day',
+  '2 the suggested rows, in the spec order (RDL row live since package B, the pump row since package D); no face-pull row');
+ok(!labels.some(l => /face/i.test(l)), '2 no suggestion mentions Face or face pull, though the plan has face-pull rows and rear delts are under their band');
 ok(!labels.some(l => /calf|calves/i.test(l)), '2 calves is never suggested');
 const hidden = await page.evaluate(() => ({ rdl: typeof schemeOf, pump: typeof isOptional }));
 if (hidden.rdl !== 'function') ok(!labels.some(l => /RDL/.test(l)), '2 the RDL row stays hidden until the engine package lands');
@@ -127,7 +128,6 @@ await page.locator('.sug [data-id="abs"]').tap(); await page.waitForTimeout(200)
 await page.locator('.sug [data-id="side"]').tap(); await page.waitForTimeout(200);
 await page.locator('.sug [data-id="quad"]').tap(); await page.waitForTimeout(200);
 await page.locator('.sug [data-id="rdl"]').tap(); await page.waitForTimeout(200);
-await page.locator('.sug [data-id="face"]').tap(); await page.waitForTimeout(200);
 let st = await getState(page);
 ok(st.routines.every(r => r.variants.every(v => v.exercises.filter(e => /\brdl\b|romanian/i.test(e.name)).every(e => e.scheme === 'topback'))), '2 RDL rows on every day and week are now top set + back-offs');
 const byKey = (s, k) => s.routines.find(r => r.key === k);
@@ -142,8 +142,6 @@ for (const [vi, label] of [[0, 'B week 1'], [1, 'B week 2']]) {
 const cEx = byKey(st, 'C').variants[0].exercises;
 /* quad was tapped after abs, so on C the order is Cable Crunch then Leg Extension, the later linked */
 eq(cEx.slice(-2).map(fmtRow).join(' / '), 'Cable Crunch 3x10-15 / Leg Extension 3x10-15 +', '2 C: crunch, then leg extension linked to it (whichever was tapped first stays first)');
-eq(cEx.filter(e => e.name === 'Face Pull')[0].sets, 4, '2 C: Face Pull 3 -> 4');
-eq(byKey(st, 'A').variants[0].exercises.find(e => e.name === 'Face Pull').sets, 4, '2 A: Face Pull 3 -> 4');
 eq(st.planBackup && st.planBackup.kind, 'v2-additions', '2 planBackup taken, kind "v2-additions"');
 eq(JSON.stringify(st.planBackup.routines), before, '2 and it holds the plan exactly as it was');
 /* package D made the pump row live: nothing here applies it, so it is the one left (its own behaviour is t52's) */
@@ -191,13 +189,11 @@ await boot(page, state()); await go('plan');
 await page.locator('.sug [data-id="quad"]').tap(); await page.waitForTimeout(150);
 await page.locator('.sug [data-id="abs"]').tap(); await page.waitForTimeout(150);
 await page.locator('.toast.act button').tap(); await page.waitForTimeout(150);
-await page.locator('.sug [data-id="face"]').tap(); await page.waitForTimeout(150);
-await page.locator('.toast.act button').tap(); await page.waitForTimeout(150);
-const all = ['quad', 'abs', 'tri', 'side', 'face'];
+const all = ['quad', 'abs', 'tri', 'side'];
 await boot(page, state()); await go('plan');
 for (const id of all) { await page.locator('.sug [data-id="' + id + '"]').tap(); await page.waitForTimeout(120); }
 const applied = JSON.stringify((await getState(page)).routines);
-ok(applied !== pre, '3 apply all five changes the plan');
+ok(applied !== pre, '3 apply all four changes the plan');
 await page.locator('.toast.act button').tap(); await page.waitForTimeout(150);   // only the last apply is undoable from the toast
 await boot(page, state()); await go('plan');
 await page.locator('.sug [data-id="tri"]').tap(); await page.waitForTimeout(150);
@@ -360,14 +356,15 @@ const typo = () => (rn = 0, [
 ]);
 await boot(page, state({ routines: typo() })); await go('plan');
 labels = (await sugLabels()).map(s => s.trim());
-eq(labels.join(' | '), '+ Cable Crunch on B and C (abs) | + Overhead Cable Tricep Extension on B | Lateral Riase 3 → 4 sets on B | + Leg Extension on C | Add the optional Pump day | Facepull / Face pull 3 → 4 sets on A and C (optional)',
-  '8 all five row suggestions appear (and the pump day), titled with the rows\' own spellings');
-for (const id of ['side', 'face', 'tri', 'abs', 'quad', 'pump']) { await page.locator('.sug [data-id="' + id + '"]').tap(); await page.waitForTimeout(150); }
+eq(labels.join(' | '), '+ Cable Crunch on B and C (abs) | + Overhead Cable Tricep Extension on B | Lateral Riase 3 → 4 sets on B | + Leg Extension on C | Add the optional Pump day',
+  '8 the four row suggestions appear (and the pump day), titled with the rows\' own spellings');
+ok(!(await sugLabels()).some(l => /face/i.test(l)), '8 no face-pull suggestion, whatever the spelling');
+for (const id of ['side', 'tri', 'abs', 'quad', 'pump']) { await page.locator('.sug [data-id="' + id + '"]').tap(); await page.waitForTimeout(150); }
 st = await getState(page);
 const setsOf = (r, vi, name) => byKey(st, r).variants[vi].exercises.find(e => e.name === name).sets;
 eq(setsOf('B', 0, 'Lateral Riase') + ' ' + setsOf('B', 1, 'Lateral Riase'), '4 4', '8 the misspelt raise goes 3 -> 4 in both week variants');
 eq(setsOf('B', 0, 'Arnold Press'), 5, '8 a compound side-delt row with more sets is not mistaken for it');
-eq(setsOf('A', 0, 'Facepull') + ' ' + setsOf('C', 0, 'Face pull'), '4 4', '8 "Facepull" on A and "Face pull" on C both go to 4');
+eq(setsOf('A', 0, 'Facepull') + ' ' + setsOf('C', 0, 'Face pull'), '3 3', '8 face-pull rows are left alone');
 eq(byKey(st, 'B').variants[1].exercises.slice(-2).map(fmtRow).join(' / '), 'Overhead Cable Tricep Extension 3x10-15 / Cable Crunch 3x10-15 +', '8 the added rows are in B week 2 too');
 eq((await sugLabels()).length, 0, '8 nothing is left to suggest');
 

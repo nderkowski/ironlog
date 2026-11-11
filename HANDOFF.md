@@ -1,6 +1,6 @@
 # Handoff — 2.0 beta, 11 Nov 2026
 
-Build **v2.0-a6** on branch `cloud/sprint-1108` (commit `03324e5` plus these
+Build **v2.0-b2** on branch `cloud/sprint-1108` (commit `fddfcdb` plus these
 docs). Every 2.0 work package is in; nothing is mid-change. `main` does not have
 it. How it works: [PROJECT_STATE.md](PROJECT_STATE.md) ("2.0 architecture",
 "What 2.0 changed in the engine", traps 24–29). Before/after, the rollout and the

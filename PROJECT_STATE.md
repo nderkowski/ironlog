@@ -6,7 +6,7 @@ non-obvious parts, and what has actually been verified. Pair it with
 for the commercial question. **[Traps](#traps--read-before-changing-anything)
 is the section to read before touching anything.**
 
-*Last updated: 11 Nov 2026 (2.0 beta, build `v2.0-a6`, on branch `cloud/sprint-1108`) — earlier: 8 Nov 2026 (v26.9, cloud sprint), 8 Aug 2026 (v21).*
+*Last updated: 11 Nov 2026 (2.0 beta, build `v2.0-b2`, on branch `cloud/sprint-1108`) — earlier: 8 Nov 2026 (v26.9, cloud sprint), 8 Aug 2026 (v21).*
 
 ---
 
@@ -102,7 +102,7 @@ Vanilla JS, no framework, no build, no dependencies, no network calls. One IIFE.
   buttons are `mvtop` / `mvup` / `mvdn` for exactly this reason. Grep the sheet
   before naming a new one.
 
-### 2.0 architecture (build `v2.0-a6`, beta)
+### 2.0 architecture (build `v2.0-b2`, beta)
 
 Everything in this block is 2.0. Where a number is quoted its source is named;
 the build record is [LEDGER_V2.md](LEDGER_V2.md), the design is
