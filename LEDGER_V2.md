@@ -6,16 +6,19 @@ updated only after the owner's phone check at each milestone.
 
 **Channels this session:**
 - Claude (Haiku, Sonnet, Opus) via subagents.
-- External models (DeepSeek via opencode, Gemini/Google, Argon) not yet
-  connected; the owner is fetching keys.
-- Until then, cross-family review is replaced by an Opus reviewer that never
-  sees the author's reasoning.
+- **DeepSeek** (`deepseek-v4-pro`, `deepseek-v4.1-flash`) via the owner's
+  OpenCode Go key: `tools/fleet/deepseek.py`, with the key injected by the
+  proxy. **Owner's rule: DeepSeek only on that key**, no other models from its
+  catalog.
+- Gemini (Flash, Argon) waits for the owner's Google key.
+- Cross-family review for now is DeepSeek V4 Pro, plus a blind Opus
+  reviewer.
 
 | # | Wave | Task | Model / channel | Status | Result (1 line) | Artifact |
 |---|---|---|---|---|---|---|
 | 1 | 1 | M5 file split: ordered classic scripts, file list, atomic SW, byte-identical join test, offline-update test, test/tool plumbing | sonnet (high) / worktree | out | — | — |
 | 2 | 1 | Engine + blocks/rotation spec for waves 3–4 (read-only design) | opus / Plan | out | — | — |
-| 3 | 1R | Review of #1 (no-loss guards, SW, globals collisions) | opus (blind) → + DeepSeek/Gemini when connected | queued | — | — |
+| 3 | 1R | Review of #1 (no-loss guards, SW, globals collisions) | opus (blind) + deepseek-v4-pro (cross-family) | queued | — | — |
 | 4 | 2 | Schema v6 migration scaffold + v5 snapshot + restore button | sonnet | queued (after #1) | — | — |
 | 5 | 3 | M1 engine: schemes double/topback, no trend cut, stack weights, sim gates | sonnet (high) | queued (after #2, #4) | — | — |
 | 6 | 3 | M2 friction: set-1 cascade, usual-load chip, off-book day, ease-back | sonnet | queued (after #4) | — | — |
