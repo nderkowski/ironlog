@@ -65,10 +65,15 @@ if (process.env.IRONLOG_MUTANT && !MUTANT) throw new Error('unknown IRONLOG_MUTA
 const { browser, errors } = await launch();
 const page = await (await browser.newContext({ serviceWorkers: 'block' })).newPage();
 page.on('pageerror', e => errors.push(String(e)));
-await page.route('**/index.html', async route => {
+/* The app is several files: the hook goes after `var S=load();` (12-boot.js) and the mutant into
+   whichever file holds the text it breaks (the engine is in 04-engine.js). Same rule as
+   tools/review/lib.mjs buildCopy: it must be found exactly once across all of them, or the run
+   would report a mutant that never applied. */
+let mutantHits = 0;
+await page.route('**/js/*.js', async route => {
   const res = await route.fetch();
   let body = (await res.text()).replace('var S=load();', 'var S=load();\n' + HOOK);
-  if (MUTANT) { if (!body.includes(MUTANT[0])) throw new Error('mutant does not apply'); body = body.replace(MUTANT[0], MUTANT[1]); }
+  if (MUTANT && body.includes(MUTANT[0])) { mutantHits += body.split(MUTANT[0]).length - 1; body = body.replace(MUTANT[0], MUTANT[1]); }
   route.fulfill({ response: res, body });
 });
 
@@ -80,6 +85,7 @@ async function year(seed, sc) {
 }
 await page.goto(URL);
 await page.waitForFunction(() => !!window.__t);
+if (MUTANT && mutantHits !== 1) throw new Error('mutant does not apply: its text was found ' + mutantHits + ' times across js/*.js (need exactly 1)');
 const MAX_CUT = await page.evaluate(() => window.__t.ev('MAX_CUT'));
 
 const EPS = 1e-9;

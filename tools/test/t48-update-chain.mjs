@@ -31,11 +31,16 @@ import { ROOT, cacheName, sleep, until, treeFromGit, deployServer, bumpSw, swBui
   seedAndLoad, waitController, regState, background, foreground, oneWorkout, startWorkout, logSet, saveWorkout, pageBuild } from './deploy-lib.mjs';
 
 const V2613 = treeFromGit('4f31e5f');
-const swSrc = readFileSync(join(ROOT, 'sw.js'), 'utf8');
-const BUILD = appBuild(ROOT);                 // v26.14
+/* This suite is about v26.14 itself. On its own branch that is the working tree; on the branches
+   that come after (2.0-a1 splits the app) it is v26.14 from the repository, and the later release
+   has its own suite for the same moves (t47). */
+const V2614 = 'c5b5a29';
+const TREE = existsSync(join(ROOT, 'js', 'files.js')) ? treeFromGit(V2614) : ROOT;
+const swSrc = readFileSync(join(TREE, 'sw.js'), 'utf8');
+const BUILD = appBuild(TREE);                 // v26.14
 const CACHE = cacheName(swSrc);
 const B13 = appBuild(V2613), C13 = cacheName(readFileSync(join(V2613, 'sw.js'), 'utf8'));
-ok(!!BUILD && !existsSync(join(ROOT, 'js', 'files.js')), '0 this suite is for the single-file release  [' + BUILD + ']');
+ok(!!BUILD && !existsSync(join(TREE, 'js', 'files.js')), '0 this suite is for the single-file release  [' + BUILD + ']');
 const browser = await chromium.launch();
 
 /* The cold offline boot every scenario ends with: server gone, radio off. */
@@ -69,7 +74,7 @@ async function offlineCold(app, dep, label, before) {
 
   /* Deploy v26.14. Its core manifest is slow, so the new worker installs a second
      or two after the app is open. */
-  dep.tree = ROOT;
+  dep.tree = TREE;
   dep.delay['manifest.webmanifest'] = 1800;
   await page.close();
   page = await app.open(dep.url);
@@ -119,7 +124,7 @@ async function offlineCold(app, dep, label, before) {
   await page.waitForTimeout(400);
   ok(!!(await stored(page)).active, 'A2 a workout is active on v26.13 with a set logged');
 
-  dep.tree = ROOT;
+  dep.tree = TREE;
   await page.close();
   page = await app.open(dep.url);                 // the app opened on a workout in progress
   await page.waitForSelector('.card.ex');
@@ -151,7 +156,7 @@ async function offlineCold(app, dep, label, before) {
 
 /* ================= C. nothing open, nothing applied ================= */
 {
-  const dep = await deployServer({ tree: ROOT });
+  const dep = await deployServer({ tree: TREE });
   const app = await newApp(browser);
   let page = app.page;
   await seedAndLoad(page, seed(), dep.url);
@@ -186,7 +191,7 @@ async function offlineCold(app, dep, label, before) {
 
 /* ================= D. a cache is complete only with its marker AND every core entry ================= */
 {
-  const dep = await deployServer({ tree: ROOT });
+  const dep = await deployServer({ tree: TREE });
   const app = await newApp(browser);
   let page = app.page;
   await seedAndLoad(page, seed(), dep.url);
@@ -211,7 +216,7 @@ async function offlineCold(app, dep, label, before) {
 
 /* ================= B. bad deploys on top of this version ================= */
 {
-  const dep = await deployServer({ tree: ROOT });
+  const dep = await deployServer({ tree: TREE });
   const app = await newApp(browser);
   let page = app.page;
   await seedAndLoad(page, seed(), dep.url);

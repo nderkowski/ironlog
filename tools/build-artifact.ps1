@@ -1,3 +1,11 @@
+# HISTORICAL - DOES NOT WORK AFTER THE 2.0-a1 SPLIT. Do not run it.
+# index.html no longer contains the app: the css is css/app.css and the script is
+# js/01..12 (see js/files.js), so what this script cuts out from between the
+# ARTIFACT markers is an empty page with <link>/<script src> tags that nothing
+# can resolve. ROADMAP and PROJECT_STATE already say the artifact is not
+# maintained and is not to be rebuilt; this note is so the script itself says so.
+# It is kept only as a record of how the artifact copy was made.
+#
 # Generates artifact-body.html from index.html.
 #
 # index.html is the canonical app: a complete, self-hostable HTML document.

@@ -35,7 +35,7 @@ const LIGHT = new Set(['Lateral Raise','DB Curl','Tricep Pushdown','Leg Extensio
 const { browser, errors } = await launch();
 const page = await (await browser.newContext({ serviceWorkers: 'block' })).newPage();
 page.on('pageerror', e => errors.push(String(e)));
-await page.route('**/index.html', async route => {
+await page.route('**/js/12-boot.js', async route => {
   const res = await route.fetch();
   const body = (await res.text()).replace('var S=load();', 'var S=load();\n' + HOOK);
   route.fulfill({ response: res, body });

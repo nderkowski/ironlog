@@ -31,7 +31,7 @@ const liftsFor = seed => { const r = mulberry(seed * 7919 + 13), out = {};
 const { browser, errors } = await launch();
 const page = await (await browser.newContext({ serviceWorkers: 'block' })).newPage();
 page.on('pageerror', e => errors.push(String(e)));
-await page.route('**/index.html', async route => {
+await page.route('**/js/12-boot.js', async route => {
   const res = await route.fetch();
   route.fulfill({ response: res, body: (await res.text()).replace('var S=load();', 'var S=load();\n' + HOOK) });
 });

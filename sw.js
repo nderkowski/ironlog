@@ -1,8 +1,9 @@
 /* Iron Log service worker.
-   The app is one HTML file with no external requests, so caching the shell is
+   The app has no external requests, so caching its own files is
    enough to make it work with no signal at all. Bump BUILD on every deploy
-   that changes any file: BUILD names the cache, and a deploy that leaves this
-   file's bytes unchanged is not seen by browsers as an update at all.
+   that changes any file (they are listed in js/files.js): BUILD names the
+   cache, and a deploy that leaves this file's bytes unchanged is not seen by
+   browsers as an update at all.
 
    One version = one cache = one consistent copy of the app.
    - Install downloads the whole shell, past the HTTP cache, or fails. A failed
@@ -19,10 +20,16 @@
      superseded while it was still waiting is never activated, so its cache
      can linger until the next version activates; it is never read, only
      wasted space. */
-const BUILD = "v26.14";
+const BUILD = "2.0-a1";
 const CACHE = "ironlog-" + BUILD;
-const CORE = ["./", "./index.html", "./manifest.webmanifest"];
-const ICONS = ["./icon-192.png", "./icon-512.png", "./icon-maskable-512.png", "./icon-180.png"];
+// The file list is js/files.js, shared with the page and the tests; the query
+// string is what makes the browser re-read it with every new BUILD (an imported
+// script may otherwise come out of the HTTP cache, up to 10 minutes stale on
+// GitHub Pages, with the old list).
+importScripts("js/files.js?v=" + BUILD);
+const FILES = self.IRONLOG_FILES;
+const ICONS = FILES.filter((u) => /^icon-/.test(u));
+const CORE = ["./"].concat(FILES.filter((u) => !/^icon-/.test(u)));
 // Written last. It is not trusted alone: a cache counts as complete only if it
 // has this marker AND every core entry (see install).
 const DONE = "./.installed";

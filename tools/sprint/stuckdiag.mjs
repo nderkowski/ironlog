@@ -21,7 +21,7 @@ function missedFor(seed) { const r = mulberry(seed * 31 + 7); return [11, 27, 41
 const mode = process.argv[2] === 'use';
 const { browser } = await launch();
 const page = await (await browser.newContext({ serviceWorkers: 'block' })).newPage();
-await page.route('**/index.html', async route => { const res = await route.fetch();
+await page.route('**/js/12-boot.js', async route => { const res = await route.fetch();
   route.fulfill({ response: res, body: (await res.text()).replace('var S=load();', 'var S=load();\n' + HOOK) }); });
 const why = {}, lifts = {};
 for (let seed = 1; seed <= 8; seed++) {

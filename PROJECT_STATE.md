@@ -24,7 +24,7 @@ between-sets moment is wrong unless it removes two decisions elsewhere.
 
 | | |
 |---|---|
-| Canonical source | `index.html` — a complete, self-hostable HTML document |
+| Canonical source | `index.html` (page shell) + `css/app.css` + `js/*.js`, in the order `js/files.js` lists — a self-hostable static site (single-file `index.html` up to v26.14) |
 | PWA support | `manifest.webmanifest`, `sw.js`, `icon-*.png` |
 | Live app | https://nderkowski.github.io/ironlog/ — GitHub Pages, deployed from `main` |
 | Repo | `nderkowski/ironlog` |
@@ -56,6 +56,21 @@ next install of that version rebuilds it. A version superseded while still
 waiting never activates, so its cache can linger until the next activation
 deletes all other `ironlog-*` caches (wasted space only; it is never read). Suites: `t48` (real v26.13
 worker → this one, mid-workout, bad deploys, offline).
+
+**2.0-a1 layout and the one deploy-order rule.** From 2.0-a1 the app is
+`css/app.css` + `js/01..12` + `js/sw-update.js` (the same
+update block, now a file), listed once in `js/files.js`, which `sw.js` reads
+with `importScripts` to know what to cache. `BUILD` lives in `js/01-state.js`
+(and in `sw.js`); bump both. **v26.14 must be live, and have reached the phone,
+before the split deploys.** v26.13's worker is network-first and would cache the
+split `index.html` by itself; v26.14's is self-contained and so harmless there,
+and from v26.14 on the page and every file come from one cache, all or nothing.
+If a js file still fails to load or run, an inline script at the end of `index.html`
+(it cannot depend on a file) puts up "Iron Log didn't finish updating…" with a
+Retry button instead of booting a half-built app (nothing touches localStorage);
+`12-boot.js` itself refuses to start unless files 01-11 all ran. `tools/build-artifact.ps1` does not work after
+the split. Suite: `t47` (join proof against v26.14, the real v26.13 → v26.14 →
+2.0-a1 path, partial deploys, html+js skew, the gate, no reload mid-workout).
 
 > **The Claude artifact is no longer maintained.** It was how the app was
 > delivered before Pages existed. `tools/build-artifact.ps1` and the generated

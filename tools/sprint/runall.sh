@@ -1,6 +1,8 @@
 #!/bin/bash
-# Run every t-suite against 127.0.0.1:8117; print one line per suite.
+# Run every t-suite against 127.0.0.1:$IRONLOG_PORT (default 8117); one line per suite.
+# Serve your own tree on its own port and pass it: IRONLOG_PORT=8150 tools/sprint/runall.sh
 cd "$(dirname "$0")/../.."
+export IRONLOG_PORT="${IRONLOG_PORT:-8117}"
 for f in tools/test/t*.mjs; do
   out=$(timeout 600 node "$f" 2>&1); rc=$?
   line=$(echo "$out" | grep -E "passed, [0-9]+ failed" | tail -1)
