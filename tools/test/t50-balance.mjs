@@ -348,6 +348,47 @@ eq(setsOf('A', 0, 'Facepull') + ' ' + setsOf('C', 0, 'Face pull'), '4 4', '8 "Fa
 eq(byKey(st, 'B').variants[1].exercises.slice(-2).map(fmtRow).join(' / '), 'Overhead Cable Tricep Extension 3x10-15 / Cable Crunch 3x10-15 +', '8 the added rows are in B week 2 too');
 eq((await sugLabels()).length, 0, '8 nothing is left to suggest');
 
+/* ============ 9. Review fixes ============ */
+console.log('9 review fixes');
+/* 9.1 untagged counts working sets, not exercises: one untagged lift of 4 sets says 4 */
+const mystery = ses('m1', 1, 'rA', 'A', [Object.assign(ex('Zzz Mystery Lift', 4, '', []), { mg: '', mg2: [] })]);
+mystery.exercises[0].sets.push({ w: '50', r: '10', done: false });         // an undone set never counts
+await boot(page, state({ sessions: [mystery] }));
+eq(await page.evaluate(() => { const r = setsByMuscleIn(S.sessions); return r.untagged; }), 4, '9.1 setsByMuscleIn: one untagged exercise with 4 sets says 4');
+/* 9.3 the empty state still carries the by-choice line and the untagged warning */
+await go('progress');
+let t9 = await page.locator('#view').innerText();
+has(t9, 'Nothing is tagged yet', '9.3 empty state: nothing is tagged yet');
+has(t9, 'Calves: not tracked, by choice.', '9.3 empty state still says calves are skipped by choice');
+has(t9, '4 sets in this rotation aren\'t counted', '9.3 empty state still warns about the 4 untagged sets');
+eq(await page.locator('.mrow').count(), 0, '9.3 and draws no bars');
+/* 9.2 only pump and freestyle logged: no rotation, empty windows */
+const extras = [ses('x1', 1, 'rP', 'P', [ex('Cable Curl', 3, 'biceps')]), ses('x2', 2, null, '', [ex('DB Curl', 5, 'biceps')])];
+await boot(page, state({ sessions: extras, routines: routines().concat([pump]) }));
+const win = await page.evaluate(() => { const w = rotationWindows(); return { cur: w.cur.length, prev: w.prev.length, full: w.full, havePrev: w.havePrev }; });
+eq(JSON.stringify(win), '{"cur":0,"prev":0,"full":false,"havePrev":false}', '9.2 no logged main day: empty windows');
+await go('progress');
+t9 = await page.locator('#view').innerText();
+has(t9, 'No sets logged in your last rotation.', '9.2 Progress shows the empty state, not pump and freestyle sets as a rotation');
+eq(await page.locator('.mrow').count(), 0, '9.2 and no bars');
+/* 9.4 the pair is found again after a reload, and with a non-S1 backup around */
+for (const [label, extra] of [['no backup', {}], ['an older planBackup', { planBackup: { ts: 12345, rest: 90, routines: routines().slice(0, 1) } }]]) {
+  await boot(page, state(extra)); await go('plan');
+  await page.locator('.sug [data-id="tri"]').tap(); await page.waitForTimeout(200);
+  await page.reload(); await page.waitForSelector('#view'); await go('plan');
+  ok((await getState(page)).routines.find(r => r.key === 'B').variants[0].exercises.slice(-1)[0].s1 === true, '9.4 (' + label + ') the row S1 made is marked on the row and survives a reload');
+  await page.locator('.sug [data-id="abs"]').tap(); await page.waitForTimeout(200);
+  st = await getState(page);
+  for (const vi of [0, 1]) eq(byKey(st, 'B').variants[vi].exercises.slice(-2).map(fmtRow).join(' / '), 'Overhead Cable Tricep Extension 3x10-15 / Cable Crunch 3x10-15 +',
+    '9.4 (' + label + ') tri, reload, abs: superset-linked on B week ' + (vi + 1));
+}
+/* an added row the owner typed in by hand with the same name is not paired */
+await boot(page, state()); await go('plan');
+await page.evaluate(() => { const r = S.routines.find(x => x.key === 'B'); r.variants.forEach(v => v.exercises.push(newPlanEx('Overhead Cable Tricep Extension'))); writeNow(); viewPlan(); });
+await page.locator('.sug [data-id="abs"]').tap(); await page.waitForTimeout(200);
+st = await getState(page);
+ok(!byKey(st, 'B').variants[0].exercises.slice(-1)[0].link, '9.4 a hand-added extension is not mistaken for an S1 row: no link');
+
 /* ============ 6. Layout: 320 px, screenshot, axe ============ */
 console.log('6 layout');
 const full = state({ sessions, routines: routines().concat([pump]) });

@@ -725,12 +725,12 @@ function setsByMuscle(a,b){
 }
 
 /* ---- targets and bands (2.0) ----
-   `isMainRoutine` is local on purpose: the day-rotation helpers belong to
+   `balIsMainRoutine` is local on purpose: the day-rotation helpers belong to
    another package. An optional day (the pump day) is extra, never a slot in
    the rotation, the frequency or the balance card. A session of a routine that
    no longer exists counts as a main one, as nextRoutine() does. */
-function isMainRoutine(r){ return !r.optional; }
-function mainSessionFn(){
+function balIsMainRoutine(r){ return !r.optional; }
+function balMainSessionFn(){
   var opt={};
   S.routines.forEach(function(r){ if(r.optional) opt[r.id]=1; });
   return function(s){ return !!s.routineId&&!opt[s.routineId]; };
@@ -747,7 +747,7 @@ function targetFreqOf(){
 /* What the log says, whatever the setting is (the "Auto" row of the picker). */
 function autoFreqOf(){
   if(!S.sessions.length) return 3;
-  var isMain=mainSessionFn();
+  var isMain=balMainSessionFn();
   var first=S.sessions.reduce(function(m,s){ return Math.min(m,s.ts); },Infinity);
   var d0=new Date(first); d0.setHours(0,0,0,0);
   var firstWk=new Date(d0.getFullYear(),d0.getMonth(),d0.getDate()-((d0.getDay()+6)%7)).getTime();

@@ -103,15 +103,17 @@ function viewProgress(){
    window count; deload and unlogged sessions don't, and an unlogged day does
    not use up one of the N. */
 function rotationWindows(){
-  var mains=S.routines.filter(isMainRoutine).filter(function(r){
+  var mains=S.routines.filter(balIsMainRoutine).filter(function(r){
     return variantsOf(r).some(function(v){ return v.exercises.length>0; });
   });
-  var N=mains.length, isMain=mainSessionFn();
+  var N=mains.length, isMain=balMainSessionFn();
   var sorted=S.sessions.slice().sort(function(a,b){ return b.ts-a.ts; });
   var M=sorted.filter(function(s){ return isMain(s)&&!s.unlogged&&!s.deload&&s.exercises.length>0; });
   var live=sorted.filter(function(s){ return !s.unlogged&&!s.deload; });
   var n=Math.max(1,N), full=M.length>=n;
-  var lo=M.length?M[Math.min(n,M.length)-1].ts:0;
+  if(!M.length)                       // no main day logged: nothing counts as a rotation, so the empty state shows
+    return {N:N, n:n, full:false, cur:[], prev:[], havePrev:false, keys:mains.map(function(r){ return r.key; })};
+  var lo=M[Math.min(n,M.length)-1].ts;
   var cur=live.filter(function(s){ return s.ts>=lo; });
   var prev=[];
   if(M.length>=2*n){
@@ -154,11 +156,19 @@ function weeklySetsCard(){
   var html='<div class="row" style="margin-bottom:7px"><div class="eyebrow">Sets per rotation</div>'+
     '<span class="tiny muted" style="margin-left:auto">'+(w.havePrev?"this one vs the last":"this one")+'</span></div>';
 
+  /* Lines every version of the card ends with, empty state included. */
+  var skippedLine=skipped.length
+    ? '<div class="tiny muted" style="padding:0 var(--pad) 4px">'+
+      esc(skipped.map(function(m){ return m.n; }).join(", "))+': not tracked, by choice.</div>':"";
+  var untaggedLine=now.untagged
+    ? '<div class="tiny" style="padding:2px var(--pad) 4px;color:var(--bad-ink)">'+
+      plural(now.untagged,"set")+' in this rotation aren\'t counted — those exercises have no muscles set.</div>':"";
+
   if(!shown.length){
     return html+'<div class="card" style="margin-bottom:12px"><div class="empty">'+
       (now.untagged||prev.untagged
         ? 'Nothing is tagged yet.<br>Open an exercise in Plan and set its muscles.'
-        : 'No sets logged in your last rotation.')+'</div></div>';
+        : 'No sets logged in your last rotation.')+'</div>'+skippedLine+untaggedLine+'</div>';
   }
 
   var unitsOf=function(x){ return x*w.n/f; };               // a weekly figure in rotation units
@@ -182,13 +192,7 @@ function weeklySetsCard(){
   if(zero.length)
     html+='<div class="tiny muted" style="padding:0 var(--pad) 4px">Nothing for '+
       esc(zero.map(function(m){ return m.n.toLowerCase(); }).join(", "))+'.</div>';
-  if(skipped.length)
-    html+='<div class="tiny muted" style="padding:0 var(--pad) 4px">'+
-      esc(skipped.map(function(m){ return m.n; }).join(", "))+': not tracked, by choice.</div>';
-  if(now.untagged)
-    html+='<div class="tiny" style="padding:2px var(--pad) 4px;color:var(--bad-ink)">'+
-      plural(now.untagged,"set")+' in this rotation aren\'t counted — those exercises have no muscles set.</div>';
-  html+='</div>';
+  html+=skippedLine+untaggedLine+'</div>';
   return html;
 }
 
