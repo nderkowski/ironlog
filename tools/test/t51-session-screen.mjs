@@ -276,6 +276,39 @@ async function easeState(ago, extra) {
   eq((await ws(page)).join(), '140,140,140', '4 on a stack it lands on the nearest pin (144 → 140)');
 }
 {
+  /* a lift so light that one notch down is over 15% of it keeps its load and loses reps instead */
+  const FP = { name:'Face Pull', mg:'rear_delts', bar:0 };
+  await start(page, state(FP, [ { ago:12, sets:[[10, 10], [10, 10], [10, 9]] }, { ago:15, sets:X3(10, 9) } ]));
+  const w0 = await ws(page), r0 = await rs(page);
+  eq(w0.join(), '10,10,10', '4b face pull prefill 10');
+  const n = await mark(page);
+  await page.tap('[data-act="easeback"]');
+  eq((await ws(page)).join(), '10,10,10', '4b one notch down is 5 of 10 (50%): the load stays 10');
+  eq((await rs(page)).join(), r0.map(x => Math.max(1, Number(x) - 2)).join(), '4b ...and each working set target reps drop by 2  [' + r0.join() + ' → ' + (await rs(page)).join() + ']');
+  has(await text(page, '.toast.act'), 'Kept 10 lb — 2 fewer reps', '4b the chip result says so');
+  has(await text(page, '.callout .why'), '2 fewer reps', '4b and so does the why line');
+  const d = await sameDom(page);
+  ok(d.alive && d.was === n, '4b applying it replaced no set row or input');
+  const st = await settleSave(page);
+  eq(st.active.exercises[0].sets.map(s => s.r).join(), (await rs(page)).join(), '4b saved reps match the screen');
+  await page.tap('.toast.act button');
+  await page.waitForSelector('[data-act="easeback"]');
+  eq((await rs(page)).join(), r0.join(), '4b Undo puts the reps back');
+  /* reps never go below 1 */
+  await page.evaluate(() => { S.active.exercises[0].sets.forEach(s => { s.r = '2'; }); });
+  await page.tap('[data-act="easeback"]');
+  eq((await page.evaluate(() => S.active.exercises[0].sets.map(s => s.r).join())), '1,1,1', '4b reps never go below 1');
+}
+{
+  /* a heavy lift is still eased by weight: 190 → 170 on the 5 lb grid, no rep cut */
+  await start(page, state({ name:'Leg Press', mg:'quads', bar:0 }, [ { ago:12, sets:X3(190, 10) }, { ago:15, sets:X3(190, 9) } ]));
+  const r0 = await rs(page);
+  await page.tap('[data-act="easeback"]');
+  eq((await ws(page)).join(), '170,170,170', '4b leg press 190: one notch is 20 (10.5%), so the load drops');
+  eq((await rs(page)).join(), r0.join(), '4b and the reps stay');
+  eq(await text(page, '.toast.act'), 'Eased back for todayUndo', '4b the chip says plain "Eased back for today"');
+}
+{
   /* top set + back-offs: back-offs follow the eased top */
   const RDL = { name:'Ease RDL', reps:6, repTop:10, inc:5, bar:45, scheme:'topback' };
   await start(page, state(RDL, [ { ago:12, sets:[[225, 8, 'top'], [200, 8, 'back'], [200, 8, 'back']] }, { ago:15, sets:[[225, 7, 'top'], [200, 8, 'back'], [200, 8, 'back']] } ]));
@@ -462,7 +495,7 @@ await targets(page, '[390]', false);
   await typeInto(page, W(0), 1);
   eq((await ws(page)).join(), '1,135,135', '8b2 type "1" and blur: set 1 keeps it, the followers stay 135');
   await typeInto(page, W(0), 95);
-  eq((await ws(page)).join(), '95,135,135', '8b2 "95" after "1" (1 → 95 is not judged against 135): set 1 only');
+  eq((await ws(page)).join(), '95,95,95', '8b2 "95" after "1": judged against what the followers hold (135 → 95 is fine), not against the typo, so all three follow');
   await typeInto(page, W(0), 135);
   eq((await ws(page)).join(), '135,135,135', '8b2 back to 135');
   await typeInto(page, W(0), 95);
@@ -471,6 +504,31 @@ await targets(page, '[390]', false);
   eq((await ws(page)).join(), '200,95,95', '8b2 200 is over 1.5 × 95: set 1 only');
   await typeInto(page, W(0), 0);
   eq((await ws(page)).join(), '0,95,95', '8b2 zero never cascades');
+}
+/* b3 (2.0-b1). The guard compares with each untouched FOLLOWER, not with set 1's previous (possibly typo'd) number */
+{
+  await start(page, state({ name:'Cable Row' }, [ { ago:3, sets:X3(65, 10) } ]));
+  eq((await ws(page)).join(), '65,65,65', '8b3 Cable Row prefill 65');
+  await mark(page);
+  await typeInto(page, W(0), 650);
+  eq((await ws(page)).join(), '650,65,65', '8b3 650 is over 1.5 × 65: set 1 only, the followers stay 65');
+  await typeInto(page, W(0), 70);
+  eq((await ws(page)).join(), '70,70,70', '8b3 then 70: judged against the 65s (not against the typo 650), so the followers become 70');
+  const d = await sameDom(page);
+  ok(d.alive && d.now === d.was, '8b3 nothing was replaced on the way (Trap 1)');
+}
+{
+  /* top set + back-offs: the top commits against the top the back-offs imply (back-off ÷ (1 − backPct) = 200 ÷ 0.88 = 227) */
+  const RDL = { name:'Guard RDL', reps:6, repTop:10, inc:5, bar:45, scheme:'topback' };
+  await start(page, state(RDL, [ { ago:3, sets:[[225, 8, 'top'], [200, 8, 'back'], [200, 8, 'back']] } ]));
+  await typeInto(page, W(0), 100);
+  eq((await ws(page)).join(), '100,200,200', '8b3 RDL top typed 100 (under half of the implied 227): the back-offs stay 200');
+  await typeInto(page, W(0), 250);
+  eq((await ws(page)).join(), '250,220,220', '8b3 then 250: the untouched back-offs recompute from the new top (250 × 0.88 → 220)');
+  await typeInto(page, W(2), 215);
+  await typeInto(page, W(0), 100);
+  await typeInto(page, W(0), 260);
+  eq((await ws(page)).join(), '260,230,215', '8b3 a back-off set by hand stays; the other recomputes (260 × 0.88 → 230)');
 }
 /* c. a set you edited yourself is not a follower, even when it matches */
 {

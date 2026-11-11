@@ -762,9 +762,16 @@ function autoFreqOf(){
   var mean=counts.reduce(function(a,b){ return a+b; },0)/counts.length;
   return Math.max(1,Math.min(7,Math.round(mean*2)/2));
 }
-/* Small muscles are judged against a lower band: 6–12 sets a week, the rest 9–16. */
-var BAND_SMALL=["core","rear_delts","forearms","traps"];
-function bandOf(k){ return BAND_SMALL.indexOf(k)>=0?[6,12]:[9,16]; }
+/* Small muscles are judged against a lower band: 6–12 sets a week, the rest 9–16.
+   The indirect ones (front delts, glutes, traps, forearms) get all the work they need
+   from the big lifts: 3+ a week, no upper flag, never "low" at 3 or more. */
+var BAND_SMALL=["core","rear_delts"];
+var B2_INDIRECT=["front_delts","glutes","traps","forearms"];
+function b2IsIndirect(k){ return B2_INDIRECT.indexOf(k)>=0; }
+function bandOf(k){ return b2IsIndirect(k)?[3,Infinity]:BAND_SMALL.indexOf(k)>=0?[6,12]:[9,16]; }
+/* The top of a band for scaling a bar: an open-ended band has none, so its floor. */
+function b2BandCap(k){ var b=bandOf(k); return isFinite(b[1])?b[1]:b[0]; }
+function b2BandText(k){ var b=bandOf(k); return isFinite(b[1])?b[0]+"–"+b[1]:b[0]+"+"; }
 
 /* Only guessed for brand-new exercises, and always editable afterwards. */
 var BAR_YES=/barbell|squat|bench|deadlift|dead lift|romanian|rdl|overhead press|ohp|military|hip thrust|clean|snatch|good ?morning|pendlay|jm press|floor press/i;

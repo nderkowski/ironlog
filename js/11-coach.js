@@ -353,13 +353,13 @@ function coachRuleVolume(){
       var ia=movementClass(a.e.name)==="iso"?0:1, ib=movementClass(b.e.name)==="iso"?0:1;
       return ia-ib||num(a.e.sets)-num(b.e.sets);
     });
-    var pick=cand[0], worst=low[k], b=bandOf(worst.m.k);
+    var pick=cand[0], worst=low[k];
     return [coachMk({kind:"volume", key:"volume|"+worst.m.k, lift:pick.e.name, rid:pick.r.id,
       title:worst.m.n+" gets few sets",
       reason:worst.m.n+" averaged "+fmt(round(worst.avg,1))+" sets a week over the last 3 weeks (a set counts 1 for the main muscle, "+
         "½ for a helper), while you trained "+(sess/3).toFixed(1)+" times a week. Your plan is built for "+fmt(targetFreqOf())+" a week.",
       evidence:"More weekly sets grow more muscle, with diminishing returns (Schoenfeld 2017; Pelland 2026); the usual band is "+
-        b[0]+"–"+b[1]+" a week for "+worst.m.n.toLowerCase()+" (ACSM 2026). This only speaks under "+fmt(round(worst.thin,1))+", well short of "+
+        b2BandText(worst.m.k)+" a week for "+worst.m.n.toLowerCase()+" (ACSM 2026). This only speaks under "+fmt(round(worst.thin,1))+", well short of "+
         "that, and only on a day with room. Those are short trials, mostly 6–12 weeks, so a guide, not a target.",
       options:[{act:"add", lift:pick.e.name, n:1, label:"Add a set to "+pick.e.name+" ("+pick.r.name+")"}]})];
   }
@@ -1259,9 +1259,20 @@ function blkLiftText(l){
   var m=blkLiftMode(l.name);
   return entryText({w:l.w0},m)+"×"+l.r0+" → "+entryText({w:l.w1},m)+"×"+l.r1;
 }
+/* The change chip. A lift that started the block at load 0 or blank (bodyweight, or
+   a weight never entered) has no percentage to speak of: it shows reps, or a dash. */
+function b2ChangeText(l){
+  if(!(num(l.w0)>0)){
+    if(num(l.w1)>0) return "—";                                 // from no load to a load: reps at two different loads say nothing
+    var d=num(l.r1)-num(l.r0);
+    return d?(d>0?"+":"−")+Math.abs(d)+" rep"+(Math.abs(d)===1?"":"s"):"—";
+  }
+  var p=isFinite(l.pct)?l.pct:0;
+  return (p>0?"+":"")+p+"%";
+}
 function blkBalanceText(c){
   var nm=function(k){ return muscleName(k); };
-  var fmtRow=function(r){ var b=bandOf(r[0]); return nm(r[0])+" "+r[1].toFixed(1)+" ("+b[0]+"–"+b[1]+")"; };
+  var fmtRow=function(r){ return nm(r[0])+" "+r[1].toFixed(1)+" ("+b2BandText(r[0])+")"; };
   if(!c.logged) return "No logged sessions to judge balance.";
   if(!c.balance.low.length&&!c.balance.high.length) return "Every muscle is inside its weekly band.";
   var out=[];
@@ -1276,7 +1287,7 @@ function blockCardHtml(){
     '<span class="tiny muted" style="margin-left:auto">'+plural(c.slots,"session")+(c.logged<c.slots?" · "+(c.slots-c.logged)+" not logged":"")+'</span></div>';
   if(c.lifts.length){
     h+='<div class="blk-ls" role="list">'+c.lifts.map(function(l){
-      var chip=l.verdict==="none"?"":'<span class="chip '+(l.verdict==="up"?"good":l.verdict==="down"?"bad":"")+' mono">'+(l.pct>0?"+":"")+l.pct+'%</span>';
+      var chip=l.verdict==="none"?"":'<span class="chip '+(l.verdict==="up"?"good":l.verdict==="down"?"bad":"")+' mono">'+esc(b2ChangeText(l))+'</span>';
       return '<div class="blk-l" role="listitem"><span class="blk-n">'+esc(l.name)+'</span><span class="blk-m num">'+esc(blkLiftText(l))+'</span>'+chip+'</div>';
     }).join("")+'</div>'+
     '<div class="tiny muted" style="margin:6px 0 0">A lift is judged on '+BLK_JUDGE_N+'+ sessions in the block, and called flat on '+BLK_FLAT_N+'+ ('+BLK_FLAT_N_VARIANT+'+ for lifts in only some week variants). '+judged.length+' of '+c.lifts.length+' judged here.</div>';
@@ -1360,7 +1371,7 @@ function blkPumpNext(){
 }
 function blkPumpButton(on){
   var lab=on?variantLabel(on.r,on.vi):"Arms & delts";
-  return '<button class="btn ghost block pumpbtn" data-act="pump"><span class="pb-t">Pump day'+(lab?' · '+esc(lab):'')+'</span>'+
+  return '<button class="btn ghost block pumpbtn" data-act="pump"><span class="pb-t">Pump day'+(lab?'<span class="pb-v"> · '+esc(lab)+'</span>':'')+'</span>'+
     '<span class="pb-s">Extra work, whenever you want it. It never moves your rotation.</span></button>';
 }
 /* Creates the day from E's seed the first time (it then lives in Plan like any

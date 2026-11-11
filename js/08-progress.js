@@ -129,14 +129,15 @@ function rotationWindows(){
 function bandRow(name,val,lo,hi,scale,o){
   o=o||{};
   var pct=function(x){ return (Math.max(0,Math.min(x,scale))/scale*100).toFixed(1); };
+  var open=!isFinite(hi), hiE=open?scale:hi;
   var mark=o.state==="low"?'<span aria-hidden="true">↓</span><span class="vh"> low</span>'
           :o.state==="high"?'<span aria-hidden="true">↑</span><span class="vh"> high</span>':"";
-  return '<div class="mrow'+(val?"":" zero")+(o.state==="low"||o.state==="high"?" off":"")+'">'+
+  return '<div class="mrow'+(val?"":" zero")+(o.state==="indirect"?" ind":"")+(o.state==="low"||o.state==="high"?" off":"")+'">'+
     '<div class="mn">'+esc(name)+'</div>'+
     '<div class="track">'+
-      (hi>lo?'<div class="band" style="left:'+pct(lo)+'%;width:'+(pct(hi)-pct(lo)).toFixed(1)+'%"></div>':"")+
+      (hiE>lo?'<div class="band" style="left:'+pct(lo)+'%;width:'+(pct(hiE)-pct(lo)).toFixed(1)+'%"></div>':"")+
       '<div class="now" style="width:'+pct(val)+'%"></div>'+
-      (hi>lo?'<div class="tick" style="left:'+pct(lo)+'%"></div><div class="tick" style="left:'+pct(hi)+'%"></div>':"")+
+      (hiE>lo?'<div class="tick" style="left:'+pct(lo)+'%"></div>'+(open?"":'<div class="tick" style="left:'+pct(hi)+'%"></div>'):"")+
       (o.prev>0?'<div class="prev" style="left:'+pct(o.prev)+'%" title="previous rotation"></div>':"")+
     '</div>'+
     '<div class="mv">'+fmt(val)+mark+'</div>'+
@@ -173,7 +174,7 @@ function weeklySetsCard(){
 
   var unitsOf=function(x){ return x*w.n/f; };               // a weekly figure in rotation units
   var max=0;
-  shown.forEach(function(m){ max=Math.max(max,now.by[m.k],prev.by[m.k],unitsOf(bandOf(m.k)[1])); });
+  shown.forEach(function(m){ max=Math.max(max,now.by[m.k],prev.by[m.k],unitsOf(b2BandCap(m.k))); });
   var scale=Math.max(max,1);
   shown.sort(function(a,b){ return now.by[b.k]-now.by[a.k]; });
 
@@ -182,11 +183,11 @@ function weeklySetsCard(){
     'Showing the sets you have so far.</div>';
   shown.forEach(function(m){
     var b=bandOf(m.k);
-    html+=bandRow(m.n,now.by[m.k],unitsOf(b[0]),unitsOf(b[1]),scale,{prev:prev.by[m.k]});
+    html+=bandRow(m.n,now.by[m.k],unitsOf(b[0]),unitsOf(b[1]),scale,{prev:prev.by[m.k],state:b2IsIndirect(m.k)?"indirect":""});
   });
   html+='<div class="tiny muted" style="padding:6px var(--pad) 2px">'+
     'One rotation = your last '+plural(w.n,"day")+(w.keys.length?' ('+esc(w.keys.join(", "))+')':"")+'. '+
-    'The shaded stripe is the band: 9–16 sets a week, or 6–12 for abs, rear delts, forearms and traps, '+
+    'The shaded stripe is the band: 9–16 sets a week, 6–12 for abs and rear delts, indirect: 3+ (front delts, glutes, traps, forearms), '+
     'at '+fmt(f)+' sessions a week. '+(w.havePrev?'The dark line is the rotation before. ':"")+
     'A set counts 1 for the main muscle, ½ for a helper.</div>';
   if(zero.length)

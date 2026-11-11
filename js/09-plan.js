@@ -341,7 +341,7 @@ function planBalance(){
   var rows=MUSCLES.map(function(m){
     var weekly=N?per[m.k]*f/N:0, b=bandOf(m.k), skip=ex.indexOf(m.k)>=0;
     return {k:m.k, n:m.n, weekly:weekly, band:b, excluded:skip,
-            status:skip?"by choice":weekly<b[0]?"low":weekly>b[1]?"high":"ok"};
+            status:skip?"by choice":weekly<b[0]?"low":weekly>b[1]?"high":b2IsIndirect(m.k)?"indirect":"ok"};
   });
   return {f:f, N:N, rows:rows};
 }
@@ -536,7 +536,7 @@ function planBalanceCard(){
     });
     if(ex.length) html+='<div class="bal-note">'+esc(ex.map(function(r){ return r.n; }).join(", "))+' — by choice</div>';
     html+='<div class="bal-note">Sets a week from the plan, helpers ½. The pump day isn\'t counted — it\'s extra.</div>'+
-      '<div class="bal-note">Shaded: 9–16 a week; 6–12 for abs, rear delts, forearms and traps.</div>';
+      '<div class="bal-note">Shaded: 9–16 a week; 6–12 for abs and rear delts; indirect: 3+ (front delts, glutes, traps, forearms).</div>';
   }
   var sg=planSuggestions();
   if(sg.length){

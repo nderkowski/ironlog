@@ -491,6 +491,8 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .mrow.zero .mn,.mrow.zero .mv{color:var(--ink-3)}
 .mrow .mv{white-space:nowrap}
 .mrow.off .mv{color:var(--bad-ink)}
+.mrow.ind .mn,.mrow.ind .mv{color:var(--ink-3)}
+.mrow.ind .now{opacity:.6}
 /* the band for this muscle: shaded stripe behind the bar, edged by two ticks */
 .track .band{position:absolute;top:0;bottom:0;background:var(--good-soft)}
 .track .now{opacity:.92}
@@ -808,6 +810,7 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:18px 0 14px}
 .offbook:active{color:var(--ink)}
 .pumpbtn{display:flex;flex-direction:column;align-items:flex-start;gap:1px;height:auto;min-height:48px;padding:8px 14px;text-align:left;white-space:normal}
 .pumpbtn .pb-t{font-weight:700;font-size:14px;color:var(--ink)}
+.pumpbtn .pb-v{font-weight:500;font-size:12px;color:var(--ink-3)}
 .pumpbtn .pb-s{font-size:12px;font-weight:500;color:var(--ink-3)}
 .blk-ls{display:flex;flex-direction:column}
 .blk-l{display:flex;align-items:center;gap:8px;min-height:30px;padding:3px 0;border-top:1px solid var(--line);font-size:13px}

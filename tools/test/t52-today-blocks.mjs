@@ -301,6 +301,9 @@ eq(nextBefore, 'Day B', '4 start: Day B is next');
 const pb = page.locator('.pumpbtn');
 eq(await pb.count(), 1, '4 a Pump day button on Today idle');
 has(await pb.textContent(), 'Pump day', '4 it says Pump day');
+eq((await pb.textContent()).replace(/\s+/g, ' ').trim().slice(0, 23), 'Pump day · Arms & delts', '4 and the menu it will start, small, on the same button');
+eq(await pb.locator('.pb-v').count(), 1, '4 the menu name is its own small span (.pb-v)');
+eq(await page.locator('[data-act="pump"]').count(), 1, '4 one Pump day control on Today, no second chip');
 const geo = await ev(() => { const s = document.querySelector('[data-act="start"].primary').getBoundingClientRect(), p = document.querySelector('.pumpbtn').getBoundingClientRect(),
   c = document.querySelector('.hero').closest('.card').getBoundingClientRect(), first = document.querySelector('#view button'); return { sb: s.bottom, pt: p.top, ct: c.top, cb: c.bottom, first: first.dataset.act, firstPrimary: first.classList.contains('primary'), vh: innerHeight, pb: p.bottom }; });
 ok(geo.first === 'start' && geo.firstPrimary, '4 Start is still the first button on Today');
@@ -328,8 +331,8 @@ eq(afterPump.slots, beforePump.slots, '4 it fills no block slot');
 eq(afterPump.per - beforePump.per, 1, '4 it counts toward sessions per week');
 ok(afterPump.sets !== beforePump.sets, '4 and its set counts toward volume by muscle');
 has(await page.locator('.pumpbtn').textContent(), 'Chest, back & core', '4 the button now offers the other menu (the two alternate by themselves)');
-ok(!(await page.locator('.daypick').allInnerTexts()).some(t => /Pump day/.test(t) && /Chest, back/.test(t)), '4 ...and the day pickers do not list the same menu twice');
-ok((await page.locator('.daypick').allInnerTexts()).some(t => /Pump day/.test(t) && /Arms/.test(t)), '4 the other pump menu is in the pickers');
+ok(!(await page.locator('.daypick').allInnerTexts()).some(t => /Pump day/.test(t)), '4 ...and the day pickers list no Pump day menu at all (one button, it alternates by itself)');
+eq(await page.locator('[data-act="pump"]').count() + await page.locator('[data-act="start"][data-id="' + pr.id + '"]').count(), 1, '4 so exactly one control starts the Pump day');
 await go('plan');
 has(await page.locator('#view').innerText(), 'OPTIONAL', '4 Plan: the day card carries an OPTIONAL tag');
 /* the balance card's own suggestion goes away once the day exists, and uses the same seed when taken from there */
@@ -342,6 +345,15 @@ await go('today');
 await page.locator('.pumpbtn').tap(); await page.waitForSelector('.set');
 eq(await ev(() => S.routines.filter(r => r.optional).length), 1, '4 the Today button then uses it instead of creating a second');
 eq(await ev(() => S.active.name), 'Pump day', '4 ...and starts it');
+/* the button starts the NEXT variant, alternating: after a Chest, back & core session it offers Arms & delts again */
+await put(state(mini(7).concat([sess('pa', 'rP', 'P', 'vP2', 1, [ex('Pec Deck', 100, 15)], { name: 'Pump day' })]), { routines: plan().concat([pumpR()]) }));
+has(await page.locator('.pumpbtn').textContent(), 'Arms & delts', '4 after a Chest, back & core pump day the button says Arms & delts');
+await page.locator('.pumpbtn').tap(); await page.waitForSelector('.set');
+eq(await ev(() => S.active.variantId), 'vP1', '4 and starts it');
+await put(state(mini(7).concat([sess('pb', 'rP', 'P', 'vP1', 1, [ex('Rope Hammer Curl', 30, 15)], { name: 'Pump day' })]), { routines: plan().concat([pumpR()]) }));
+has(await page.locator('.pumpbtn').textContent(), 'Chest, back & core', '4 after an Arms & delts one it says Chest, back & core');
+await page.locator('.pumpbtn').tap(); await page.waitForSelector('.set');
+eq(await ev(() => S.active.variantId), 'vP2', '4 and starts that');
 /* never "skipped": three weeks unused (and lifts of it done long ago, so the rule would otherwise judge it) */
 const pumpOld = [60, 56, 52, 48].map((d, i) => sess('po' + i, 'rP', 'P', 'vP1', d, [ex('Rope Hammer Curl', 30, 15)], { name: 'Pump day' }));
 const lateCable = sess('pc', 'rP', 'P', 'vP1', 70, [ex('Cable Lateral Raise', 15, 15)], { name: 'Pump day' });
@@ -440,8 +452,9 @@ eq(card.override.judged + '/' + card.override.changed, '36/4', '6 override: 4 of
    glutes 9 + 9 = 18; side delts 3 + 3 (pump) = 6; traps 3 (freestyle, a muscle the plan does not train: not reported). x 7 a week / 17 logged slots:
    chest 7.4, back 9.9, front 6.2, side 2.5, biceps 6.2, triceps 6.8, quads 7.4, hams 7.4, glutes 7.4, abs 3.7.
    Back is in 9-16; abs is judged against 6-12. Calves is excluded; traps, rear delts and forearms are not in the plan. */
-eq(JSON.stringify(card.balance.low), JSON.stringify([['chest', 7.4], ['front_delts', 6.2], ['side_delts', 2.5], ['biceps', 6.2], ['triceps', 6.8],
-  ['quads', 7.4], ['hams', 7.4], ['glutes', 7.4], ['core', 3.7]]), '6 balance.low: every planned muscle under its band, abs against 6-12; traps (freestyle only, not in the plan) is not reported');
+/* front delts 6.2 and glutes 7.4 are indirect muscles (3+ a week, no upper flag): over 3, so not low */
+eq(JSON.stringify(card.balance.low), JSON.stringify([['chest', 7.4], ['side_delts', 2.5], ['biceps', 6.2], ['triceps', 6.8],
+  ['quads', 7.4], ['hams', 7.4], ['core', 3.7]]), '6 balance.low: every planned muscle under its band, abs against 6-12, indirect muscles (front delts, glutes) only under 3; traps (freestyle only, not in the plan) is not reported');
 eq(card.balance.high.length, 0, '6 nothing over');
 /* the card on Today */
 const rows = await liftRows();
@@ -502,6 +515,25 @@ for (const sel of ['#blk-card', '.pumpbtn', '.offbook', '.hero']) ok(await fits(
 const g320 = await ev(() => { const b = document.querySelector('[data-act="start"].primary').getBoundingClientRect(); return { first: document.querySelector('#view button').dataset.act, bottom: b.bottom, vh: innerHeight }; });
 ok(g320.first === 'start' && g320.bottom <= g320.vh, '11 320 px: Start is still first and on the first screen  [' + Math.round(g320.bottom) + ' of ' + g320.vh + ']');
 await page.setViewportSize({ width: 390, height: 844 });
+
+/* ---- 6c a lift that started the block at load 0 or blank shows reps or a dash, never 0% or infinity ---- */
+{
+  const stt = blockState();
+  stt.sessions.forEach(s => s.exercises.forEach(e => {
+    if (e.name === 'Bench Press') e.sets.forEach(x => { x.w = '0'; x.load = 0; });          // bodyweight-like: 0 at both ends, reps 8 -> 10
+    if (e.name === 'Cable Row') e.sets.forEach(x => { x.w = ''; delete x.load; });           // never weighed: blank, reps 10 -> 10
+    if (e.name === 'Overhead Press') e.sets.forEach(x => { if (s.id === 'b0') { x.w = '0'; x.load = 0; } });   // 0 first, 70 last: reps at two loads say nothing
+  }));
+  await put(stt);
+  await closeBlockByTapping();
+  const r6 = await liftRows();
+  const byName = Object.fromEntries(r6.map(r => [r[0], r[2]]));
+  eq(byName['Bench Press'], '+2 reps', '6c Bench Press 0 → 0, reps 8 → 10: "+2 reps"  [' + JSON.stringify(r6.find(r => r[0] === 'Bench Press')) + ']');
+  eq(byName['Cable Row'], '—', '6c Cable Row blank, reps 10 → 10: a dash');
+  eq(byName['Overhead Press'], '—', '6c started at 0, ended at a load: a dash');
+  ok(!r6.some(r => /%|∞|Infinity|NaN/.test(r[2]) && ['Bench Press', 'Cable Row', 'Overhead Press'].includes(r[0])), '6c none of the three shows a percent, an infinity or NaN');
+  eq(await ev(() => b2ChangeText({ w0: 0, w1: 0, r0: 5, r1: 4, pct: 0 })) + '|' + await ev(() => b2ChangeText({ w0: 0, w1: 0, r0: 5, r1: 6, pct: 0 })) + '|' + await ev(() => b2ChangeText({ w0: 100, w1: 110, r0: 5, r1: 5, pct: 10 })), '−1 rep|+1 rep|+10%', '6c b2ChangeText: singular rep, minus sign, and the usual percent when there is a load');
+}
 
 /* ======================================================================== */
 console.log('6b a planned muscle the block never trained')

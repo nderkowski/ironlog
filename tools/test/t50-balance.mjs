@@ -71,8 +71,19 @@ const want = { 'Chest': '4', 'Traps': '3', 'Front delts': '3.5', 'Side delts': '
 for (const [k, v] of Object.entries(want)) eq(bal[k], v, '1 ' + k + ' reads ' + v + ' a week');
 eq(Object.keys(bal).length, 13, '1 one row per muscle that is not skipped (14 less calves)');
 const offs = await page.locator('.bal .mrow.off .mn').allInnerTexts();
-ok(!offs.includes('Rear delts') && offs.includes('Chest') && offs.includes('Abs') && offs.includes('Traps'),
-  '1 rear delts at 6 sit in the small-muscle band 6-12; chest, abs and traps are low  [off: ' + offs.join(', ') + ']');
+ok(!offs.includes('Rear delts') && offs.includes('Chest') && offs.includes('Abs'),
+  '1 rear delts at 6 sit in the small-muscle band 6-12; chest and abs are low  [off: ' + offs.join(', ') + ']');
+/* b1: the indirect band. Front delts 3.5, glutes 3.5 and traps 3 are at or over 3 a week: muted rows, no arrow, never low.
+   Forearms at 0 is under the 3 floor, so it is still flagged. */
+const indRows = await page.locator('.bal .mrow.ind .mn').allInnerTexts();
+eq(indRows.slice().sort().join(), 'Front delts,Glutes,Traps', 'b1 indirect rows (front delts, glutes, traps) are in the muted style at 3+  [' + indRows.join() + ']');
+ok(!offs.includes('Front delts') && !offs.includes('Glutes') && !offs.includes('Traps'), 'b1 and none of them is flagged low  [off: ' + offs.join(', ') + ']');
+eq(await page.locator('.bal .mrow.ind .mv').evaluateAll(els => els.some(e => /[↑↓]/.test(e.textContent) || e.querySelector('.vh'))), false, 'b1 a muted indirect row carries no arrow and no hidden "low"');
+ok(offs.includes('Forearms') && !(await page.locator('.bal .mrow.ind .mn').allInnerTexts()).includes('Forearms'), 'b1 forearms at 0 (under the 3 floor) is low, not muted');
+has(await page.locator('.bal').innerText(), 'indirect: 3+', 'b1 the text legend says "indirect: 3+"');
+has(await page.locator('.bal').innerText(), '6–12 for abs and rear delts', 'b1 and keeps the 9–16 / 6–12 bands for the rest');
+eq(JSON.stringify(await page.evaluate(() => ['chest', 'core', 'rear_delts', 'front_delts', 'glutes', 'traps', 'forearms'].map(k => bandOf(k)[0] + '-' + (isFinite(bandOf(k)[1]) ? bandOf(k)[1] : 'open')))),
+  JSON.stringify(['9-16', '6-12', '6-12', '3-open', '3-open', '3-open', '3-open']), 'b1 bandOf: majors 9-16, abs and rear delts 6-12, the four indirect muscles 3 and open');
 ok(await page.locator('.bal .mrow.off .mv .vh').first().evaluate(e => /low|high/.test(e.textContent)), '1 a low value says so in words too, not only in colour');
 has(await page.locator('.bal').innerText(), 'Calves — by choice', '1 skipped calves shown "by choice"');
 ok(!Object.keys(bal).includes('Calves'), '1 calves has no bar row');
@@ -148,6 +159,11 @@ eq(bal2['Abs'], '6', '2 the card follows: abs 0 -> 6 a week');
 eq(bal2['Triceps'], '5.8', '2 triceps 2.8 -> 5.8');
 /* side delts 4 x (B, both weeks) = 4; quads 4 + 3 = 7 */
 eq(bal2['Side delts'] + ' ' + bal2['Quads'], '4 7', '2 side delts 4, quads 7');
+/* b1 re-check, the owner-shaped plan after every suggestion: nothing is flagged high, every flagged muscle is truly under its floor,
+   and the four indirect muscles are flagged only where they are under 3 (forearms, at 0). */
+const flagged = await page.evaluate(() => planBalance().rows.filter(r => !r.excluded && (r.status === 'low' || r.status === 'high')).map(r => r.k + ':' + r.status + ':' + round(r.weekly, 1)));
+ok(flagged.every(f => /:low:/.test(f)) && await page.evaluate(() => planBalance().rows.filter(r => r.status === 'low').every(r => r.weekly < r.band[0])), 'b1 after every suggestion nothing is "high" and each "low" is under its floor  [' + flagged.join(' ') + ']');
+eq(flagged.filter(f => /^(front_delts|glutes|traps|forearms):/.test(f)).join(), 'forearms:low:0', 'b1 of the indirect muscles only forearms (0, under 3) is still flagged');
 /* the plan-settings text: before the 2.0 additions */
 await page.locator('[data-act="settings"]').first().tap(); await page.waitForSelector('[data-set="unit"]');
 has(await page.locator('body').innerText(), 'Before the 2.0 additions (', '2 Settings says "Before the 2.0 additions (date)"');
@@ -269,6 +285,9 @@ ok(/abs/.test(nothing) && /front delts/.test(nothing) && !/side delts/.test(noth
 await page.evaluate(() => { S.sessions[0].exercises.push({ id: 'zz', name: 'Cable Crunch', mg: 'core', mg2: [], metric: 0, bw: 0, bar: 0, sets: [{ w: '40', r: '12', done: true }] }); writeNow(); viewProgress(); });
 const prog2 = await rowsText('#view .card:has(.mrow)');
 eq(prog2['Abs'], '1', '5 abs is a row on Progress');
+await page.evaluate(() => { S.sessions[0].exercises.push({ id: 'zt', name: 'Cable Shrug', mg: 'traps', mg2: [], metric: 0, bw: 0, bar: 0, sets: [{ w: '40', r: '12', done: true }, { w: '40', r: '12', done: true }, { w: '40', r: '12', done: true }] }); writeNow(); viewProgress(); });
+ok((await page.locator('#view .mrow.ind .mn').allInnerTexts()).includes('Traps'), 'b1 Progress: traps is a muted indirect row');
+has(await page.locator('#view').innerText(), 'indirect: 3+', 'b1 and the Progress legend says "indirect: 3+"');
 /* fewer than N main logged days */
 await boot(page, state({ sessions: sessions.slice(0, 2), routines: routines().concat([pump]) })); await go('progress');
 has(await page.locator('#view').innerText(), 'Not a full rotation yet', '5 fewer than N main days: says so');

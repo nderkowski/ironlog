@@ -135,7 +135,7 @@ function todayIdle(){
         S.routines.map(function(r){
           return variantsOf(r).map(function(v,vi){
             if(r.id===nr.id&&vi===nvi) return "";
-            if(pumpOn&&r.id===pumpOn.r.id&&vi===pumpOn.vi) return "";     // it is the Pump day button below
+            if(pumpOn&&r.id===pumpOn.r.id) return "";     // the Pump day is the one button below (it alternates its own menus)
             return '<button class="daypick" data-act="start" data-id="'+r.id+'" data-vi="'+vi+'">'+
               '<span class="k">'+esc(r.key)+'</span>'+esc(r.name)+
               (variantsOf(r).length>1?" · "+esc(variantLabel(r,vi)):"")+'</button>';
@@ -439,21 +439,35 @@ function c2Paint(ei,j){
    still at what set 1 was just before follows it. A top-set lift's back-offs
    follow only while they are still the planned back-off, and take the new one.
    Reps never cascade; done sets and warm-ups never change. */
-function c2Cascade(ei,si,old){
+/* A typed number can only be a working load if it is within half to one and a half
+   times what the set it would move holds now. */
+function b2Plaus(nv,ref){ return ref>0&&nv>=0.5*ref&&nv<=1.5*ref; }
+/* guard (typed commits): each untouched follower is judged on its own value, not on
+   set 1's previous number, which may itself be the typo ("650" then "70" must still
+   bring the 65s to 70). A follower follows when it still matches what set 1 was, or
+   when what set 1 was could never have been its load. A top-set lift's back-offs are
+   judged against the top they imply: back-off ÷ (1 − backPct). */
+function c2Cascade(ei,si,old,guard){
   var ex=S.active.exercises[ei], sets=ex.sets, first=-1;
   for(var k=0;k<sets.length;k++) if(!sets[k].warm){ first=k; break; }
   if(si!==first) return;
-  var nw=sets[si].w, tb=schemeOf(ex)==="topback";
-  var okN=String(nw).trim()!==""&&isFinite(num(nw));
-  var ob=tb?String(backOffW(num(old),ex)):null, nb=tb&&okN?String(backOffW(num(nw),ex)):null;
+  var nw=sets[si].w, tb=schemeOf(ex)==="topback", ov=num(old), nv=num(nw);
+  var okN=String(nw).trim()!==""&&isFinite(nv);
+  var ob=tb?String(backOffW(ov,ex)):null, nb=tb&&okN?String(backOffW(nv,ex)):null;
+  var keep=1-(num(ex.backPct)||0.12);
   for(var j=si+1;j<sets.length;j++){
-    var s=sets[j];
+    var s=sets[j], fw=num(s.w);
     if(s.warm||s.done||s.touched) continue;                      // a set you edited yourself is yours
     if(tb&&s.role==="back"){
-      if(nb!==null&&String(s.w)===ob){ s.w=nb; c2Paint(ei,j); }
+      var imp=fw>0?fw/keep:0;
+      if(nb===null||!(String(s.w)===ob||(imp>0&&!b2Plaus(ov,imp)))) continue;
+      if(guard&&imp>0&&!b2Plaus(nv,imp)) continue;
+      s.w=nb; c2Paint(ei,j);
       continue;
     }
-    if(String(s.w)===String(old)){ s.w=nw; c2Paint(ei,j); }
+    if(!(String(s.w)===String(old)||(fw>0&&!b2Plaus(ov,fw)))) continue;
+    if(guard&&fw>0&&!b2Plaus(nv,fw)) continue;
+    s.w=nw; c2Paint(ei,j);
   }
 }
 /* Every undone working set takes w × r. Top-set lifts: the top gets w, the
@@ -529,36 +543,65 @@ function c2EaseBanner(){
   return '<div class="banner calm easeback"><div class="bt">'+d+' days since you last trained</div>'+
     '<div class="acts"><button class="btn sm" data-act="easeback">Ease back ~10%</button></div></div>';
 }
+/* A lift so light that one notch down is more than 15% of it (a 10 lb face pull,
+   step 5) keeps its load: lighter by weight is not on offer, so each working set's
+   target reps drop by 2 (never below 1) instead. */
+function b2EaseKeeps(w,ex){
+  var nw=easierEx(w,ex);
+  return nw!==w&&Math.abs(w-nw)/w>0.15;
+}
 function c2OnEaseBack(){
   var d=c2EaseGap();
   if(!d) return;
-  var undo=[], whys=[];
+  var undo=[], whys=[], rundo=[], kept=[], moved=0;
   S.active.exercises.forEach(function(ex,ei){
-    var tb=schemeOf(ex)==="topback", topNew=null, changed=false;
+    var tb=schemeOf(ex)==="topback", topNew=null, changed=false, keep=false, keptW=null;
     whys[ei]={why:ex.why,kind:ex.kind};
     ex.sets.forEach(function(s,j){
       if(s.done||s.warm||!(num(s.w)>0)) return;
-      var nw;
-      if(tb&&s.role==="back"&&topNew!==null) nw=backOffW(topNew,ex);
-      else { nw=easierEx(num(s.w),ex); if(tb&&topNew===null) topNew=nw; }
+      var w0=num(s.w), nw, held=false;
+      if(tb&&s.role==="back"&&keep) held=true;                    // the top kept its load: so do the back-offs
+      else if(tb&&s.role==="back"&&topNew!==null) nw=backOffW(topNew,ex);
+      else if(b2EaseKeeps(w0,ex)){ held=true; if(tb) keep=true; }
+      else { nw=easierEx(w0,ex); if(tb&&topNew===null) topNew=nw; }
+      if(held){
+        if(keptW===null) keptW=w0;
+        var r0=num(s.r), r1=Math.max(1,r0-2);
+        if(r1===r0) return;
+        rundo.push([ei,j,s.r,String(r1)]);
+        s.r=String(r1); changed=true;
+        var row=$('.set[data-ei="'+ei+'"][data-si="'+j+'"]'), ri=row&&$('input[data-f="r"]',row);
+        if(ri) ri.value=s.r;
+        return;
+      }
       if(String(nw)===String(s.w)) return;
       undo.push([ei,j,s.w,String(nw)]);
       s.w=String(nw); changed=true; delete s.touched; c2Paint(ei,j);
     });
+    if(keptW!==null) kept.push({w:keptW,ex:ex}); else if(changed) moved++;
     if(changed){
-      ex.why="Easing back after "+d+" days"+(ex.why?" — "+ex.why:"");
+      ex.why="Easing back after "+d+" days"+(keptW!==null?" — same load, 2 fewer reps":"")+(ex.why?" — "+ex.why:"");
       c2PaintWhy(ei);
     }
   });
   S.active.easeBack=true;
   var b=$('[data-act="easeback"]'); if(b) (b.closest(".banner")||b).remove();
   save();
-  toastUndo("Eased back for today",function(){
+  var msg="Eased back for today";
+  if(kept.length){
+    var kt=kept.length===1?"Kept "+fmt(kept[0].w)+" "+unit()+" — 2 fewer reps":"Kept "+kept.length+" light loads — 2 fewer reps";
+    msg=moved?msg+" · "+kt:kt;
+  }
+  toastUndo(msg,function(){
     if(!S.active||!S.active.easeBack) return;
     if(S.active.exercises.some(c2AnyDone)){ toast("Already started — change the loads by hand"); return; }
     undo.forEach(function(u){
       var s=S.active.exercises[u[0]]&&S.active.exercises[u[0]].sets[u[1]];
       if(s&&String(s.w)===u[3]) s.w=u[2];
+    });
+    rundo.forEach(function(u){
+      var s=S.active.exercises[u[0]]&&S.active.exercises[u[0]].sets[u[1]];
+      if(s&&String(s.r)===u[3]) s.r=u[2];
     });
     S.active.exercises.forEach(function(ex,ei){ if(whys[ei]){ ex.why=whys[ei].why; ex.kind=whys[ei].kind; } });
     delete S.active.easeBack;
@@ -726,11 +769,9 @@ $("#view").addEventListener("change",function(e){
   var row=inp.closest(".set");
   /* A typed value reaches the other sets only if it could be a working load:
      "1" typed on the way to "135", or a slip of the thumb, stays in set 1 (the
-     Keep chip is the way back). Judged against what the set held before the
-     edit; with nothing before it there is nothing to compare, so it follows. */
-  var nv=num(inp.value), ov=num(old);
-  if(ov>0&&!(nv>0&&nv>=0.5*ov&&nv<=1.5*ov)){ save(); return; }
-  c2Cascade(+row.dataset.ei,+row.dataset.si,old);
+     Keep chip is the way back). c2Cascade judges each untouched follower against
+     the load it holds now, not against set 1's previous (possibly typo'd) value. */
+  c2Cascade(+row.dataset.ei,+row.dataset.si,old,true);
   save();
 });
 $("#view").addEventListener("keydown",function(e){
