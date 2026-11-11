@@ -226,7 +226,7 @@ function uid(){ return Math.random().toString(36).slice(2,10); }
    else's. Then a blocking veil asks for a reload, and writeNow() refuses until
    it is given, so the stale copy can never land. */
 function otherWrote(){
-  if(STALE||typeof S==="undefined") return;   // already waiting for the reload, or the page is still loading (it reads storage when it boots)
+  if(STALE) return;                              // already waiting for the reload
   var unsaved=JSON.stringify(S)!==mineJSON;
   var logging=TAB==="today"&&!document.hidden;   // the session screen is in front of someone
   if(S.active&&(unsaved||logging)){

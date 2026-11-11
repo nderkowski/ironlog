@@ -102,8 +102,8 @@ await page.evaluate(() => { S.settings.targetFreq = 3; writeNow(); viewPlan(); }
 console.log('2 suggestions');
 const sugLabels = async () => page.locator('.sug [data-act="plan-suggest"]').allInnerTexts();
 let labels = (await sugLabels()).map(s => s.trim());
-eq(labels.join(' | '), '+ Cable Crunch on B and C (abs) | + Overhead Cable Tricep Extension on B | Lateral Raise 3 → 4 sets on B | + Leg Extension on C | Face Pull 3 → 4 sets on A and C (optional)',
-  '2 the suggested rows, in the spec order, face pull last and optional');
+eq(labels.join(' | '), '+ Cable Crunch on B and C (abs) | + Overhead Cable Tricep Extension on B | Lateral Raise 3 → 4 sets on B | + Leg Extension on C | Run RDL as top set + back-offs | Face Pull 3 → 4 sets on A and C (optional)',
+  '2 the suggested rows, in the spec order (RDL row now live: the engine landed with package B), face pull last and optional');
 ok(!labels.some(l => /calf|calves/i.test(l)), '2 calves is never suggested');
 const hidden = await page.evaluate(() => ({ rdl: typeof schemeOf, pump: typeof isOptional }));
 if (hidden.rdl !== 'function') ok(!labels.some(l => /RDL/.test(l)), '2 the RDL row stays hidden until the engine package lands');
@@ -115,8 +115,10 @@ await page.locator('.sug [data-id="tri"]').tap(); await page.waitForTimeout(200)
 await page.locator('.sug [data-id="abs"]').tap(); await page.waitForTimeout(200);
 await page.locator('.sug [data-id="side"]').tap(); await page.waitForTimeout(200);
 await page.locator('.sug [data-id="quad"]').tap(); await page.waitForTimeout(200);
+await page.locator('.sug [data-id="rdl"]').tap(); await page.waitForTimeout(200);
 await page.locator('.sug [data-id="face"]').tap(); await page.waitForTimeout(200);
 let st = await getState(page);
+ok(st.routines.every(r => r.variants.every(v => v.exercises.filter(e => /\brdl\b|romanian/i.test(e.name)).every(e => e.scheme === 'topback'))), '2 RDL rows on every day and week are now top set + back-offs');
 const byKey = (s, k) => s.routines.find(r => r.key === k);
 const fmtRow = e => `${e.name} ${e.sets}x${e.reps}-${e.repTop}${e.link ? ' +' : ''}`;
 for (const [vi, label] of [[0, 'B week 1'], [1, 'B week 2']]) {

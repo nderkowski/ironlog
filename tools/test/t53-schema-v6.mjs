@@ -17,6 +17,7 @@
    7. newPlanEx / planExFromSession carry scheme, backPct, pins; targetFreq,
       excludedMuscles and the block history cap are normalised.
    8. A blocked v5 write is reported with a toast. */
+import { readFileSync } from 'node:fs';
 import { launch, boot, getState, openSettings, ok, eq, has, report, URL as APP } from './harness.mjs';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -390,7 +391,8 @@ await page.reload(); await page.waitForSelector('#view');
 eq(await raw(page, V5), null, '8 a fresh install writes no v5 copy');
 await openSettings(page);
 ok((await page.$('[data-act="restore-v5"]')) === null, '8 and offers no restore');
-eq(await page.evaluate(() => BUILD), 'v2.0-a3', '8 BUILD is v2.0-a3');
+const FILE_BUILD = (/var BUILD="([^"]+)";/.exec(readFileSync(new URL('../../js/01-state.js', import.meta.url), 'utf8')) || [])[1];   // read, not written here
+eq(await page.evaluate(() => BUILD), FILE_BUILD, '8 BUILD is the one js/01-state.js declares (' + FILE_BUILD + ')');
 
 const blocked = await browser.newContext({ viewport:{ width:390, height:844 } });
 const bp = await blocked.newPage();
